@@ -1,120 +1,236 @@
-use std::io::{self, BufRead, Read};
+use std::fs::File;
+use std::io::Read;
+use std::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 use std::ptr;
 
-use crate::BUFFER_SIZE;
+use memchr::memchr;
 
+use crate::EtError;
+
+/// Default buffer size
+pub const BUFFER_SIZE: usize = 1000;
 
 /// Wraps a Box<Read> to allow buffered reading
 ///
 /// Primary differences from Rust's built-in BufReader:
 ///  - residual in buffer is maintained between `fill_buf`s
 ///  - buffer will be expanded if not enough data present to parse
+///  - EOF state is tracked
 pub struct ReadBuffer<'s> {
-    buffer: Vec<u8>,
+    /// The primary buffer; reloaded from `reader` when needed
+    pub buffer: Vec<u8>,
+    /// The stream to read from
     reader: Box<dyn Read + 's>,
-    start: usize,
+    /// The total amount of data read before byte 0 of this buffer (used for error messages)
+    reader_pos: u64,
+    /// The total number of records consumed (used for error messages)
+    record_pos: u64,
+    /// The amount of this buffer that's been marked as used
+    pub consumed: usize,
+    /// Is this the last chunk before EOF?
+    pub eof: bool,
 }
 
-
 impl<'s> ReadBuffer<'s> {
-    pub fn new(reader: Box<dyn Read + 's>) -> Result<Self, io::Error> {
+    /// Create a new ReadBuffer from the `reader` using the default size.
+    pub fn new(reader: Box<dyn Read + 's>) -> Result<Self, EtError> {
         Self::with_capacity(BUFFER_SIZE, reader)
     }
 
-    pub fn with_capacity(buffer_size: usize, mut reader: Box<dyn Read + 's>) -> Result<Self, io::Error> {
+    /// Create a new ReadBuffer from the `reader` using the size provided
+    pub fn with_capacity(
+        buffer_size: usize,
+        mut reader: Box<dyn Read + 's>,
+    ) -> Result<Self, EtError> {
         let mut buffer = Vec::with_capacity(buffer_size);
-        unsafe { buffer.set_len(buffer.capacity()); }
+        unsafe {
+            buffer.set_len(buffer.capacity());
+        }
         let amt_read = reader.read(&mut buffer)?;
-        unsafe { buffer.set_len(amt_read); }
+        unsafe {
+            buffer.set_len(amt_read);
+        }
+        let eof = amt_read != buffer.capacity();
 
         Ok(ReadBuffer {
             buffer,
             reader,
-            start: 0,
+            reader_pos: 0,
+            record_pos: 0,
+            consumed: 0,
+            eof,
         })
     }
-}
 
-impl<'s> AsRef<[u8]> for ReadBuffer<'s> {
-    fn as_ref(&self) -> &[u8] {
-        &self.buffer[self.start..]
-    }
-}
-
-impl<'s> Read for ReadBuffer<'s> {
-     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-         let n = Read::read(&mut self.fill_buf()?, buf)?;
-         self.consume(n);
-         Ok(n)
-     }
-}
-
-impl<'s> BufRead for ReadBuffer<'s> {
-    fn consume(&mut self, amt: usize) {
-        self.start += amt;
+    /// Create a new new ReadBuffer from the `file`
+    pub fn from_file(file: &'s File) -> Result<Self, EtError> {
+        Self::new(Box::new(file))
     }
 
-    fn fill_buf(&mut self) -> Result<&[u8], io::Error> {
+    /// Refill the buffer from the `reader`; if no data has been consumed the
+    /// buffer's size if doubled and the new buffer is filled.
+    pub fn refill(&mut self) -> Result<(), EtError> {
+        if self.eof {
+            return Ok(());
+        }
         let mut capacity = self.buffer.capacity();
-        if self.start == 0 {
+        // if we haven't read anything, but we want more data expand the buffer
+        if self.consumed == 0 {
             self.buffer.reserve(2 * capacity);
             capacity = self.buffer.capacity();
         };
 
-        let len = self.buffer.len() - self.start;
+        // copy the old data to the front of the buffer
+        let len = self.buffer.len() - self.consumed;
         unsafe {
             let new_ptr = self.buffer.as_mut_ptr();
-            let old_ptr = new_ptr.add(self.start);
+            let old_ptr = new_ptr.add(self.consumed);
             ptr::copy(old_ptr, new_ptr, len);
         }
 
-        unsafe { self.buffer.set_len(capacity); }
-        let amt_read = self.reader.read(&mut self.buffer[len..])?;
-        unsafe { self.buffer.set_len(len + amt_read); }
-        self.start = 0;
+        // resize the buffer and read in new data
+        unsafe {
+            self.buffer.set_len(capacity);
+        }
+        let amt_read = self
+            .reader
+            .read(&mut self.buffer[len..])
+            .map_err(|e| EtError::from(e).fill_pos(&self))?;
+        unsafe {
+            self.buffer.set_len(len + amt_read);
+        }
+        self.consumed = 0;
+        if amt_read != capacity - len {
+            self.eof = true;
+        }
 
-        Ok(&self.buffer)
-    }
-}
-
-
-#[cfg(test)]
-mod test {
-    use std::io::{self, BufRead, Cursor};
-    
-    use super::ReadBuffer;
-
-    #[test]
-    fn test_buffer() -> Result<(), io::Error> {
-        let reader = Box::new(Cursor::new(b"123456"));
-        let mut rb = ReadBuffer::new(reader)?;
-
-        assert_eq!(rb.as_ref(), b"123456");
-        rb.consume(3);
-        assert_eq!(rb.as_ref(), b"456");
+        // track how much data was in the reader before the data in the buffer
+        self.reader_pos += len as u64;
         Ok(())
     }
 
+    /// Mark out the data in the buffer and return a reference to it
+    /// To be called once an entire record has been consumed
+    pub fn consume(&mut self, amt: usize) -> &[u8] {
+        self.record_pos += 1;
+        self.partial_consume(amt)
+    }
+
+    pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
+        let start = self.consumed;
+        self.consumed += amt;
+        &self.buffer[start..self.consumed]
+    }
+
+    /// True if this is the last chunk in the stream
+    pub fn eof(&self) -> bool {
+        self.eof
+    }
+
+    /// True if any data is left in the buffer
+    pub fn is_empty(&self) -> bool {
+        self.consumed >= self.buffer.len()
+    }
+
+    /// How much data is in the buffer
+    pub fn len(&self) -> usize {
+        self.buffer.len() - self.consumed
+    }
+
+    /// The record and byte position that the reader is on
+    pub fn get_pos(&self) -> (u64, u64) {
+        (self.record_pos, self.reader_pos + self.consumed as u64)
+    }
+
+    /// Read a single line out of the buffer.
+    ///
+    /// Assumes all lines are terminated with a '\n' and an optional '\r'
+    /// before so should handle almost all current text file formats, but
+    /// may fail on older '\r' only formats.
+    pub fn read_line(&mut self) -> Result<Option<&[u8]>, EtError> {
+        if self.is_empty() {
+            return Ok(None);
+        }
+        // find the newline
+        let (end, to_consume) = loop {
+            if let Some(e) = memchr(b'\n', &self[..]) {
+                if self[..e].last() == Some(&b'\r') {
+                    break (e - 1, e + 1);
+                } else {
+                    break (e, e + 1);
+                }
+            } else if self.eof() {
+                // we couldn't find a new line, but we are at the end of the file
+                // so return everything to the EOF
+                let l = self.len();
+                break (l, l);
+            }
+            // couldn't find the character; load more
+            self.refill()?;
+        };
+
+        let buffer = self.consume(to_consume);
+        Ok(Some(&buffer[..end]))
+    }
+}
+
+// It's not really possible to implement Index<(Bound, Bound)> or otherwise
+// make this generic over all forms of Range* so we do a little hacky business
+macro_rules! impl_index {
+    ($index:ty, $return:ty) => {
+        impl<'r> Index<$index> for ReadBuffer<'r> {
+            type Output = $return;
+
+            fn index(&self, index: $index) -> &Self::Output {
+                &self.buffer[self.consumed..][index]
+            }
+        }
+    };
+}
+
+impl_index!(Range<usize>, [u8]);
+impl_index!(RangeFrom<usize>, [u8]);
+impl_index!(RangeTo<usize>, [u8]);
+impl_index!(RangeFull, [u8]);
+impl_index!(usize, u8);
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use crate::EtError;
+
+    use super::ReadBuffer;
 
     #[test]
-    fn test_buffer_small() -> Result<(), io::Error> {
+    fn test_buffer() -> Result<(), EtError> {
+        let reader = Box::new(Cursor::new(b"123456"));
+        let mut rb = ReadBuffer::new(reader)?;
+
+        assert_eq!(&rb[..], b"123456");
+        rb.consume(3);
+        assert_eq!(&rb[..], b"456");
+        Ok(())
+    }
+
+    #[test]
+    fn test_buffer_small() -> Result<(), EtError> {
         let reader = Box::new(Cursor::new(b"123456"));
         let mut rb = ReadBuffer::with_capacity(3, reader)?;
 
-        assert_eq!(rb.as_ref(), b"123");
-        rb.consume(3);
-        assert_eq!(rb.as_ref(), b"");
+        assert_eq!(&rb[..], b"123");
+        assert_eq!(rb.consume(3), b"123");
+        assert_eq!(&rb[..], b"");
 
-        let new_read = rb.fill_buf()?;
-        assert_eq!(&new_read, b"456");
-        assert_eq!(rb.as_ref(), b"456");
+        rb.refill()?;
+        assert_eq!(&rb[..], b"456");
         Ok(())
     }
 
     #[ignore]
     #[test]
-    fn test_rust_built_in() -> Result<(), io::Error> {
-        use std::io::BufReader;
+    fn test_rust_built_in() -> Result<(), EtError> {
+        use std::io::{BufRead, BufReader};
 
         let reader = Box::new(Cursor::new(b"123456"));
         let mut rb = BufReader::with_capacity(3, reader);
@@ -141,6 +257,25 @@ mod test {
         let new_read = rb.fill_buf()?;
         assert_eq!(&new_read, b"456");
         assert_eq!(rb.buffer(), b"456");
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_lines() -> Result<(), EtError> {
+        let reader = Box::new(Cursor::new(b"1\n2\n3"));
+        let mut rb = ReadBuffer::with_capacity(3, reader)?;
+
+        let mut ix = 0;
+        while let Some(l) = rb.read_line()? {
+            match ix {
+                0 => assert_eq!(l, b"1"),
+                1 => assert_eq!(l, b"2"),
+                2 => assert_eq!(l, b"3"),
+                _ => panic!("Invalid index; buffer tried to read too far"),
+            }
+            ix += 1;
+        }
+        assert_eq!(ix, 3);
         Ok(())
     }
 }

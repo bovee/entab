@@ -8,6 +8,6 @@ edition = "2018"
 # parsing
 memchr = "2.3.3"
 # compression
-flate2 = "1.0.6"
+flate2 = "1.0.14"
 bzip2 = "0.3.3"
 xz2 = "0.1.6"
