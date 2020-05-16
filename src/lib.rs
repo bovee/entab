@@ -6,8 +6,8 @@ use std::string::FromUtf8Error;
 
 pub mod buffer;
 pub mod compression;
-pub mod formats;
-pub mod mime;
+pub mod filetype;
+pub mod readers;
 pub mod record;
 
 #[derive(Debug)]

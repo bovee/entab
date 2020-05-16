@@ -5,7 +5,7 @@ use flate2::read::MultiGzDecoder;
 use xz2::read::XzDecoder;
 
 use crate::buffer::BUFFER_SIZE;
-use crate::mime::FileType;
+use crate::filetype::FileType;
 
 pub fn decompress<'a>(
     mut reader: Box<dyn Read + 'a>,
