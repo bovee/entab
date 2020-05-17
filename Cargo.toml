@@ -8,6 +8,11 @@ edition = "2018"
 # parsing
 memchr = "2.3.3"
 # compression
-flate2 = "1.0.14"
-bzip2 = "0.3.3"
-xz2 = "0.1.6"
+flate2 = { version = "1.0.14", optional = true }
+bzip2 = { version = "0.3.3", optional = true }
+xz2 = { version = "0.1.6", optional = true }
+zstd = { version = "0.5.1", optional = true }
+
+[features]
+default = ["compression"]
+compression = ["flate2", "bzip2", "xz2", "zstd"]

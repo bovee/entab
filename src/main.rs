@@ -6,7 +6,7 @@ use entab::compression::decompress;
 pub fn main() -> Result<(), io::Error> {
     let stdin = io::stdin();
     let locked_stdin = stdin.lock();
-    let (_, _) = decompress(Box::new(locked_stdin))?;
+    let (_, _, _) = decompress(Box::new(locked_stdin))?;
 
     let stdout = io::stdout();
     let mut locked_stdout = stdout.lock();

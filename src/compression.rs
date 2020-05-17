@@ -1,36 +1,53 @@
-use std::io::{Cursor, Error, Read};
+use std::io::{Error, Read};
 
+#[cfg(feature = "compression")]
 use bzip2::read::BzDecoder;
+#[cfg(feature = "compression")]
 use flate2::read::MultiGzDecoder;
+#[cfg(feature = "compression")]
 use xz2::read::XzDecoder;
+#[cfg(feature = "compression")]
+use zstd::stream::read::Decoder as ZstdDecoder;
 
-use crate::buffer::BUFFER_SIZE;
-use crate::filetype::FileType;
+use crate::filetype::{sniff_reader_filetype, FileType};
 
+/// Decompress a `Read` stream and returns the inferred file type
+/// (compiled without decompression support so decompression won't occur)
+#[cfg(not(feature = "compression"))]
 pub fn decompress<'a>(
     mut reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType), Error> {
-    let mut first = vec![0; BUFFER_SIZE];
-    let amt_read = reader.read(&mut first)?;
-    unsafe {
-        first.set_len(amt_read);
-    }
+) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), Error> {
+    let (new_reader, file_type) = sniff_reader_filetype(reader);
+    (new_reader, file_type, None)
+}
 
-    let file_type = FileType::from_magic(&first);
-    let cursor = Cursor::new(first);
-    match file_type {
+/// Decompress a `Read` stream and returns the inferred file type
+#[cfg(feature = "compression")]
+pub fn decompress<'a>(
+    reader: Box<dyn Read + 'a>,
+) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), Error> {
+    let (wrapped_reader, file_type) = sniff_reader_filetype(reader)?;
+    Ok(match file_type {
         FileType::Gzip => {
-            let gz_reader = MultiGzDecoder::new(cursor.chain(reader));
-            decompress(Box::new(gz_reader))
+            let gz_reader = MultiGzDecoder::new(wrapped_reader);
+            let (new_reader, new_type) = sniff_reader_filetype(Box::new(gz_reader))?;
+            (new_reader, new_type, Some(file_type))
         }
         FileType::Bzip => {
-            let bz_reader = BzDecoder::new(cursor.chain(reader));
-            decompress(Box::new(bz_reader))
+            let bz_reader = BzDecoder::new(wrapped_reader);
+            let (new_reader, new_type) = sniff_reader_filetype(Box::new(bz_reader))?;
+            (new_reader, new_type, Some(file_type))
         }
         FileType::Lzma => {
-            let xz_reader = XzDecoder::new(cursor.chain(reader));
-            decompress(Box::new(xz_reader))
+            let xz_reader = XzDecoder::new(wrapped_reader);
+            let (new_reader, new_type) = sniff_reader_filetype(Box::new(xz_reader))?;
+            (new_reader, new_type, Some(file_type))
         }
-        x => Ok((Box::new(cursor.chain(reader)), x)),
-    }
+        FileType::Zstd => {
+            let zstd_reader = ZstdDecoder::new(wrapped_reader)?;
+            let (new_reader, new_type) = sniff_reader_filetype(Box::new(zstd_reader))?;
+            (new_reader, new_type, Some(file_type))
+        }
+        x => (wrapped_reader, x, None),
+    })
 }

@@ -31,6 +31,9 @@ name = "cc"
 version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "404b1fe4f65288577753b17e3b36a04596ee784493ec249bf81c7f2d2acd751c"
+dependencies = [
+ "jobserver",
+]
 
 [[package]]
 name = "cfg-if"
@@ -55,6 +58,7 @@ dependencies = [
  "flate2",
  "memchr",
  "xz2",
+ "zstd",
 ]
 
 [[package]]
@@ -67,6 +71,21 @@ dependencies = [
  "crc32fast",
  "libc",
  "miniz_oxide",
+]
+
+[[package]]
+name = "glob"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
+
+[[package]]
+name = "jobserver"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c71313ebb9439f74b00d9d2dcec36440beaf57a6aa0623068441dd7cd81a7f2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -114,4 +133,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c179869f34fc7c01830d3ce7ea2086bc3a07e0d35289b667d0a8bf910258926c"
 dependencies = [
  "lzma-sys",
+]
+
+[[package]]
+name = "zstd"
+version = "0.5.1+zstd.1.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c5d978b793ae64375b80baf652919b148f6a496ac8802922d9999f5a553194f"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "2.0.3+zstd.1.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bee25eac9753cfedd48133fa1736cbd23b774e253d89badbeac7d12b23848d3f"
+dependencies = [
+ "libc",
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "1.4.15+zstd.1.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89719b034dc22d240d5b407fb0a3fe6d29952c181cff9a9f95c0bd40b4f8f7d8"
+dependencies = [
+ "cc",
+ "glob",
+ "libc",
 ]
