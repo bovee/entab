@@ -7,6 +7,8 @@ edition = "2018"
 [dependencies]
 # parsing
 memchr = "2.3.3"
+# cli
+clap = "3.0.0-beta"
 # compression
 flate2 = { version = "1.0.14", optional = true }
 bzip2 = { version = "0.3.3", optional = true }
