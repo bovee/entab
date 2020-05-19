@@ -1,5 +1,9 @@
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::mem;
 use std::io::Write;
-use std::mem;
 
 use memchr::memchr;
 
@@ -35,7 +39,7 @@ fn split<'a>(
         } else {
             cur_pos = line.len();
         };
-        buffer[token_num] = std::str::from_utf8(&line[start_pos..cur_pos])?;
+        buffer[token_num] = alloc::str::from_utf8(&line[start_pos..cur_pos])?;
         cur_pos += 1;
         token_num += 1;
     }

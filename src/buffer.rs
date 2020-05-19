@@ -1,7 +1,10 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
+use core::ptr;
+#[cfg(std)]
 use std::fs::File;
 use std::io::Read;
-use std::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
-use std::ptr;
 
 use memchr::memchr;
 
@@ -63,6 +66,7 @@ impl<'s> ReadBuffer<'s> {
     }
 
     /// Create a new new ReadBuffer from the `file`
+    #[cfg(std)]
     pub fn from_file(file: &'s File) -> Result<Self, EtError> {
         Self::new(Box::new(file))
     }
@@ -196,6 +200,7 @@ impl_index!(usize, u8);
 
 #[cfg(test)]
 mod test {
+    use alloc::boxed::Box;
     use std::io::Cursor;
 
     use crate::EtError;
@@ -224,39 +229,6 @@ mod test {
 
         rb.refill()?;
         assert_eq!(&rb[..], b"456");
-        Ok(())
-    }
-
-    #[ignore]
-    #[test]
-    fn test_rust_built_in() -> Result<(), EtError> {
-        use std::io::{BufRead, BufReader};
-
-        let reader = Box::new(Cursor::new(b"123456"));
-        let mut rb = BufReader::with_capacity(3, reader);
-
-        assert_eq!(rb.buffer(), b"");
-
-        let new_read = rb.fill_buf()?;
-        assert_eq!(&new_read, b"123");
-        assert_eq!(rb.buffer(), b"123");
-
-        // nothing consumed so the buffer doesn't expand
-        let new_read = rb.fill_buf()?;
-        assert_eq!(&new_read, b"123");
-        assert_eq!(rb.buffer(), b"123");
-
-        // anything still in the buffer; it doesn't expand
-        rb.consume(2);
-        let new_read = rb.fill_buf()?;
-        assert_eq!(&new_read, b"3");
-        assert_eq!(rb.buffer(), b"3");
-
-        // everything consumed; buffer can pull in the next data
-        rb.consume(1);
-        let new_read = rb.fill_buf()?;
-        assert_eq!(&new_read, b"456");
-        assert_eq!(rb.buffer(), b"456");
         Ok(())
     }
 

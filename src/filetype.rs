@@ -1,10 +1,13 @@
-use std::io::{Cursor, Error, Read};
+use alloc::boxed::Box;
+use alloc::vec;
+use std::io::{Cursor, Read};
 
 use crate::buffer::BUFFER_SIZE;
+use crate::EtError;
 
 pub fn sniff_reader_filetype<'a>(
     mut reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType), Error> {
+) -> Result<(Box<dyn Read + 'a>, FileType), EtError> {
     let mut first = vec![0; BUFFER_SIZE];
     let amt_read = reader.read(&mut first)?;
     unsafe {

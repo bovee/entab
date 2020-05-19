@@ -1,4 +1,7 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 use std::io::Write;
 
 use memchr::memchr;
@@ -120,7 +123,7 @@ impl<'r> RecordReader for FastaReader<'r> {
         let seq = &record[seq_range];
 
         Ok(Some(FastaRecord {
-            id: std::str::from_utf8(header)?,
+            id: alloc::str::from_utf8(header)?,
             sequence: seq.into(),
         }))
     }
@@ -128,10 +131,11 @@ impl<'r> RecordReader for FastaReader<'r> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use std::io::Cursor;
+
     use super::*;
     use crate::buffer::ReadBuffer;
-    use std::borrow::Cow;
-    use std::io::Cursor;
 
     #[test]
     fn test_fasta_reading() -> Result<(), EtError> {

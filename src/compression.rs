@@ -1,4 +1,5 @@
-use std::io::{Error, Read};
+use alloc::boxed::Box;
+use std::io::Read;
 
 #[cfg(feature = "compression")]
 use bzip2::read::BzDecoder;
@@ -10,22 +11,23 @@ use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::filetype::{sniff_reader_filetype, FileType};
+use crate::EtError;
 
 /// Decompress a `Read` stream and returns the inferred file type
 /// (compiled without decompression support so decompression won't occur)
 #[cfg(not(feature = "compression"))]
 pub fn decompress<'a>(
-    mut reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), Error> {
-    let (new_reader, file_type) = sniff_reader_filetype(reader);
-    (new_reader, file_type, None)
+    reader: Box<dyn Read + 'a>,
+) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), EtError> {
+    let (new_reader, file_type) = sniff_reader_filetype(reader)?;
+    Ok((new_reader, file_type, None))
 }
 
 /// Decompress a `Read` stream and returns the inferred file type
 #[cfg(feature = "compression")]
 pub fn decompress<'a>(
     reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), Error> {
+) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), EtError> {
     let (wrapped_reader, file_type) = sniff_reader_filetype(reader)?;
     Ok(match file_type {
         FileType::Gzip => {
