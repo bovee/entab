@@ -2,11 +2,15 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 use core::ptr;
-#[cfg(std)]
+#[cfg(feature = "std")]
 use std::fs::File;
+#[cfg(feature = "mmap")]
+use std::io::Cursor;
 use std::io::Read;
 
 use memchr::memchr;
+#[cfg(feature = "mmap")]
+use memmap::Mmap;
 
 use crate::EtError;
 
@@ -22,6 +26,9 @@ pub const BUFFER_SIZE: usize = 1000;
 pub struct ReadBuffer<'s> {
     /// The primary buffer; reloaded from `reader` when needed
     pub buffer: Vec<u8>,
+    /// Used for an alternate mode where a file is opened directly instead of through a Reader
+    #[cfg(feature = "mmap")]
+    mmap: Option<Mmap>,
     /// The stream to read from
     reader: Box<dyn Read + 's>,
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
@@ -57,6 +64,8 @@ impl<'s> ReadBuffer<'s> {
 
         Ok(ReadBuffer {
             buffer,
+            #[cfg(feature = "mmap")]
+            mmap: None,
             reader,
             reader_pos: 0,
             record_pos: 0,
@@ -65,10 +74,27 @@ impl<'s> ReadBuffer<'s> {
         })
     }
 
-    /// Create a new new ReadBuffer from the `file`
-    #[cfg(std)]
+    /// Create a new new ReadBuffer from the `file` (does not use mmap)
+    ///
+    /// The lifetime here can be hard to use downstream so it's recommended
+    /// to use new directly with a box for most cases.
+    #[cfg(all(not(feature = "mmap"), feature = "std"))]
     pub fn from_file(file: &'s File) -> Result<Self, EtError> {
         Self::new(Box::new(file))
+    }
+
+    /// Create a new new ReadBuffer from the `file`
+    #[cfg(all(feature="mmap", feature = "std"))]
+    pub fn from_file(file: &File) -> Result<Self, EtError> {
+        Ok(ReadBuffer {
+            buffer: Vec::new(),
+            mmap: Some(unsafe { Mmap::map(&file)? }),
+            reader: Box::new(Cursor::new("")),
+            reader_pos: 0,
+            record_pos: 0,
+            consumed: 0,
+            eof: true,
+        })
     }
 
     /// Refill the buffer from the `reader`; if no data has been consumed the
@@ -120,9 +146,21 @@ impl<'s> ReadBuffer<'s> {
         self.partial_consume(amt)
     }
 
+    #[cfg(not(feature = "mmap"))]
     pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
         let start = self.consumed;
         self.consumed += amt;
+        &self.buffer[start..self.consumed]
+    }
+
+    #[cfg(feature = "mmap")]
+    pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
+        let start = self.consumed;
+        self.consumed += amt;
+
+        if let Some(m) = &self.mmap {
+            return &m[start..self.consumed];
+        }
         &self.buffer[start..self.consumed]
     }
 
@@ -185,8 +223,18 @@ macro_rules! impl_index {
         impl<'r> Index<$index> for ReadBuffer<'r> {
             type Output = $return;
 
+            #[cfg(not(feature = "mmap"))]
             fn index(&self, index: $index) -> &Self::Output {
                 &self.buffer[self.consumed..][index]
+            }
+
+            #[cfg(feature = "mmap")]
+            fn index(&self, index: $index) -> &Self::Output {
+                if let Some(m) = &self.mmap {
+                    &m[self.consumed..][index]
+                } else {
+                    &self.buffer[self.consumed..][index]
+                }
             }
         }
     };

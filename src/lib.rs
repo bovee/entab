@@ -4,12 +4,12 @@
 
 extern crate alloc;
 
-#[cfg(std)]
+#[cfg(feature = "std")]
 use alloc::boxed::Box;
 use alloc::string::{FromUtf8Error, String};
 use alloc::str::Utf8Error;
 use core::fmt;
-#[cfg(std)]
+#[cfg(feature = "std")]
 use std::error::Error;
 use std::io::Error as IoError;
 
@@ -24,7 +24,7 @@ pub struct EtError {
     msg: String,
     byte: Option<u64>,
     record: Option<u64>,
-    #[cfg(std)]
+    #[cfg(feature = "std")]
     orig_err: Option<Box<dyn Error>>,
 }
 
@@ -37,7 +37,7 @@ impl EtError {
             msg: msg.into(),
             byte: None,
             record: None,
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             orig_err: None,
         }
     }
@@ -56,7 +56,7 @@ impl fmt::Display for EtError {
     }
 }
 
-#[cfg(std)]
+#[cfg(feature = "std")]
 impl Error for EtError {
     fn description(&self) -> &str {
         &self.msg
@@ -75,7 +75,7 @@ impl From<&str> for EtError {
             msg: error.to_string(),
             byte: None,
             record: None,
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             orig_err: None,
         }
     }
@@ -84,13 +84,13 @@ impl From<&str> for EtError {
 impl From<FromUtf8Error> for EtError {
     fn from(error: FromUtf8Error) -> Self {
         EtError {
-            #[cfg(not(std))]
+            #[cfg(not(feature = "std"))]
             msg: error.to_string(),
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             msg: error.description().to_string(),
             byte: None,
             record: None,
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
     }
@@ -99,13 +99,13 @@ impl From<FromUtf8Error> for EtError {
 impl From<IoError> for EtError {
     fn from(error: IoError) -> Self {
         EtError {
-            #[cfg(not(std))]
+            #[cfg(not(feature = "std"))]
             msg: error.to_string(),
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             msg: error.description().to_string(),
             byte: None,
             record: None,
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
     }
@@ -114,13 +114,13 @@ impl From<IoError> for EtError {
 impl From<Utf8Error> for EtError {
     fn from(error: Utf8Error) -> Self {
         EtError {
-            #[cfg(not(std))]
+            #[cfg(not(feature = "std"))]
             msg: error.to_string(),
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             msg: error.description().to_string(),
             byte: None,
             record: None,
-            #[cfg(std)]
+            #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
     }

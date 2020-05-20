@@ -39,6 +39,26 @@ where
     Ok(())
 }
 
+#[cfg(not(feature="mmap"))]
+pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
+    let file = File::open(filename)?;
+    let (reader, filetype, compression) = decompress(Box::new(file))?;
+    Ok((ReadBuffer::new(reader)?, filetype, compression))
+}
+
+#[cfg(feature="mmap")]
+pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
+    let file = File::open(filename)?;
+    let (reader, filetype, compression) = decompress(Box::new(file))?;
+    if compression == None {
+        // if the file's decompressed already, re-open it as a mmap
+        let file = File::open(filename)?;
+        Ok((ReadBuffer::from_file(&file)?, filetype, compression))
+    } else {
+        Ok((ReadBuffer::new(reader)?, filetype, compression))
+    }
+}
+
 pub fn main() -> Result<(), EtError> {
     let matches = App::new("entab")
         .about("Turn anything into a TSV")
@@ -78,14 +98,21 @@ pub fn main() -> Result<(), EtError> {
     let stdin = io::stdin();
     let stdout = io::stdout();
 
-    let (rb, filetype) = if let Some(i) = matches.value_of("input") {
-        let file = File::open(i)?;
-        let (reader, filetype, _) = decompress(Box::new(file))?;
-        (ReadBuffer::new(reader)?, filetype)
+    let (rb, filetype, _) = if let Some(i) = matches.value_of("input") {
+        open_file(i)?
+        // let file = File::open(i)?;
+        // let (reader, filetype, compression) = decompress(Box::new(file))?;
+        // if compression != None {
+        //     // if the file's decompressed already, re-open it as a mmap
+        //     let file = File::open(i)?;
+        //     (ReadBuffer::from_file(&file)?, filetype)
+        // } else {
+        //     (ReadBuffer::new(reader)?, filetype)
+        // }
     } else {
         let locked_stdin = stdin.lock();
-        let (reader, filetype, _) = decompress(Box::new(locked_stdin))?;
-        (ReadBuffer::new(reader)?, filetype)
+        let (reader, filetype, compression) = decompress(Box::new(locked_stdin))?;
+        (ReadBuffer::new(reader)?, filetype, compression)
     };
 
     let mut writer: Box<dyn Write> = if let Some(i) = matches.value_of("output") {
