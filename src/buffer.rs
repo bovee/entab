@@ -84,7 +84,7 @@ impl<'s> ReadBuffer<'s> {
     }
 
     /// Create a new new ReadBuffer from the `file`
-    #[cfg(all(feature="mmap", feature = "std"))]
+    #[cfg(feature = "mmap")]
     pub fn from_file(file: &File) -> Result<Self, EtError> {
         Ok(ReadBuffer {
             buffer: Vec::new(),
@@ -103,6 +103,10 @@ impl<'s> ReadBuffer<'s> {
         if self.eof {
             return Ok(());
         }
+
+        // track how much data was in the reader before the data in the buffer
+        self.reader_pos += self.consumed as u64;
+
         let mut capacity = self.buffer.capacity();
         // if we haven't read anything, but we want more data expand the buffer
         if self.consumed == 0 {
@@ -130,12 +134,22 @@ impl<'s> ReadBuffer<'s> {
             self.buffer.set_len(len + amt_read);
         }
         self.consumed = 0;
-        if amt_read != capacity - len {
+        if amt_read == 0 {
             self.eof = true;
         }
 
-        // track how much data was in the reader before the data in the buffer
-        self.reader_pos += len as u64;
+        Ok(())
+    }
+
+    /// Same result as `refill`, but ensures the buffer is at least `amt` bytes
+    /// large. Will error if not enough data is available.
+    pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
+        if self.len() < amt && self.eof {
+            return Err(EtError::new("File ended prematurely").fill_pos(&self));
+        }
+        while self.len() < amt {
+            self.refill()?;
+        }
         Ok(())
     }
 
@@ -175,8 +189,19 @@ impl<'s> ReadBuffer<'s> {
     }
 
     /// How much data is in the buffer
+    #[cfg(not(feature = "mmap"))]
     pub fn len(&self) -> usize {
         self.buffer.len() - self.consumed
+    }
+
+    /// How much data is in the buffer
+    #[cfg(feature = "mmap")]
+    pub fn len(&self) -> usize {
+        if let Some(m) = &self.mmap {
+            m.len() - self.consumed
+        } else {
+            self.buffer.len() - self.consumed
+        }
     }
 
     /// The record and byte position that the reader is on

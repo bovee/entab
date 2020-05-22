@@ -6,8 +6,8 @@ extern crate alloc;
 
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
-use alloc::string::{FromUtf8Error, String};
 use alloc::str::Utf8Error;
+use alloc::string::{FromUtf8Error, String};
 use core::fmt;
 #[cfg(feature = "std")]
 use std::error::Error;

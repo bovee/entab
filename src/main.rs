@@ -15,6 +15,7 @@ macro_rules! all_types {
     (match $m:expr => $f:ident::<$($t:ty)*>($($arg:expr),*)) => {
         match $m {
             FileType::Fasta => $f::<readers::fasta::FastaReaderBuilder,$($t),*>($($arg),*),
+            FileType::AgilentChemstation => $f::<readers::chemstation::ChemstationMsReaderBuilder,$($t),*>($($arg),*),
             _ => $f::<readers::tsv::TsvReaderBuilder,$($t),*>($($arg),*),
         }
     };
@@ -39,14 +40,14 @@ where
     Ok(())
 }
 
-#[cfg(not(feature="mmap"))]
+#[cfg(not(feature = "mmap"))]
 pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
     let file = File::open(filename)?;
     let (reader, filetype, compression) = decompress(Box::new(file))?;
     Ok((ReadBuffer::new(reader)?, filetype, compression))
 }
 
-#[cfg(feature="mmap")]
+#[cfg(feature = "mmap")]
 pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
     let file = File::open(filename)?;
     let (reader, filetype, compression) = decompress(Box::new(file))?;
