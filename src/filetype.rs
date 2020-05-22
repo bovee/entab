@@ -1,10 +1,16 @@
+#[cfg(feature = "std")]
 use alloc::boxed::Box;
+#[cfg(feature = "std")]
 use alloc::vec;
+#[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
+#[cfg(feature = "std")]
 use crate::buffer::BUFFER_SIZE;
+#[cfg(feature = "std")]
 use crate::EtError;
 
+#[cfg(feature = "std")]
 pub fn sniff_reader_filetype<'a>(
     mut reader: Box<dyn Read + 'a>,
 ) -> Result<(Box<dyn Read + 'a>, FileType), EtError> {

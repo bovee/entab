@@ -1,4 +1,7 @@
-use std::io::Write;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -18,11 +21,14 @@ impl<'s> Record for MzRecord {
         3
     }
 
-    fn write_field(&self, num: usize, writer: &mut dyn Write) -> Result<(), EtError> {
-        match num {
-            0 => writer.write_all(format!("{:02}", self.time).as_bytes())?,
-            1 => writer.write_all(format!("{:02}", self.mz).as_bytes())?,
-            2 => writer.write_all(format!("{:02}", self.intensity).as_bytes())?,
+    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
+    where
+        W: FnMut(&[u8]) -> Result<(), EtError>,
+    {
+        match index {
+            0 => write(format!("{:02}", self.time).as_bytes())?,
+            1 => write(format!("{:02}", self.mz).as_bytes())?,
+            2 => write(format!("{:02}", self.intensity).as_bytes())?,
             _ => panic!("FASTA field index out of range"),
         };
         Ok(())
@@ -128,14 +134,18 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "std")]
     use super::*;
+    #[cfg(feature = "std")]
     use crate::buffer::ReadBuffer;
-    use std::fs::File;
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_chemstation_reader() -> Result<(), EtError> {
+        use std::fs::File;
+
         let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS")?;
-        let rb = ReadBuffer::from_file(&f)?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
         let builder = ChemstationMsReaderBuilder::default();
         let mut reader = builder.to_reader(rb)?;
         let rec = reader.next()?.unwrap();

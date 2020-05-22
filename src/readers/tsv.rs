@@ -3,7 +3,6 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::mem;
-use std::io::Write;
 
 use memchr::memchr;
 
@@ -54,8 +53,11 @@ impl Record for &[&str] {
         <[&str]>::len(self)
     }
 
-    fn write_field(&self, num: usize, writer: &mut dyn Write) -> Result<(), EtError> {
-        writer.write_all(self[num].as_bytes())?;
+    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
+    where
+        W: FnMut(&[u8]) -> Result<(), EtError>,
+    {
+        write(self[index].as_bytes())?;
         Ok(())
     }
 }
@@ -164,12 +166,11 @@ impl<'r> RecordReader for TsvReader<'r> {
 mod test {
     use super::*;
     use crate::buffer::ReadBuffer;
-    use std::io::Cursor;
 
     #[test]
     fn test_reader() -> Result<(), EtError> {
-        const TEST_TEXT: &str = "header\nrow\nanother row";
-        let rb = ReadBuffer::with_capacity(5, Box::new(Cursor::new(TEST_TEXT)))?;
+        const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
+        let rb = ReadBuffer::from_slice(TEST_TEXT);
         let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
         assert_eq!(pt.headers(), vec!["header"]);
 
@@ -188,8 +189,8 @@ mod test {
 
     #[test]
     fn test_two_size_reader() -> Result<(), EtError> {
-        const TEST_TEXT: &str = "header\tcol1\nrow\t2\nanother row\t3";
-        let rb = ReadBuffer::with_capacity(5, Box::new(Cursor::new(TEST_TEXT)))?;
+        const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
+        let rb = ReadBuffer::from_slice(TEST_TEXT);
         let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
         assert_eq!(pt.headers(), vec!["header", "col1"]);
 

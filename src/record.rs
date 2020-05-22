@@ -1,13 +1,14 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use std::io::Write;
 
 use crate::buffer::ReadBuffer;
 use crate::EtError;
 
 pub trait Record {
     fn size(&self) -> usize;
-    fn write_field(&self, index: usize, writer: &mut dyn Write) -> Result<(), EtError>;
+    fn write_field<W>(&self, index: usize, writer: W) -> Result<(), EtError>
+    where
+        W: FnMut(&[u8]) -> Result<(), EtError>;
     // fn get(&self, field: &str) -> Option<Value>;
 }
 

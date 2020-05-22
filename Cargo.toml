@@ -23,3 +23,7 @@ default = ["compression", "mmap", "std"]
 compression = ["flate2", "bzip2", "xz2", "zstd"]
 mmap = ["memmap", "std"]
 std = []
+
+[[bin]]
+name = "entab"
+required-features = ["std"]

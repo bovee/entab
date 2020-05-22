@@ -1,16 +1,17 @@
+use alloc::borrow::Cow;
+#[cfg(feature = "std")]
 use alloc::boxed::Box;
+#[cfg(feature = "std")]
 use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use core::mem::swap;
 use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
+#[cfg(feature = "std")]
 use core::ptr;
 #[cfg(feature = "std")]
-use std::fs::File;
-#[cfg(feature = "mmap")]
-use std::io::Cursor;
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 use memchr::memchr;
-#[cfg(feature = "mmap")]
-use memmap::Mmap;
 
 use crate::EtError;
 
@@ -25,11 +26,9 @@ pub const BUFFER_SIZE: usize = 1000;
 ///  - EOF state is tracked
 pub struct ReadBuffer<'s> {
     /// The primary buffer; reloaded from `reader` when needed
-    pub buffer: Vec<u8>,
-    /// Used for an alternate mode where a file is opened directly instead of through a Reader
-    #[cfg(feature = "mmap")]
-    mmap: Option<Mmap>,
+    pub buffer: Cow<'s, [u8]>,
     /// The stream to read from
+    #[cfg(feature = "std")]
     reader: Box<dyn Read + 's>,
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
     reader_pos: u64,
@@ -43,11 +42,13 @@ pub struct ReadBuffer<'s> {
 
 impl<'s> ReadBuffer<'s> {
     /// Create a new ReadBuffer from the `reader` using the default size.
+    #[cfg(feature = "std")]
     pub fn new(reader: Box<dyn Read + 's>) -> Result<Self, EtError> {
         Self::with_capacity(BUFFER_SIZE, reader)
     }
 
     /// Create a new ReadBuffer from the `reader` using the size provided
+    #[cfg(feature = "std")]
     pub fn with_capacity(
         buffer_size: usize,
         mut reader: Box<dyn Read + 's>,
@@ -63,9 +64,7 @@ impl<'s> ReadBuffer<'s> {
         let eof = amt_read != buffer.capacity();
 
         Ok(ReadBuffer {
-            buffer,
-            #[cfg(feature = "mmap")]
-            mmap: None,
+            buffer: Cow::Owned(buffer),
             reader,
             reader_pos: 0,
             record_pos: 0,
@@ -74,66 +73,63 @@ impl<'s> ReadBuffer<'s> {
         })
     }
 
-    /// Create a new new ReadBuffer from the `file` (does not use mmap)
-    ///
-    /// The lifetime here can be hard to use downstream so it's recommended
-    /// to use new directly with a box for most cases.
-    #[cfg(all(not(feature = "mmap"), feature = "std"))]
-    pub fn from_file(file: &'s File) -> Result<Self, EtError> {
-        Self::new(Box::new(file))
-    }
-
-    /// Create a new new ReadBuffer from the `file`
-    #[cfg(feature = "mmap")]
-    pub fn from_file(file: &File) -> Result<Self, EtError> {
-        Ok(ReadBuffer {
-            buffer: Vec::new(),
-            mmap: Some(unsafe { Mmap::map(&file)? }),
-            reader: Box::new(Cursor::new("")),
+    pub fn from_slice(slice: &'s [u8]) -> Self {
+        ReadBuffer {
+            buffer: Cow::Borrowed(slice),
+            #[cfg(feature = "std")]
+            reader: Box::new(Cursor::new(b"")),
             reader_pos: 0,
             record_pos: 0,
             consumed: 0,
             eof: true,
-        })
+        }
     }
 
     /// Refill the buffer from the `reader`; if no data has been consumed the
     /// buffer's size if doubled and the new buffer is filled.
+    #[cfg(feature = "std")]
     pub fn refill(&mut self) -> Result<(), EtError> {
         if self.eof {
             return Ok(());
         }
 
+        // pull the buffer out; if self.buffer's Borrowed then eof should
+        // always be true above and we shouldn't hit this
+        let mut tmp_buffer = Cow::Borrowed(&b""[..]);
+        swap(&mut self.buffer, &mut tmp_buffer);
+        let mut buffer = tmp_buffer.into_owned();
+
         // track how much data was in the reader before the data in the buffer
         self.reader_pos += self.consumed as u64;
 
-        let mut capacity = self.buffer.capacity();
+        let mut capacity = buffer.capacity();
         // if we haven't read anything, but we want more data expand the buffer
         if self.consumed == 0 {
-            self.buffer.reserve(2 * capacity);
-            capacity = self.buffer.capacity();
+            buffer.reserve(2 * capacity);
+            capacity = buffer.capacity();
         };
 
         // copy the old data to the front of the buffer
-        let len = self.buffer.len() - self.consumed;
+        let len = buffer.len() - self.consumed;
         unsafe {
-            let new_ptr = self.buffer.as_mut_ptr();
+            let new_ptr = buffer.as_mut_ptr();
             let old_ptr = new_ptr.add(self.consumed);
             ptr::copy(old_ptr, new_ptr, len);
         }
 
         // resize the buffer and read in new data
         unsafe {
-            self.buffer.set_len(capacity);
+            buffer.set_len(capacity);
         }
         let amt_read = self
             .reader
-            .read(&mut self.buffer[len..])
+            .read(&mut buffer[len..])
             .map_err(|e| EtError::from(e).fill_pos(&self))?;
         unsafe {
-            self.buffer.set_len(len + amt_read);
+            buffer.set_len(len + amt_read);
         }
         self.consumed = 0;
+        swap(&mut Cow::Owned(buffer), &mut self.buffer);
         if amt_read == 0 {
             self.eof = true;
         }
@@ -141,11 +137,18 @@ impl<'s> ReadBuffer<'s> {
         Ok(())
     }
 
+    #[cfg(not(feature = "std"))]
+    pub fn refill(&mut self) -> Result<(), EtError> {
+        // no_std doesn't support Readers so this is always just an
+        // unrefillable slice
+        return Ok(());
+    }
+
     /// Same result as `refill`, but ensures the buffer is at least `amt` bytes
     /// large. Will error if not enough data is available.
     pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
         if self.len() < amt && self.eof {
-            return Err(EtError::new("File ended prematurely").fill_pos(&self));
+            return Err(EtError::new("Data ended prematurely").fill_pos(&self));
         }
         while self.len() < amt {
             self.refill()?;
@@ -160,21 +163,9 @@ impl<'s> ReadBuffer<'s> {
         self.partial_consume(amt)
     }
 
-    #[cfg(not(feature = "mmap"))]
     pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
         let start = self.consumed;
         self.consumed += amt;
-        &self.buffer[start..self.consumed]
-    }
-
-    #[cfg(feature = "mmap")]
-    pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
-        let start = self.consumed;
-        self.consumed += amt;
-
-        if let Some(m) = &self.mmap {
-            return &m[start..self.consumed];
-        }
         &self.buffer[start..self.consumed]
     }
 
@@ -189,19 +180,8 @@ impl<'s> ReadBuffer<'s> {
     }
 
     /// How much data is in the buffer
-    #[cfg(not(feature = "mmap"))]
     pub fn len(&self) -> usize {
         self.buffer.len() - self.consumed
-    }
-
-    /// How much data is in the buffer
-    #[cfg(feature = "mmap")]
-    pub fn len(&self) -> usize {
-        if let Some(m) = &self.mmap {
-            m.len() - self.consumed
-        } else {
-            self.buffer.len() - self.consumed
-        }
     }
 
     /// The record and byte position that the reader is on
@@ -248,18 +228,8 @@ macro_rules! impl_index {
         impl<'r> Index<$index> for ReadBuffer<'r> {
             type Output = $return;
 
-            #[cfg(not(feature = "mmap"))]
             fn index(&self, index: $index) -> &Self::Output {
                 &self.buffer[self.consumed..][index]
-            }
-
-            #[cfg(feature = "mmap")]
-            fn index(&self, index: $index) -> &Self::Output {
-                if let Some(m) = &self.mmap {
-                    &m[self.consumed..][index]
-                } else {
-                    &self.buffer[self.consumed..][index]
-                }
             }
         }
     };
@@ -273,13 +243,16 @@ impl_index!(usize, u8);
 
 #[cfg(test)]
 mod test {
+    #[cfg(feature = "std")]
     use alloc::boxed::Box;
+    #[cfg(feature = "std")]
     use std::io::Cursor;
 
     use crate::EtError;
 
     use super::ReadBuffer;
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_buffer() -> Result<(), EtError> {
         let reader = Box::new(Cursor::new(b"123456"));
@@ -291,6 +264,7 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_buffer_small() -> Result<(), EtError> {
         let reader = Box::new(Cursor::new(b"123456"));
@@ -305,11 +279,29 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_read_lines() -> Result<(), EtError> {
         let reader = Box::new(Cursor::new(b"1\n2\n3"));
         let mut rb = ReadBuffer::with_capacity(3, reader)?;
 
+        let mut ix = 0;
+        while let Some(l) = rb.read_line()? {
+            match ix {
+                0 => assert_eq!(l, b"1"),
+                1 => assert_eq!(l, b"2"),
+                2 => assert_eq!(l, b"3"),
+                _ => panic!("Invalid index; buffer tried to read too far"),
+            }
+            ix += 1;
+        }
+        assert_eq!(ix, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_lines_from_slice() -> Result<(), EtError> {
+        let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
         let mut ix = 0;
         while let Some(l) = rb.read_line()? {
             match ix {

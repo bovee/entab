@@ -1,8 +1,9 @@
 use std::fs::File;
 use std::io;
-use std::io::Write;
 
 use clap::{crate_authors, crate_version, App, Arg};
+#[cfg(feature = "mmap")]
+use memmap::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
@@ -21,43 +22,23 @@ macro_rules! all_types {
     };
 }
 
-pub fn write_reader_to_tsv<R, W>(buffer: ReadBuffer, writer: &mut W) -> Result<(), EtError>
+pub fn write_reader_to_tsv<R, W>(buffer: ReadBuffer, mut write: W) -> Result<(), EtError>
 where
     R: ReaderBuilder,
     R::Item: for<'a> BindT<'a>,
-    W: Write,
+    W: FnMut(&[u8]) -> Result<(), EtError>,
 {
     let mut rec_reader = R::default().to_reader(buffer)?;
-    writer.write_all(&rec_reader.headers().join("\t").as_bytes())?;
+    write(&rec_reader.headers().join("\t").as_bytes())?;
     while let Some(n) = rec_reader.next()? {
-        writer.write_all(b"\n")?;
-        n.write_field(0, writer)?;
+        write(b"\n")?;
+        n.write_field(0, &mut write)?;
         for i in 1..n.size() {
-            writer.write_all(b"\t")?;
-            n.write_field(i, writer)?;
+            write(b"\t")?;
+            n.write_field(i, &mut write)?;
         }
     }
     Ok(())
-}
-
-#[cfg(not(feature = "mmap"))]
-pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
-    let file = File::open(filename)?;
-    let (reader, filetype, compression) = decompress(Box::new(file))?;
-    Ok((ReadBuffer::new(reader)?, filetype, compression))
-}
-
-#[cfg(feature = "mmap")]
-pub fn open_file(filename: &str) -> Result<(ReadBuffer, FileType, Option<FileType>), EtError> {
-    let file = File::open(filename)?;
-    let (reader, filetype, compression) = decompress(Box::new(file))?;
-    if compression == None {
-        // if the file's decompressed already, re-open it as a mmap
-        let file = File::open(filename)?;
-        Ok((ReadBuffer::from_file(&file)?, filetype, compression))
-    } else {
-        Ok((ReadBuffer::new(reader)?, filetype, compression))
-    }
 }
 
 pub fn main() -> Result<(), EtError> {
@@ -98,36 +79,44 @@ pub fn main() -> Result<(), EtError> {
     // stdin needs to be out here for lifetime purposes
     let stdin = io::stdin();
     let stdout = io::stdout();
+    #[cfg(feature = "mmap")]
+    let mmap: Mmap;
 
     let (rb, filetype, _) = if let Some(i) = matches.value_of("input") {
-        open_file(i)?
-        // let file = File::open(i)?;
-        // let (reader, filetype, compression) = decompress(Box::new(file))?;
-        // if compression != None {
-        //     // if the file's decompressed already, re-open it as a mmap
-        //     let file = File::open(i)?;
-        //     (ReadBuffer::from_file(&file)?, filetype)
-        // } else {
-        //     (ReadBuffer::new(reader)?, filetype)
-        // }
+        let file = File::open(i)?;
+        let (reader, filetype, compression) = decompress(Box::new(file))?;
+        if compression == None {
+            // if the file's decompressed already, re-open it as a mmap
+            #[cfg(feature = "mmap")]
+            {
+                let file = File::open(i)?;
+                mmap = unsafe { Mmap::map(&file)? };
+                (ReadBuffer::from_slice(&mmap), filetype, compression)
+            }
+            #[cfg(not(feature = "mmap"))]
+            (ReadBuffer::new(reader)?, filetype, compression)
+        } else {
+            (ReadBuffer::new(reader)?, filetype, compression)
+        }
     } else {
         let locked_stdin = stdin.lock();
         let (reader, filetype, compression) = decompress(Box::new(locked_stdin))?;
         (ReadBuffer::new(reader)?, filetype, compression)
     };
 
-    let mut writer: Box<dyn Write> = if let Some(i) = matches.value_of("output") {
+    let mut writer: Box<dyn io::Write> = if let Some(i) = matches.value_of("output") {
         Box::new(File::open(i)?)
     } else {
         Box::new(stdout.lock())
     };
+    let write = |buf: &[u8]| -> Result<(), EtError> { Ok(writer.write_all(buf)?) };
 
     if matches.is_present("metadata") {
         // TODO: get the compression from above too
         // TODO: print metadata
         return Ok(());
     } else {
-        all_types!(match filetype => write_reader_to_tsv::<_>(rb, &mut writer))?;
+        all_types!(match filetype => write_reader_to_tsv::<_>(rb, write))?;
     }
 
     writer.flush()?;

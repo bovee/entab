@@ -1,19 +1,21 @@
 // TODO: make this no_std once i figure out a solution
 // for no_std Read/Write/Cursor
-// #![cfg_attr(not(std), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
 use alloc::str::Utf8Error;
-use alloc::string::{FromUtf8Error, String};
+use alloc::string::{FromUtf8Error, String, ToString};
 use core::fmt;
 #[cfg(feature = "std")]
 use std::error::Error;
+#[cfg(feature = "std")]
 use std::io::Error as IoError;
 
 pub mod buffer;
+#[cfg(feature = "std")]
 pub mod compression;
 pub mod filetype;
 pub mod readers;
@@ -96,6 +98,7 @@ impl From<FromUtf8Error> for EtError {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<IoError> for EtError {
     fn from(error: IoError) -> Self {
         EtError {

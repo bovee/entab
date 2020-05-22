@@ -2,7 +2,6 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
-use std::io::Write;
 
 use memchr::memchr;
 
@@ -37,10 +36,13 @@ impl<'s> Record for FastaRecord<'s> {
         2
     }
 
-    fn write_field(&self, num: usize, writer: &mut dyn Write) -> Result<(), EtError> {
-        match num {
-            0 => writer.write_all(&replace_tabs(self.id.as_bytes()))?,
-            1 => writer.write_all(self.sequence.as_ref())?,
+    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
+    where
+        W: FnMut(&[u8]) -> Result<(), EtError>,
+    {
+        match index {
+            0 => write(&replace_tabs(self.id.as_bytes()))?,
+            1 => write(self.sequence.as_ref())?,
             _ => panic!("FASTA field index out of range"),
         };
         Ok(())
@@ -132,15 +134,14 @@ impl<'r> RecordReader for FastaReader<'r> {
 #[cfg(test)]
 mod tests {
     use alloc::borrow::Cow;
-    use std::io::Cursor;
 
     use super::*;
     use crate::buffer::ReadBuffer;
 
     #[test]
     fn test_fasta_reading() -> Result<(), EtError> {
-        const TEST_FASTA: &str = ">id\nACGT\n>id2\nTGCA";
-        let rb = ReadBuffer::with_capacity(5, Box::new(Cursor::new(TEST_FASTA)))?;
+        const TEST_FASTA: &[u8] = b">id\nACGT\n>id2\nTGCA";
+        let rb = ReadBuffer::from_slice(TEST_FASTA);
         let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
         assert_eq!(pt.headers(), vec!["id", "sequence"]);
 
