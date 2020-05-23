@@ -7,23 +7,8 @@ use memchr::{memchr, memchr_iter};
 
 use crate::buffer::ReadBuffer;
 use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
+use crate::utils::string::replace_tabs;
 use crate::EtError;
-
-pub fn replace_tabs(slice: &[u8]) -> Cow<[u8]> {
-    static REPLACE_CHAR: u8 = b'|';
-
-    if let Some(p) = memchr(b'\t', slice) {
-        let mut new_slice = slice.to_vec();
-        for c in new_slice[p..].iter_mut() {
-            if *c == b'\t' {
-                *c = REPLACE_CHAR;
-            }
-        }
-        new_slice.into()
-    } else {
-        slice.into()
-    }
-}
 
 #[derive(Debug)]
 pub struct FastaRecord<'s> {
@@ -41,7 +26,7 @@ impl<'s> Record for FastaRecord<'s> {
         W: FnMut(&[u8]) -> Result<(), EtError>,
     {
         match index {
-            0 => write(&replace_tabs(self.id.as_bytes()))?,
+            0 => write(&replace_tabs(self.id.as_bytes(), b'|'))?,
             1 => write(self.sequence.as_ref())?,
             _ => panic!("FASTA field index out of range"),
         };

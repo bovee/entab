@@ -7,20 +7,8 @@ use memmap::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::filetype::FileType;
-use entab::readers;
 use entab::record::{BindT, ReaderBuilder, Record};
-use entab::EtError;
-
-macro_rules! all_types {
-    (match $m:expr => $f:ident::<$($t:ty)*>($($arg:expr),*)) => {
-        match $m {
-            FileType::Fasta => $f::<readers::fasta::FastaReaderBuilder,$($t),*>($($arg),*),
-            FileType::AgilentChemstation => $f::<readers::chemstation::ChemstationMsReaderBuilder,$($t),*>($($arg),*),
-            _ => $f::<readers::tsv::TsvReaderBuilder,$($t),*>($($arg),*),
-        }
-    };
-}
+use entab::{all_types, EtError};
 
 pub fn write_reader_to_tsv<R, W>(buffer: ReadBuffer, mut write: W) -> Result<(), EtError>
 where
@@ -116,7 +104,7 @@ pub fn main() -> Result<(), EtError> {
         // TODO: print metadata
         return Ok(());
     } else {
-        all_types!(match filetype => write_reader_to_tsv::<_>(rb, write))?;
+        all_types!(match filetype.to_parser_name() => write_reader_to_tsv::<_>(rb, write))?;
     }
 
     writer.flush()?;
