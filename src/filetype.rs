@@ -125,6 +125,7 @@ impl FileType {
 
     pub fn to_parser_name(&self) -> &str {
         match self {
+            FileType::AgilentChemstation => "chemstation",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",
