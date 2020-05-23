@@ -116,7 +116,7 @@ impl<'r> RecordReader for FastaReader<'r> {
 
                 // remove trailing consecutive newlines (e.g. \r\n)
                 // from the end
-                while seq_newlines.last() == Some(endpos - 1).as_ref() {
+                while endpos > 0 && seq_newlines.last() == Some(endpos - 1).as_ref() {
                     endpos = seq_newlines.pop().unwrap();
                 }
                 (seq_start + endpos, rec_end)
@@ -217,6 +217,25 @@ mod tests {
         let l = pt.next()?.expect("second record present");
         assert_eq!(l.id, "id2");
         assert_eq!(l.sequence, Cow::Borrowed(b"TGCA"));
+
+        assert!(pt.next()?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_fasta_empty_fields() -> Result<(), EtError> {
+        const TEST_FASTA: &[u8] = b">hd\n\n>\n\n";
+        let rb = ReadBuffer::from_slice(TEST_FASTA);
+        let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
+        assert_eq!(pt.headers(), vec!["id", "sequence"]);
+
+        let l = pt.next()?.expect("first record present");
+        assert_eq!(l.id, "hd");
+        assert_eq!(l.sequence, Cow::Borrowed(b""));
+
+        let l = pt.next()?.expect("second record present");
+        assert_eq!(l.id, "");
+        assert_eq!(l.sequence, Cow::Borrowed(b""));
 
         assert!(pt.next()?.is_none());
         Ok(())

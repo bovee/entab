@@ -61,11 +61,11 @@ impl ReaderBuilder for ChemstationMsReaderBuilder {
 
         let n_scans = {
             let header = rb.partial_consume(records_start);
-            usize::from(if &header[5..7] == b"GC" {
-                BigEndian::read_u16(&header[322..324])
-            } else {
-                BigEndian::read_u16(&header[280..282])
-            })
+            let n_scans_pos = if &header[5..7] == b"GC" { 324 } else { 282 };
+            if records_start < n_scans_pos {
+                return Err(EtError::new("File ended abruptly"));
+            }
+            usize::from(BigEndian::read_u16(&header[n_scans_pos - 2..n_scans_pos]))
         };
 
         Ok(Box::new(ChemstationMsReader {

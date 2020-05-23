@@ -63,21 +63,25 @@ pub enum FileType {
 
 impl FileType {
     pub fn from_magic(magic: &[u8]) -> FileType {
-        match &magic[0..8] {
-            b"~VERSION" => return FileType::Las,
-            b"~Version" => return FileType::Las,
-            _ => {}
+        if magic.len() > 8 {
+            match &magic[..8] {
+                b"~VERSION" => return FileType::Las,
+                b"~Version" => return FileType::Las,
+                _ => {}
+            }
         }
-        match &magic[0..4] {
-            b"FCS3" => return FileType::Facs,
-            b"@HD\t" => return FileType::Sam,
-            [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
-            _ => {}
+        if magic.len() > 4 {
+            match &magic[..4] {
+                b"FCS3" => return FileType::Facs,
+                b"@HD\t" => return FileType::Sam,
+                [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
+                _ => {}
+            }
         }
         if magic.len() < 2 {
             return FileType::Unknown;
         }
-        match &magic[0..2] {
+        match &magic[..2] {
             [0x0F, 0x8B] => return FileType::Gzip,
             [0x42, 0x5A] => return FileType::Bzip,
             [0xFD, 0x37] => return FileType::Lzma,
@@ -92,7 +96,7 @@ impl FileType {
             [0x43, 0x44] => return FileType::NetCdf,
             _ => {}
         }
-        match &magic[0..1] {
+        match &magic[..1] {
             b">" => FileType::Fasta,
             b"@" => FileType::Fastq,
             _ => FileType::Unknown,

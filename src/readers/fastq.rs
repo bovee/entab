@@ -74,7 +74,6 @@ impl<'r> RecordReader for FastqReader<'r> {
             self.rb.refill()?;
         }
         if self.rb[0] != b'@' {
-            println!("{}", std::str::from_utf8(&self.rb[..5])?);
             return Err("Valid FASTQ records start with '@'".into());
         }
         let (header_range, seq_range, qual_range, rec_end) = loop {
@@ -92,7 +91,7 @@ impl<'r> RecordReader for FastqReader<'r> {
                 continue;
             };
             let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &self.rb[seq_start..]) {
-                if self.rb[seq_start + p - 1] != b'\n' {
+                if p == 0 || self.rb[seq_start + p - 1] != b'\n' {
                     return Err("Unexpected + found in sequence".into());
                 }
                 // the + is technically part of the next header so we're
@@ -195,6 +194,21 @@ mod tests {
         assert_eq!(l.quality, &b"!!!!"[..]);
 
         assert!(pt.next()?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_fastq_pathological_sequences() -> Result<(), EtError> {
+        const TEST_FASTQ_1: &[u8] = b"@DF\n+\n+\n!";
+        let rb = ReadBuffer::from_slice(TEST_FASTQ_1);
+        let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
+        assert!(pt.next().is_err());
+
+        const TEST_FASTQ_2: &[u8] = b"@\n";
+        let rb = ReadBuffer::from_slice(TEST_FASTQ_2);
+        let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
+        assert!(pt.next().is_err());
+
         Ok(())
     }
 }
