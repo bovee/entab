@@ -4,12 +4,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use byteorder::{BigEndian, ByteOrder};
+use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
 use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
 use crate::EtError;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct MzRecord {
     time: f64,
     mz: f64,

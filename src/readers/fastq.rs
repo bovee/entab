@@ -1,11 +1,12 @@
 use memchr::memchr;
+use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
 use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
 use crate::utils::string::replace_tabs;
 use crate::EtError;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FastqRecord<'s> {
     pub id: &'s str,
     pub sequence: &'s [u8],

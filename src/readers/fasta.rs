@@ -4,13 +4,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use memchr::{memchr, memchr_iter};
+use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
 use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
 use crate::utils::string::replace_tabs;
 use crate::EtError;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FastaRecord<'s> {
     id: &'s str,
     sequence: Cow<'s, [u8]>,

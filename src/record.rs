@@ -1,10 +1,12 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use serde::Serialize;
+
 use crate::buffer::ReadBuffer;
 use crate::EtError;
 
-pub trait Record {
+pub trait Record: Serialize {
     fn size(&self) -> usize;
     fn write_field<W>(&self, index: usize, writer: W) -> Result<(), EtError>
     where
