@@ -156,6 +156,23 @@ impl<'s> ReadBuffer<'s> {
         Ok(())
     }
 
+    pub fn seek_pattern(&mut self, pat: &[u8]) -> Result<bool, EtError> {
+        loop {
+            if let Some(pos) = memchr(pat[0], &self[..]) {
+                if (self.len() - pos >= pat.len()) && &self[pos..pos+pat.len()] == pat {
+                    self.partial_consume(pos);
+                    break Some(pos);
+                }
+            } else if self.eof() {
+                return Ok(false);
+            }
+            // couldn't find the character; load more
+            self.partial_consume(self.len() - pat.len() + 1);
+            self.refill()?;
+        };
+        Ok(true)
+    }
+
     /// Mark out the data in the buffer and return a reference to it
     /// To be called once an entire record has been consumed
     pub fn consume(&mut self, amt: usize) -> &[u8] {
@@ -313,6 +330,17 @@ mod test {
             ix += 1;
         }
         assert_eq!(ix, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_seek_pattern() -> Result<(), EtError> {
+        let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
+        assert_eq!(rb.seek_pattern(b"1")?, true);
+        assert_eq!(&rb[..], b"1\n2\n3");
+        assert_eq!(rb.seek_pattern(b"3")?, true);
+        assert_eq!(&rb[..], b"3");
+        assert_eq!(rb.seek_pattern(b"1")?, false);
         Ok(())
     }
 }

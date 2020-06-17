@@ -75,6 +75,7 @@ impl FileType {
                 b"FCS3" => return FileType::Facs,
                 b"@HD\t" => return FileType::Sam,
                 [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
+                [0xFF, 0xFF, 0x60, 0x00] => return FileType::ThermoDxf,
                 _ => {}
             }
         }
@@ -88,9 +89,9 @@ impl FileType {
             [0x01, 0x32] => return FileType::AgilentChemstation,
             [0x02, 0x38] => return FileType::AgilentFid,
             [0x24, 0x00] => return FileType::BrukerBaf,
-            [0xFF, 0xFF] => return FileType::ThermoCf,
             // TODO: better logic to handle these kinds of different types/same magic cases
-            // [0xFF, 0xFF] => return FileType::ThermoDxf,
+            // (this is the same 2 byte start as ThermoDxf)
+            [0xFF, 0xFF] => return FileType::ThermoCf,
             [0x01, 0xA1] => return FileType::ThermoRaw,
             [0x04, 0x03] => return FileType::InficonHapsite,
             [0x43, 0x44] => return FileType::NetCdf,

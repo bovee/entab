@@ -144,7 +144,7 @@ impl<'r> RecordReader for FastqReader<'r> {
         let record = self.rb.consume(rec_end);
 
         Ok(Some(FastqRecord {
-            id: std::str::from_utf8(&record[header_range])?,
+            id: alloc::str::from_utf8(&record[header_range])?,
             sequence: &record[seq_range],
             quality: &record[qual_range],
         }))

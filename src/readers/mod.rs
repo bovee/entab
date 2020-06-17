@@ -5,6 +5,7 @@ pub mod tsv;
 
 /// This helps generate the bindings from each parser type to the parser builders themselves to
 /// allow calling functions like `handle_buffer<R, ..>(..) where R: ReaderBuilder, ..`.  #[macro_export]
+#[macro_export]
 macro_rules! all_types {
     (match $m:expr => $f:ident::<$($t:ty)*>($($arg:expr),*)) => {
         match $m {
