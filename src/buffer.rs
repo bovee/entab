@@ -159,9 +159,9 @@ impl<'s> ReadBuffer<'s> {
     pub fn seek_pattern(&mut self, pat: &[u8]) -> Result<bool, EtError> {
         loop {
             if let Some(pos) = memchr(pat[0], &self[..]) {
-                if (self.len() - pos >= pat.len()) && &self[pos..pos+pat.len()] == pat {
+                if (self.len() - pos >= pat.len()) && &self[pos..pos + pat.len()] == pat {
                     self.partial_consume(pos);
-                    break Some(pos);
+                    break;
                 }
             } else if self.eof() {
                 return Ok(false);
@@ -169,7 +169,7 @@ impl<'s> ReadBuffer<'s> {
             // couldn't find the character; load more
             self.partial_consume(self.len() - pat.len() + 1);
             self.refill()?;
-        };
+        }
         Ok(true)
     }
 
