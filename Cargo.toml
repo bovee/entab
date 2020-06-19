@@ -19,6 +19,9 @@ bzip2 = { version = "0.3", optional = true }
 xz2 = { version = "0.1", optional = true }
 zstd = { version = "0.5", optional = true }
 
+[dev-dependencies]
+criterion = "0.3"
+
 [features]
 default = ["compression", "mmap", "std"]
 compression = ["flate2", "bzip2", "xz2", "zstd"]
@@ -28,3 +31,8 @@ std = []
 [[bin]]
 name = "entab"
 required-features = ["std"]
+
+[[bench]]
+name = "benchmarks"
+path = "benches/benchmarks.rs"
+harness = false

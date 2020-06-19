@@ -73,9 +73,14 @@ impl<'r> RecordReader for FastqReader<'r> {
                 return Ok(None);
             }
             self.rb.refill()?;
+            // if the buffer perfectly aligns, it's possible we could do a zero-byte read
+            // and now we're in an EOF
+            if self.rb.eof() {
+                return Ok(None);
+            }
         }
         if self.rb[0] != b'@' {
-            return Err("Valid FASTQ records start with '@'".into());
+            return Err(EtError::new("Valid FASTQ records start with '@'").fill_pos(&self.rb));
         }
         let (header_range, seq_range, qual_range, rec_end) = loop {
             let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &self.rb[..]) {
@@ -86,14 +91,14 @@ impl<'r> RecordReader for FastqReader<'r> {
                     (p, p + 1)
                 }
             } else if self.rb.eof() {
-                return Err("Record ended prematurely in header".into());
+                return Err(EtError::new("Record ended prematurely in header").fill_pos(&self.rb));
             } else {
                 self.rb.refill()?;
                 continue;
             };
             let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &self.rb[seq_start..]) {
                 if p == 0 || self.rb[seq_start + p - 1] != b'\n' {
-                    return Err("Unexpected + found in sequence".into());
+                    return Err(EtError::new("Unexpected + found in sequence").fill_pos(&self.rb));
                 }
                 // the + is technically part of the next header so we're
                 // already one short before we even check the \r
@@ -104,7 +109,7 @@ impl<'r> RecordReader for FastqReader<'r> {
                     (seq_start + p - 1, seq_start + p)
                 }
             } else if self.rb.eof() {
-                return Err("Record ended prematurely in sequence".into());
+                return Err(EtError::new("Record ended prematurely in sequence").fill_pos(&self.rb));
             } else {
                 self.rb.refill()?;
                 continue;
@@ -112,7 +117,7 @@ impl<'r> RecordReader for FastqReader<'r> {
             let qual_start = if let Some(p) = memchr(b'\n', &self.rb[id2_start..]) {
                 id2_start + p + 1
             } else if self.rb.eof() {
-                return Err("Record ended prematurely in second header".into());
+                return Err(EtError::new("Record ended prematurely in second header").fill_pos(&self.rb));
             } else {
                 self.rb.refill()?;
                 continue;
@@ -126,8 +131,8 @@ impl<'r> RecordReader for FastqReader<'r> {
                 rec_end -= id2_start - seq_end;
             }
 
-            if qual_end > self.rb.len() {
-                return Err("Record ended prematurely in quality".into());
+            if qual_end > self.rb.len() && self.rb.eof() {
+                return Err(EtError::new("Record ended prematurely in quality").fill_pos(&self.rb));
             } else if rec_end > self.rb.len() && !self.rb.eof() {
                 self.rb.refill()?;
                 continue;
@@ -210,6 +215,18 @@ mod tests {
         let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
         assert!(pt.next().is_err());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_fastq_from_file() -> Result<(), EtError> {
+        use std::fs::File;
+
+        let f = File::open("tests/data/test.fastq")?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
+        let builder = FastqReaderBuilder::default();
+        let mut reader = builder.to_reader(rb)?;
+        while let Some(_) = reader.next()? {}
         Ok(())
     }
 }

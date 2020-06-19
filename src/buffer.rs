@@ -33,7 +33,7 @@ pub struct ReadBuffer<'s> {
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
     reader_pos: u64,
     /// The total number of records consumed (used for error messages)
-    record_pos: u64,
+    pub record_pos: u64,
     /// The amount of this buffer that's been marked as used
     pub consumed: usize,
     /// Is this the last chunk before EOF?
