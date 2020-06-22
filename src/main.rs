@@ -7,16 +7,20 @@ use memmap::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::record::{BindT, ReaderBuilder, Record};
-use entab::{all_types, EtError};
+use entab::filetype::FileType;
+use entab::readers::get_builder;
+use entab::EtError;
 
-pub fn write_reader_to_tsv<R, W>(buffer: ReadBuffer, mut write: W) -> Result<(), EtError>
+pub fn write_reader_to_tsv<W>(buffer: ReadBuffer, filetype: FileType, mut write: W) -> Result<(), EtError>
 where
-    R: ReaderBuilder,
-    R::Item: for<'a> BindT<'a>,
     W: FnMut(&[u8]) -> Result<(), EtError>,
 {
-    let mut rec_reader = R::default().to_reader(buffer)?;
+    let mut rec_reader = if let Some(builder) = get_builder(filetype.to_parser_name()) {
+        builder.to_reader(buffer)?
+    } else {
+        return Err("Parser could not be found".into())
+    };
+
     write(&rec_reader.headers().join("\t").as_bytes())?;
     while let Some(n) = rec_reader.next()? {
         write(b"\n")?;
@@ -104,7 +108,7 @@ pub fn main() -> Result<(), EtError> {
         // TODO: print metadata
         return Ok(());
     } else {
-        all_types!(match filetype.to_parser_name() => write_reader_to_tsv::<_>(rb, write))?;
+        write_reader_to_tsv(rb, filetype, write)?;
     }
 
     writer.flush()?;

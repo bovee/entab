@@ -7,7 +7,7 @@ use core::mem;
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
+use crate::record::{ReaderBuilder, Record, RecordReader};
 use crate::EtError;
 
 fn split<'a>(
@@ -48,25 +48,6 @@ fn split<'a>(
     Ok(())
 }
 
-impl Record for &[&str] {
-    fn size(&self) -> usize {
-        <[&str]>::len(self)
-    }
-
-    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
-    where
-        W: FnMut(&[u8]) -> Result<(), EtError>,
-    {
-        write(self[index].as_bytes())?;
-        Ok(())
-    }
-}
-
-pub struct TsvRecordT;
-impl<'b> BindT<'b> for TsvRecordT {
-    type Assoc = &'b [&'b str];
-}
-
 pub struct TsvReaderBuilder {
     delim_char: u8,
     quote_char: u8,
@@ -94,12 +75,7 @@ impl Default for TsvReaderBuilder {
 }
 
 impl ReaderBuilder for TsvReaderBuilder {
-    type Item = TsvRecordT;
-
-    fn to_reader<'r>(
-        &self,
-        mut rb: ReadBuffer<'r>,
-    ) -> Result<Box<dyn RecordReader<Item = Self::Item> + 'r>, EtError> {
+    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         let headers: Vec<String> = if let Some(line) = rb.read_line()? {
             // prefill with something impossible so we can tell how big
             let mut buffer = vec!["\t"; 32];
@@ -135,13 +111,11 @@ pub struct TsvReader<'r> {
 }
 
 impl<'r> RecordReader for TsvReader<'r> {
-    type Item = TsvRecordT;
-
     fn headers(&self) -> Vec<&str> {
         self.headers.iter().map(|i| &**i).collect()
     }
 
-    fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
         if let Some(line) = self.rb.read_line()? {
             // this is nasty, but I *think* it's sound as long as no other
             // code messes with cur_line in between iterations of `next`?
@@ -158,7 +132,7 @@ impl<'r> RecordReader for TsvReader<'r> {
         } else {
             return Ok(None);
         }
-        Ok(Some(&self.cur_line))
+        Ok(Some(Record::Tsv(&self.cur_line)))
     }
 }
 
@@ -175,7 +149,7 @@ mod test {
         assert_eq!(pt.headers(), vec!["header"]);
 
         let mut ix = 0;
-        while let Some(l) = pt.next()? {
+        while let Some(Record::Tsv(l)) = pt.next()? {
             match ix {
                 0 => assert_eq!(l, &["row"]),
                 1 => assert_eq!(l, &["another row"]),
@@ -195,7 +169,7 @@ mod test {
         assert_eq!(pt.headers(), vec!["header", "col1"]);
 
         let mut ix = 0;
-        while let Some(l) = pt.next()? {
+        while let Some(Record::Tsv(l)) = pt.next()? {
             match ix {
                 0 => assert_eq!(l, &["row", "2"]),
                 1 => assert_eq!(l, &["another row", "3"]),

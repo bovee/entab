@@ -1,42 +1,8 @@
 use memchr::memchr;
-use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
-use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
-use crate::utils::string::replace_tabs;
+use crate::record::{ReaderBuilder, Record, RecordReader};
 use crate::EtError;
-
-#[derive(Debug, Serialize)]
-pub struct FastqRecord<'s> {
-    pub id: &'s str,
-    pub sequence: &'s [u8],
-    pub quality: &'s [u8],
-}
-
-impl<'s> Record for FastqRecord<'s> {
-    fn size(&self) -> usize {
-        3
-    }
-
-    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
-    where
-        W: FnMut(&[u8]) -> Result<(), EtError>,
-    {
-        match index {
-            0 => write(&replace_tabs(self.id.as_bytes(), b'|'))?,
-            1 => write(self.sequence)?,
-            2 => write(self.quality)?,
-            _ => panic!("FASTQ field index out of range"),
-        };
-        Ok(())
-    }
-}
-
-pub struct FastqRecordT;
-impl<'b> BindT<'b> for FastqRecordT {
-    type Assoc = FastqRecord<'b>;
-}
-
 pub struct FastqReaderBuilder;
 
 impl Default for FastqReaderBuilder {
@@ -46,12 +12,7 @@ impl Default for FastqReaderBuilder {
 }
 
 impl ReaderBuilder for FastqReaderBuilder {
-    type Item = FastqRecordT;
-
-    fn to_reader<'r>(
-        &self,
-        rb: ReadBuffer<'r>,
-    ) -> Result<Box<dyn RecordReader<Item = Self::Item> + 'r>, EtError> {
+    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         Ok(Box::new(FastqReader { rb }))
     }
 }
@@ -61,13 +22,11 @@ pub struct FastqReader<'r> {
 }
 
 impl<'r> RecordReader for FastqReader<'r> {
-    type Item = FastqRecordT;
-
     fn headers(&self) -> Vec<&str> {
         vec!["id", "sequence", "quality"]
     }
 
-    fn next(&mut self) -> Result<Option<FastqRecord>, EtError> {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.rb.is_empty() {
             if self.rb.eof() {
                 return Ok(None);
@@ -117,7 +76,9 @@ impl<'r> RecordReader for FastqReader<'r> {
             let qual_start = if let Some(p) = memchr(b'\n', &self.rb[id2_start..]) {
                 id2_start + p + 1
             } else if self.rb.eof() {
-                return Err(EtError::new("Record ended prematurely in second header").fill_pos(&self.rb));
+                return Err(
+                    EtError::new("Record ended prematurely in second header").fill_pos(&self.rb)
+                );
             } else {
                 self.rb.refill()?;
                 continue;
@@ -148,7 +109,7 @@ impl<'r> RecordReader for FastqReader<'r> {
 
         let record = self.rb.consume(rec_end);
 
-        Ok(Some(FastqRecord {
+        Ok(Some(Record::Fastq {
             id: alloc::str::from_utf8(&record[header_range])?,
             sequence: &record[seq_range],
             quality: &record[qual_range],
@@ -168,15 +129,31 @@ mod tests {
         let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
         assert_eq!(pt.headers(), vec!["id", "sequence", "quality"]);
 
-        let l = pt.next()?.expect("first record present");
-        assert_eq!(l.id, "id");
-        assert_eq!(l.sequence, &b"ACGT"[..]);
-        assert_eq!(l.quality, &b"!!!!"[..]);
+        if let Some(Record::Fastq {
+            id,
+            sequence,
+            quality,
+        }) = pt.next()?
+        {
+            assert_eq!(id, "id");
+            assert_eq!(sequence, &b"ACGT"[..]);
+            assert_eq!(quality, &b"!!!!"[..]);
+        } else {
+            panic!("FASTQ reader returned non-FASTQ reader");
+        }
 
-        let l = pt.next()?.expect("first record present");
-        assert_eq!(l.id, "id2");
-        assert_eq!(l.sequence, &b"TGCA"[..]);
-        assert_eq!(l.quality, &b"!!!!"[..]);
+        if let Some(Record::Fastq {
+            id,
+            sequence,
+            quality,
+        }) = pt.next()?
+        {
+            assert_eq!(id, "id2");
+            assert_eq!(sequence, &b"TGCA"[..]);
+            assert_eq!(quality, &b"!!!!"[..]);
+        } else {
+            panic!("FASTQ reader returned non-FASTQ reader");
+        }
 
         assert!(pt.next()?.is_none());
         Ok(())
@@ -189,15 +166,31 @@ mod tests {
         let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
         assert_eq!(pt.headers(), vec!["id", "sequence", "quality"]);
 
-        let l = pt.next()?.expect("first record present");
-        assert_eq!(l.id, "id");
-        assert_eq!(l.sequence, &b"ACGT"[..]);
-        assert_eq!(l.quality, &b"!!!!"[..]);
+        if let Some(Record::Fastq {
+            id,
+            sequence,
+            quality,
+        }) = pt.next()?
+        {
+            assert_eq!(id, "id");
+            assert_eq!(sequence, &b"ACGT"[..]);
+            assert_eq!(quality, &b"!!!!"[..]);
+        } else {
+            panic!("FASTQ reader returned non-FASTQ reader");
+        }
 
-        let l = pt.next()?.expect("first record present");
-        assert_eq!(l.id, "id2");
-        assert_eq!(l.sequence, &b"TGCA"[..]);
-        assert_eq!(l.quality, &b"!!!!"[..]);
+        if let Some(Record::Fastq {
+            id,
+            sequence,
+            quality,
+        }) = pt.next()?
+        {
+            assert_eq!(id, "id2");
+            assert_eq!(sequence, &b"TGCA"[..]);
+            assert_eq!(quality, &b"!!!!"[..]);
+        } else {
+            panic!("FASTQ reader returned non-FASTQ reader");
+        }
 
         assert!(pt.next()?.is_none());
         Ok(())

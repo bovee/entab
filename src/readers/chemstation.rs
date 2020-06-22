@@ -1,45 +1,12 @@
 use alloc::boxed::Box;
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use byteorder::{BigEndian, ByteOrder};
-use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
-use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
+use crate::record::{ReaderBuilder, Record, RecordReader};
 use crate::EtError;
-
-#[derive(Debug, Serialize)]
-pub struct MzRecord {
-    time: f64,
-    mz: f64,
-    intensity: u64,
-}
-
-impl<'s> Record for MzRecord {
-    fn size(&self) -> usize {
-        3
-    }
-
-    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
-    where
-        W: FnMut(&[u8]) -> Result<(), EtError>,
-    {
-        match index {
-            0 => write(format!("{:02}", self.time).as_bytes())?,
-            1 => write(format!("{:02}", self.mz).as_bytes())?,
-            2 => write(format!("{:02}", self.intensity).as_bytes())?,
-            _ => panic!("FASTA field index out of range"),
-        };
-        Ok(())
-    }
-}
-
-pub struct MzRecordT;
-impl<'b> BindT<'b> for MzRecordT {
-    type Assoc = MzRecord;
-}
 
 pub struct ChemstationMsReaderBuilder;
 
@@ -50,12 +17,7 @@ impl Default for ChemstationMsReaderBuilder {
 }
 
 impl ReaderBuilder for ChemstationMsReaderBuilder {
-    type Item = MzRecordT;
-
-    fn to_reader<'r>(
-        &self,
-        mut rb: ReadBuffer<'r>,
-    ) -> Result<Box<dyn RecordReader<Item = Self::Item> + 'r>, EtError> {
+    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         rb.reserve(268)?;
         let raw_records_start = usize::from(BigEndian::read_u16(&rb[266..268]));
         if raw_records_start <= 142 {
@@ -90,13 +52,11 @@ pub struct ChemstationMsReader<'r> {
 }
 
 impl<'r> RecordReader for ChemstationMsReader<'r> {
-    type Item = MzRecordT;
-
     fn headers(&self) -> Vec<&str> {
         vec!["time", "mz", "intensity"]
     }
 
-    fn next(&mut self) -> Result<Option<MzRecord>, EtError> {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.n_scans_left == 0 {
             return Ok(None);
         }
@@ -133,7 +93,7 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
         let intensity = u64::from(raw_intensity & 16383) * 8u64.pow(u32::from(raw_intensity) >> 14);
         self.n_mzs_left -= 1;
 
-        Ok(Some(MzRecord {
+        Ok(Some(Record::Mz {
             time: self.cur_time,
             mz,
             intensity,
@@ -157,14 +117,30 @@ mod tests {
         let rb = ReadBuffer::new(Box::new(&f))?;
         let builder = ChemstationMsReaderBuilder::default();
         let mut reader = builder.to_reader(rb)?;
-        let rec = reader.next()?.unwrap();
-        assert!((rec.time - 0.079166).abs() < 0.000001);
-        assert!((rec.mz - 915.7).abs() < 0.000001);
-        assert_eq!(rec.intensity, 112);
-        let rec = reader.next()?.unwrap();
-        assert!((rec.time - 0.079166).abs() < 0.000001);
-        assert!((rec.mz - 865.4).abs() < 0.000001);
-        assert_eq!(rec.intensity, 184);
+        if let Record::Mz {
+            time,
+            mz,
+            intensity,
+        } = reader.next()?.unwrap()
+        {
+            assert!((time - 0.079166).abs() < 0.000001);
+            assert!((mz - 915.7).abs() < 0.000001);
+            assert_eq!(intensity, 112);
+        } else {
+            panic!("Chemstation reader returned non-Mz record");
+        }
+        if let Record::Mz {
+            time,
+            mz,
+            intensity,
+        } = reader.next()?.unwrap()
+        {
+            assert!((time - 0.079166).abs() < 0.000001);
+            assert!((mz - 865.4).abs() < 0.000001);
+            assert_eq!(intensity, 184);
+        } else {
+            panic!("Chemstation reader returned non-Mz record");
+        }
         let mut n_mzs = 2;
         while let Some(_) = reader.next()? {
             n_mzs += 1;
