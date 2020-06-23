@@ -1,3 +1,7 @@
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
@@ -211,6 +215,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_fastq_from_file() -> Result<(), EtError> {
         use std::fs::File;

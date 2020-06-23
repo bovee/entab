@@ -2,8 +2,6 @@ use std::fs::File;
 use std::io;
 
 use clap::{crate_authors, crate_version, App, Arg};
-#[cfg(feature = "mmap")]
-use memmap::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;

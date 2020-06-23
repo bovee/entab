@@ -266,7 +266,6 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "bzip2",
- "clap 3.0.0-beta.1",
  "criterion",
  "flate2",
  "memchr",
@@ -274,6 +273,14 @@ dependencies = [
  "serde",
  "xz2",
  "zstd",
+]
+
+[[package]]
+name = "entab-cli"
+version = "0.1.0"
+dependencies = [
+ "clap 3.0.0-beta.1",
+ "entab",
 ]
 
 [[package]]

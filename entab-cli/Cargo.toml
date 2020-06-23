@@ -1,0 +1,13 @@
+[package]
+name = "entab-cli"
+version = "0.1.0"
+authors = ["Roderick <rbovee@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "3.0.0-beta"
+entab = { path = "../entab" }
+
+[features]
+compression = []
+mmap = []

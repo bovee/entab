@@ -103,9 +103,7 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "std")]
     use super::*;
-    #[cfg(feature = "std")]
     use crate::buffer::ReadBuffer;
 
     #[cfg(feature = "std")]
