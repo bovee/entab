@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::str::Utf8Error;
 use alloc::string::{FromUtf8Error, String, ToString};
 use core::fmt;
+use core::num::ParseIntError;
 #[cfg(feature = "std")]
 use std::error::Error;
 #[cfg(feature = "std")]
@@ -12,9 +13,9 @@ use crate::buffer::ReadBuffer;
 
 #[derive(Debug)]
 pub struct EtError {
-    msg: String,
-    byte: Option<u64>,
-    record: Option<u64>,
+    pub msg: String,
+    pub byte: Option<u64>,
+    pub record: Option<u64>,
     #[cfg(feature = "std")]
     orig_err: Option<Box<dyn Error>>,
 }
@@ -105,6 +106,21 @@ impl From<IoError> for EtError {
 
 impl From<Utf8Error> for EtError {
     fn from(error: Utf8Error) -> Self {
+        EtError {
+            #[cfg(not(feature = "std"))]
+            msg: error.to_string(),
+            #[cfg(feature = "std")]
+            msg: error.description().to_string(),
+            byte: None,
+            record: None,
+            #[cfg(feature = "std")]
+            orig_err: Some(Box::new(error)),
+        }
+    }
+}
+
+impl From<ParseIntError> for EtError {
+    fn from(error: ParseIntError) -> Self {
         EtError {
             #[cfg(not(feature = "std"))]
             msg: error.to_string(),

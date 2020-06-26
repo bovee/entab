@@ -1,48 +1,13 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::mem::transmute;
 
-use memchr::memchr;
-
 use crate::buffer::ReadBuffer;
-use crate::record::{BindT, ReaderBuilder, Record, RecordReader};
+use crate::readers::fastq::FastqReader;
+use crate::record::{ReaderBuilder, Record, RecordReader};
 use crate::EtError;
-use crate::utils::string::replace_tabs;
-
-
-#[derive(Debug)]
-pub struct KmerRecord<'s> {
-    pub id: Cow<'s, str>,
-    pub kmer_pos: usize,
-    pub kmer: Cow<'s, [u8]>,
-}
-
-impl<'s> Record for KmerRecord<'s> {
-    fn size(&self) -> usize {
-        3
-    }
-
-    fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
-    where
-        W: FnMut(&[u8]) -> Result<(), EtError>,
-    {
-        match index {
-            0 => write(self.id.as_bytes())?,
-            1 => write(&format!("{}", &self.kmer_pos).as_bytes())?,
-            2 => write(&self.kmer)?,
-            _ => panic!("FASTQ field index out of range"),
-        };
-        Ok(())
-    }
-}
-
-pub struct KmerRecordT;
-impl<'b> BindT<'b> for KmerRecordT {
-    type Assoc = KmerRecord<'b>;
-}
 
 pub struct FastaKmerReaderBuilder {
     // TODO: add a skip N's?
@@ -57,12 +22,7 @@ impl Default for FastaKmerReaderBuilder {
 }
 
 impl ReaderBuilder for FastaKmerReaderBuilder {
-    type Item = KmerRecordT;
-
-    fn to_reader<'r>(
-        &self,
-        rb: ReadBuffer<'r>,
-    ) -> Result<Box<dyn RecordReader<Item = Self::Item> + 'r>, EtError> {
+    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         Ok(Box::new(FastaKmerReader {
             rb,
             id: None,
@@ -80,17 +40,13 @@ pub struct FastaKmerReader<'r> {
 }
 
 impl<'r> RecordReader for FastaKmerReader<'r> {
-    type Item = KmerRecordT;
-
     fn headers(&self) -> Vec<&str> {
         vec!["id", "sequence"]
     }
 
-    fn next(&mut self) -> Result<Option<KmerRecord>, EtError> {
-        if self.id.is_none() {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
+        if self.id.is_none() {}
 
-        }
-        
         // if (sequence too short for k?) {
         // TODO: read the next header/id and save in self.header
         // } else {
@@ -105,10 +61,11 @@ impl<'r> RecordReader for FastaKmerReader<'r> {
         //     } else if self.rb.eof() {
         // }
 
-        Ok(Some(KmerRecord {
+        Ok(Some(Record::Kmer {
             id: Cow::Borrowed(&self.id.as_ref().unwrap()),
-            kmer_pos: 0, // FIXME
             kmer: Cow::Borrowed(&self.rb[self.seq_pos..self.seq_pos + self.k]),
+            sequence_index: 0, // FIXME
+            kmer_index: 0,     // FIXME
         }))
     }
 }
@@ -125,25 +82,15 @@ impl Default for FastqKmerReaderBuilder {
 }
 
 impl ReaderBuilder for FastqKmerReaderBuilder {
-    type Item = KmerRecordT;
-
-    fn to_reader<'r>(
-        &self,
-        rb: ReadBuffer<'r>,
-    ) -> Result<
-        Box<dyn RecordReader<Item = Self::Item> + 'r>,
-        EtError,
-    > {
+    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         let fastq_reader = FastqReader { rb };
-        Ok(
-            Box::new(FastqKmerReader {
-                fastq_reader,
-                k: self.k as usize,
-                id: "",
-                kmer_pos: 0,
-                sequence: b"",
-            })
-        )
+        Ok(Box::new(FastqKmerReader {
+            fastq_reader,
+            k: self.k as usize,
+            id: "",
+            kmer_pos: 0,
+            sequence: b"",
+        }))
     }
 }
 
@@ -157,13 +104,11 @@ pub struct FastqKmerReader<'r> {
 }
 
 impl<'r> RecordReader for FastqKmerReader<'r> {
-    type Item = KmerRecordT;
-
     fn headers(&self) -> Vec<&str> {
         vec!["id", "sequence"]
     }
 
-    fn next(&mut self) -> Result<Option<KmerRecord>, EtError> {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
         if !self.sequence.is_empty() {
             self.sequence = &self.sequence[1..];
             self.kmer_pos += 1;
@@ -171,8 +116,8 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
         if self.sequence.len() < self.k {
             self.id = "";
             self.sequence = b"";
-            while let Some(record) = self.fastq_reader.next()? {
-                if record.sequence.len() < self.k {
+            while let Some(Record::Fastq { id, sequence, .. }) = self.fastq_reader.next()? {
+                if sequence.len() < self.k {
                     continue;
                 }
                 // we need to do a lifetime trick here; these
@@ -180,8 +125,8 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
                 // changing the underlying fastq_reader, but the
                 // compiler doesn't know we're not doing that
                 unsafe {
-                    self.id = transmute(record.id);
-                    self.sequence = transmute(record.sequence);
+                    self.id = transmute(id);
+                    self.sequence = transmute(sequence);
                 }
                 self.kmer_pos = 0;
                 break;
@@ -192,10 +137,11 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
             }
         }
 
-        Ok(Some(KmerRecord {
+        Ok(Some(Record::Kmer {
             id: self.id.into(),
-            kmer_pos: self.kmer_pos,
             kmer: self.sequence[..self.k].into(),
+            sequence_index: 0, // FIXME
+            kmer_index: 0,     // FIXME
         }))
     }
 }

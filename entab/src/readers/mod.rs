@@ -5,6 +5,8 @@ use crate::record::ReaderBuilder;
 pub mod chemstation;
 pub mod fasta;
 pub mod fastq;
+pub mod kmers;
+pub mod sam;
 pub mod tsv;
 
 pub fn get_builder(parser_type: &str) -> Option<Box<dyn ReaderBuilder>> {

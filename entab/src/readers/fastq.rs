@@ -22,7 +22,7 @@ impl ReaderBuilder for FastqReaderBuilder {
 }
 
 pub struct FastqReader<'r> {
-    rb: ReadBuffer<'r>,
+    pub rb: ReadBuffer<'r>,
 }
 
 impl<'r> RecordReader for FastqReader<'r> {
