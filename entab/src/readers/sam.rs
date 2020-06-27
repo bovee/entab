@@ -12,9 +12,17 @@ impl Default for SamReaderBuilder {
 
 impl ReaderBuilder for SamReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        // FIXME: parse headers and pass along to reader for metadata
-        let reader = SamReader { rb };
+        // eventually we should read the headers and pass them along
+        // to the Reader as metadata once we support that
+        while rb[0] == b'@' {
+            if !rb.seek_pattern(b"\n")? {
+                break;
+            }
+            // read the newline too
+            rb.partial_consume(1);
+        }
 
+        let reader = SamReader { rb };
         Ok(Box::new(reader))
     }
 }
@@ -30,15 +38,15 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
     let pos = if chunks[3] == b"0" {
         None
     } else {
-        Some(alloc::str::from_utf8(chunks[3])?.parse()?)
+        // convert to 0-based indexing while we're at it
+        let mut val = alloc::str::from_utf8(chunks[3])?.parse()?;
+        val -= 1;
+        Some(val)
     };
     let mapq = if chunks[4] == b"255" {
         None
     } else {
-        // convert to 0-based indexing while we're at it
-        let mut val = alloc::str::from_utf8(chunks[4])?.parse()?;
-        val -= 1;
-        Some(val)
+        Some(alloc::str::from_utf8(chunks[4])?.parse()?)
     };
     let rnext = if chunks[6] == b"*" {
         None
@@ -96,5 +104,33 @@ impl<'r> RecordReader for SamReader<'r> {
         } else {
             None
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_sam_reader() -> Result<(), EtError> {
+        use std::fs::File;
+
+        let f = File::open("tests/data/test.sam")?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
+        let builder = SamReaderBuilder::default();
+        let mut reader = builder.to_reader(rb)?;
+        if let Some(Record::Sam { query_name, .. }) = reader.next()? {
+            assert_eq!(query_name, "SRR062634.1");
+        } else {
+            panic!("Sam reader returned non-Mz record");
+        };
+
+        let mut n_recs = 1;
+        while let Some(Record::Sam { .. }) = reader.next()? {
+            n_recs += 1;
+        }
+        assert_eq!(n_recs, 5);
+        Ok(())
     }
 }
