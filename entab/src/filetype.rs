@@ -116,6 +116,7 @@ impl FileType {
             FileType::Zstd => &["zstd"],
             FileType::AgilentChemstation => &["ms"],
             FileType::AgilentFid => &["ch"],
+            FileType::Bam => &["bam"],
             FileType::BrukerBaf => &["baf"],
             FileType::BrukerMsms => &["ami"],
             FileType::Facs => &["fcs", "lmd"],
@@ -136,6 +137,7 @@ impl FileType {
     pub fn to_parser_name(&self) -> &str {
         match self {
             FileType::AgilentChemstation => "chemstation",
+            FileType::Bam => "bam",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",

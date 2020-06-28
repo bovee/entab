@@ -9,24 +9,29 @@ use entab::filetype::FileType;
 use entab::readers::get_builder;
 use entab::EtError;
 
-pub fn write_reader_to_tsv<W>(buffer: ReadBuffer, filetype: FileType, mut write: W) -> Result<(), EtError>
+pub fn write_reader_to_tsv<W>(
+    buffer: ReadBuffer,
+    filetype: FileType,
+    mut write: W,
+) -> Result<(), EtError>
 where
     W: FnMut(&[u8]) -> Result<(), EtError>,
 {
     let mut rec_reader = if let Some(builder) = get_builder(filetype.to_parser_name()) {
         builder.to_reader(buffer)?
     } else {
-        return Err("Parser could not be found".into())
+        return Err("No parser could not be found for the data provided".into());
     };
 
     write(&rec_reader.headers().join("\t").as_bytes())?;
+    write(b"\n")?;
     while let Some(n) = rec_reader.next()? {
-        write(b"\n")?;
         n.write_field(0, &mut write)?;
         for i in 1..n.size() {
             write(b"\t")?;
             n.write_field(i, &mut write)?;
         }
+        write(b"\n")?;
     }
     Ok(())
 }

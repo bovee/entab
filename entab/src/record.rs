@@ -48,7 +48,7 @@ pub enum Record<'r> {
         pnext: Option<u32>,
         tlen: i32,
         seq: Cow<'r, [u8]>,
-        qual: &'r [u8],
+        qual: Cow<'r, [u8]>,
         extra: Cow<'r, [u8]>,
     },
     Tsv(&'r [&'r str]),

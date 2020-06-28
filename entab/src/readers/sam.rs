@@ -24,34 +24,34 @@ impl ReaderBuilder for BamReaderBuilder {
         }
         let header_len = LittleEndian::read_u32(&data[4..8]) as usize;
         rb.reserve(header_len + 8)?;
+        // TODO: we should read the headers and pass them along
+        // to the Reader as metadata once we support that
         let _ = rb.partial_consume(header_len);
 
         // read the reference sequence data
         let data = rb.partial_consume(4);
         let mut n_references = LittleEndian::read_u32(&data) as usize;
+        let mut references = Vec::new();
         while n_references > 0 {
             rb.reserve(4)?;
             let name_len = LittleEndian::read_u32(rb.partial_consume(4)) as usize;
             rb.reserve(name_len + 4)?;
-            let _ = rb.partial_consume(name_len);
-            let _ = rb.partial_consume(4);
+            let ref_name = String::from(alloc::str::from_utf8(rb.partial_consume(name_len - 1))?);
+            rb.partial_consume(1); // get the null terminator
+            let ref_len = LittleEndian::read_u32(rb.partial_consume(4)) as usize;
+            references.push((ref_name, ref_len));
             n_references -= 1;
         }
-
-        // TODO: we should read the headers and pass them along
-        // to the Reader as metadata once we support that and also
-        // we need them to print the `ref_name` and `rnext` fields
-        Ok(Box::new(BamReader { rb }))
+        Ok(Box::new(BamReader { rb, references }))
     }
 }
 
-fn bytes_to_bam(data: &[u8]) -> Result<Record, EtError> {
+fn bytes_to_bam<'r>(data: &'r [u8], references: &'r [(String, usize)]) -> Result<Record<'r>, EtError> {
     let raw_ref_name_id = LittleEndian::read_i32(&data[0..4]);
     let ref_name = if raw_ref_name_id < 0 {
         ""
     } else {
-        // TODO: raw_ref_name_id to ref_name
-        ""
+        &references[raw_ref_name_id as usize].0
     };
     let raw_pos = LittleEndian::read_i32(&data[4..8]);
     let pos = if raw_pos == -1 {
@@ -69,8 +69,7 @@ fn bytes_to_bam(data: &[u8]) -> Result<Record, EtError> {
     let rnext = if raw_rnext_id < 0 {
         ""
     } else {
-        // TODO: raw_rnext_id to next reference name
-        ""
+        &references[raw_rnext_id as usize].0
     };
     let raw_pnext = LittleEndian::read_i32(&data[24..28]);
     let pnext = if raw_pnext == -1 {
@@ -100,7 +99,13 @@ fn bytes_to_bam(data: &[u8]) -> Result<Record, EtError> {
         seq[idx] = b"=ACMGRSVTWYHKDBN"[byte]
     }
     start += (seq_len + 1) / 2;
-    let qual = &data[start..start + seq_len];
+    let qual: Cow<[u8]> = if data[start] == 255 {
+        Cow::Borrowed(b"")
+    } else {
+        let raw_qual = &data[start..start + seq_len];
+        let qual: Vec<u8> = raw_qual.iter().map(|m| m + 33).collect();
+        Cow::Owned(qual)
+    };
 
     Ok(Record::Sam {
         query_name: alloc::str::from_utf8(query_name)?,
@@ -121,6 +126,7 @@ fn bytes_to_bam(data: &[u8]) -> Result<Record, EtError> {
 
 pub struct BamReader<'r> {
     rb: ReadBuffer<'r>,
+    references: Vec<(String, usize)>,
 }
 
 impl<'r> RecordReader for BamReader<'r> {
@@ -142,7 +148,7 @@ impl<'r> RecordReader for BamReader<'r> {
         self.rb.reserve(4)?;
         let rec_len = LittleEndian::read_u32(self.rb.partial_consume(4)) as usize;
         self.rb.reserve(rec_len)?;
-        let record = bytes_to_bam(self.rb.consume(rec_len)).map_err(|mut e| {
+        let record = bytes_to_bam(self.rb.consume(rec_len), &self.references).map_err(|mut e| {
             // we can't use `fill_pos` b/c that touchs the buffer
             // and messes up the lifetimes :/
             e.byte = Some(buffer_pos.0);
@@ -183,9 +189,14 @@ pub struct SamReader<'r> {
 }
 
 fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
-    if chunks.len() < 12 {
+    if chunks.len() < 11 {
         return Err("Sam record too short".into());
     }
+    let ref_name = if chunks[2] == b"*" {
+        ""
+    } else {
+        alloc::str::from_utf8(chunks[2])?
+    };
     let pos = if chunks[3] == b"0" {
         None
     } else {
@@ -198,6 +209,11 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
         None
     } else {
         Some(alloc::str::from_utf8(chunks[4])?.parse()?)
+    };
+    let cigar: Cow<[u8]> = if chunks[5] == b"*" {
+        Cow::Borrowed(b"")
+    } else {
+        chunks[5].into()
     };
     let rnext = if chunks[6] == b"*" {
         ""
@@ -218,19 +234,31 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
         chunks[9].into()
     };
     let qual = if chunks[10] == b"*" { b"" } else { chunks[10] };
+    let extra: Cow<[u8]> = if chunks.len() == 11 {
+        Cow::Borrowed(b"")
+    } else if chunks.len() == 12 {
+        chunks[11].into()
+    } else {
+        let mut joined = chunks[11].to_vec();
+        for c in &chunks[12..] {
+            joined.push(b'|');
+            joined.extend(*c);
+        }
+        joined.into()
+    };
     Ok(Record::Sam {
         query_name: alloc::str::from_utf8(chunks[0])?,
         flag: alloc::str::from_utf8(chunks[1])?.parse()?,
-        ref_name: alloc::str::from_utf8(chunks[2])?,
+        ref_name,
         pos,
         mapq,
-        cigar: chunks[5].into(),
+        cigar,
         rnext,
         pnext,
         tlen: alloc::str::from_utf8(chunks[8])?.parse()?,
         seq,
-        qual,
-        extra: chunks[11].into(),
+        qual: Cow::Borrowed(qual),
+        extra,
     })
 }
 

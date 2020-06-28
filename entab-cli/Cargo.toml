@@ -11,3 +11,7 @@ entab = { path = "../entab" }
 [features]
 compression = []
 mmap = []
+
+[[bin]]
+name = "entab"
+path = "src/main.rs"
