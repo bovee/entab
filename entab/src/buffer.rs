@@ -61,7 +61,9 @@ impl<'s> ReadBuffer<'s> {
         unsafe {
             buffer.set_len(amt_read);
         }
-        let eof = amt_read != buffer.capacity();
+        // it's possible amt_read < buffer.capacity() for e.g. reading out of
+        // a compressed stream where different chunks can be smaller than the
+        // buffer length so we can't infer anything about EOF from amt_read.
 
         Ok(ReadBuffer {
             buffer: Cow::Owned(buffer),
@@ -69,7 +71,7 @@ impl<'s> ReadBuffer<'s> {
             reader_pos: 0,
             record_pos: 0,
             consumed: 0,
-            eof,
+            eof: false,
         })
     }
 
@@ -147,10 +149,10 @@ impl<'s> ReadBuffer<'s> {
     /// Same result as `refill`, but ensures the buffer is at least `amt` bytes
     /// large. Will error if not enough data is available.
     pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
-        if self.len() < amt && self.eof {
-            return Err(EtError::new("Data ended prematurely").fill_pos(&self));
-        }
         while self.len() < amt {
+            if self.eof {
+                return Err(EtError::new("Data ended prematurely").fill_pos(&self));
+            }
             self.refill()?;
         }
         Ok(())

@@ -4,8 +4,8 @@ extern crate entab;
 
 use entab::buffer::ReadBuffer;
 use entab::filetype::FileType;
-use entab::{all_types, EtError};
-use entab::record::{ReaderBuilder, BindT};
+use entab::EtError;
+use entab::readers::get_builder;
 
 fuzz_target!(|data: &[u8]| {
     let _ = generate_reader(data);
@@ -14,17 +14,10 @@ fuzz_target!(|data: &[u8]| {
 fn generate_reader(data: &[u8]) -> Result<(), EtError> {
     let filetype = FileType::from_magic(&data);
     let rb = ReadBuffer::from_slice(&data);
-    all_types!(match filetype.to_parser_name() => test_reader::<>(rb))?;
-    Ok(())
-}
-
-fn test_reader<R>(buffer: ReadBuffer) -> Result<(), EtError>
-where
-    R: ReaderBuilder,
-    R::Item: for<'a> BindT<'a>,
-{
-    let mut rec_reader = R::default().to_reader(buffer)?;
-    while let Some(_) = rec_reader.next()? {
-    }
+    if let Some(builder) = get_builder(filetype.to_parser_name()) {
+        let mut rec_reader = builder.to_reader(rb)?;
+        while let Some(_) = rec_reader.next()? {
+        }
+    };
     Ok(())
 }

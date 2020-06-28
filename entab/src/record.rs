@@ -43,13 +43,13 @@ pub enum Record<'r> {
         ref_name: &'r str,
         pos: Option<u64>,
         mapq: Option<u8>,
-        cigar: &'r [u8],
-        rnext: Option<&'r str>,
+        cigar: Cow<'r, [u8]>,
+        rnext: &'r str,
         pnext: Option<u32>,
         tlen: i32,
-        seq: Option<&'r [u8]>,
-        qual: Option<&'r [u8]>,
-        extra: &'r str,
+        seq: Cow<'r, [u8]>,
+        qual: &'r [u8],
+        extra: Cow<'r, [u8]>,
     },
     Tsv(&'r [&'r str]),
 }
@@ -99,36 +99,24 @@ impl<'r> Record<'r> {
             (Self::Sam { pos, .. }, 3) => {
                 if let Some(p) = pos {
                     write(p.to_string().as_bytes())?
-                } else {
-                    write(b"")?
                 };
             }
             (Self::Sam { mapq, .. }, 4) => {
                 if let Some(m) = mapq {
                     write(m.to_string().as_bytes())?
-                } else {
-                    write(b"")?
                 };
             }
             (Self::Sam { cigar, .. }, 5) => write(cigar)?,
-            (Self::Sam { rnext, .. }, 6) => {
-                if let Some(r) = rnext {
-                    write((*r).to_string().as_bytes())?
-                } else {
-                    write(b"")?
-                };
-            }
+            (Self::Sam { rnext, .. }, 6) => write(&replace_tabs(rnext.as_bytes(), b'|'))?,
             (Self::Sam { pnext, .. }, 7) => {
                 if let Some(p) = pnext {
                     write(p.to_string().as_bytes())?
-                } else {
-                    write(b"")?
                 };
             }
             (Self::Sam { tlen, .. }, 8) => write(tlen.to_string().as_bytes())?,
-            (Self::Sam { seq, .. }, 9) => write(seq.unwrap_or(b""))?,
-            (Self::Sam { qual, .. }, 10) => write(qual.unwrap_or(b""))?,
-            (Self::Sam { extra, .. }, 11) => write(&replace_tabs(extra.as_bytes(), b'|'))?,
+            (Self::Sam { seq, .. }, 9) => write(seq)?,
+            (Self::Sam { qual, .. }, 10) => write(qual)?,
+            (Self::Sam { extra, .. }, 11) => write(&replace_tabs(extra, b'|'))?,
             (Self::Tsv(rec), i) => write(rec[i].as_bytes())?,
             _ => panic!("Index out of range"),
         }

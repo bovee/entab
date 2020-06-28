@@ -53,3 +53,20 @@ pub fn decompress<'a>(
         x => (wrapped_reader, x, None),
     })
 }
+
+#[cfg(all(test, feature = "compression", feature = "std"))]
+mod tests {
+    use super::*;
+    use std::fs::File;
+
+    #[test]
+    fn test_read_gzip() -> Result<(), EtError> {
+        let f = File::open("tests/data/test.bam")?;
+
+        let (mut stream, _, compression) = decompress(Box::new(&f))?;
+        assert_eq!(compression, Some(FileType::Gzip));
+        let mut buf = Vec::new();
+        assert_eq!(stream.read_to_end(&mut buf)?, 1392);
+        Ok(())
+    }
+}

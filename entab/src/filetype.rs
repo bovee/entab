@@ -32,6 +32,7 @@ pub enum FileType {
     Lzma,
     Zstd,
     // bioinformatics
+    Bam,
     Fasta,
     Fastq,
     Facs,
@@ -72,6 +73,7 @@ impl FileType {
         }
         if magic.len() > 4 {
             match &magic[..4] {
+                b"BAM\x01" => return FileType::Bam,
                 b"FCS3" => return FileType::Facs,
                 b"@HD\t" => return FileType::Sam,
                 b"@SQ\t" => return FileType::Sam,
@@ -84,6 +86,7 @@ impl FileType {
             return FileType::Unknown;
         }
         match &magic[..2] {
+            [0x1F, 0x8B] => return FileType::Gzip,
             [0x0F, 0x8B] => return FileType::Gzip,
             [0x42, 0x5A] => return FileType::Bzip,
             [0xFD, 0x37] => return FileType::Lzma,
