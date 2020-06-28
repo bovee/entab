@@ -7,10 +7,11 @@ edition = "2018"
 [dependencies]
 clap = "3.0.0-beta"
 entab = { path = "../entab" }
+memmap = { version = "0.7", optional = true }
 
 [features]
-compression = []
-mmap = []
+default = ["mmap"]
+mmap = ["memmap"]
 
 [[bin]]
 name = "entab"
