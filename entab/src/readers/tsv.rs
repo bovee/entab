@@ -111,10 +111,6 @@ pub struct TsvReader<'r> {
 }
 
 impl<'r> RecordReader for TsvReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        self.headers.iter().map(|i| &**i).collect()
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if let Some(line) = self.rb.read_line()? {
             // this is nasty, but I *think* it's sound as long as no other
@@ -132,7 +128,9 @@ impl<'r> RecordReader for TsvReader<'r> {
         } else {
             return Ok(None);
         }
-        Ok(Some(Record::Tsv(&self.cur_line)))
+
+        // we pass along the headers too since they can be variable for tsvs
+        Ok(Some(Record::Tsv(&self.cur_line, &self.headers)))
     }
 }
 
@@ -146,10 +144,10 @@ mod test {
         const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
         let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["header"]);
 
         let mut ix = 0;
-        while let Some(Record::Tsv(l)) = pt.next()? {
+        while let Some(Record::Tsv(l, h)) = pt.next()? {
+            assert_eq!(h.as_ref(), &["header"]);
             match ix {
                 0 => assert_eq!(l, &["row"]),
                 1 => assert_eq!(l, &["another row"]),
@@ -166,10 +164,10 @@ mod test {
         const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
         let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["header", "col1"]);
 
         let mut ix = 0;
-        while let Some(Record::Tsv(l)) = pt.next()? {
+        while let Some(Record::Tsv(l, h)) = pt.next()? {
+            assert_eq!(h.as_ref(), &["header", "col1"]);
             match ix {
                 0 => assert_eq!(l, &["row", "2"]),
                 1 => assert_eq!(l, &["another row", "3"]),

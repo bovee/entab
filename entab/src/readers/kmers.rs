@@ -1,7 +1,5 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;
@@ -40,10 +38,6 @@ pub struct FastaKmerReader<'r> {
 }
 
 impl<'r> RecordReader for FastaKmerReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        vec!["id", "sequence"]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.id.is_none() {}
 
@@ -61,11 +55,10 @@ impl<'r> RecordReader for FastaKmerReader<'r> {
         //     } else if self.rb.eof() {
         // }
 
-        Ok(Some(Record::Kmer {
-            id: Cow::Borrowed(&self.id.as_ref().unwrap()),
-            kmer: Cow::Borrowed(&self.rb[self.seq_pos..self.seq_pos + self.k]),
-            sequence_index: 0, // FIXME
-            kmer_index: 0,     // FIXME
+        Ok(Some(Record::Sequence {
+            id: &self.id.as_ref().unwrap(),
+            sequence: Cow::Borrowed(&self.rb[self.seq_pos..self.seq_pos + self.k]),
+            quality: None,
         }))
     }
 }
@@ -99,15 +92,10 @@ pub struct FastqKmerReader<'r> {
     k: usize,
     id: &'r str,
     kmer_pos: usize,
-    // TODO: make this Cow and optionally strip_returns?
     sequence: &'r [u8],
 }
 
 impl<'r> RecordReader for FastqKmerReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        vec!["id", "sequence"]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if !self.sequence.is_empty() {
             self.sequence = &self.sequence[1..];
@@ -116,7 +104,7 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
         if self.sequence.len() < self.k {
             self.id = "";
             self.sequence = b"";
-            while let Some(Record::Fastq { id, sequence, .. }) = self.fastq_reader.next()? {
+            while let Some(Record::Sequence { id, sequence, .. }) = self.fastq_reader.next()? {
                 if sequence.len() < self.k {
                     continue;
                 }
@@ -126,7 +114,7 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
                 // compiler doesn't know we're not doing that
                 unsafe {
                     self.id = transmute(id);
-                    self.sequence = transmute(sequence);
+                    self.sequence = transmute(sequence.as_ref());
                 }
                 self.kmer_pos = 0;
                 break;
@@ -137,11 +125,10 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
             }
         }
 
-        Ok(Some(Record::Kmer {
-            id: self.id.into(),
-            kmer: self.sequence[..self.k].into(),
-            sequence_index: 0, // FIXME
-            kmer_index: 0,     // FIXME
+        Ok(Some(Record::Sequence {
+            id: self.id,
+            sequence: self.sequence[..self.k].into(),
+            quality: None,
         }))
     }
 }

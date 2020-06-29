@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use memchr::{memchr, memchr_iter};
@@ -26,10 +25,6 @@ pub struct FastaReader<'r> {
 }
 
 impl<'r> RecordReader for FastaReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        vec!["id", "sequence"]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.rb.is_empty() {
             return Ok(None);
@@ -105,9 +100,10 @@ impl<'r> RecordReader for FastaReader<'r> {
             new_buf.into()
         };
 
-        Ok(Some(Record::Fasta {
+        Ok(Some(Record::Sequence {
             id: alloc::str::from_utf8(header)?,
             sequence,
+            quality: None,
         }))
     }
 }
@@ -124,10 +120,9 @@ mod tests {
         const TEST_FASTA: &[u8] = b">id\nACGT\n>id2\nTGCA";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
         let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence"]);
 
         let mut ix = 0;
-        while let Some(Record::Fasta { id, sequence }) = pt.next()? {
+        while let Some(Record::Sequence { id, sequence, .. }) = pt.next()? {
             match ix {
                 0 => {
                     assert_eq!(id, "id");
@@ -150,18 +145,29 @@ mod tests {
         const TEST_FASTA: &[u8] = b">id\nACGT\nAAAA\n>id2\nTGCA";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
         let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence"]);
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("first record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("first record present")
+        {
             assert_eq!(id, "id");
             assert_eq!(sequence, Cow::Owned::<[u8]>(b"ACGTAAAA".to_vec()));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("second record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("second record present")
+        {
             assert_eq!(id, "id2");
             assert_eq!(sequence, Cow::Borrowed(b"TGCA"));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }
@@ -175,18 +181,29 @@ mod tests {
         const TEST_FASTA: &[u8] = b">id\r\nACGT\r\nAAAA\r\n>id2\r\nTGCA\r\n";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
         let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence"]);
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("first record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("first record present")
+        {
             assert_eq!(id, "id");
             assert_eq!(sequence, Cow::Owned::<[u8]>(b"ACGTAAAA".to_vec()));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("second record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("second record present")
+        {
             assert_eq!(id, "id2");
             assert_eq!(sequence, Cow::Borrowed(b"TGCA"));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }
@@ -200,18 +217,29 @@ mod tests {
         const TEST_FASTA: &[u8] = b">hd\n\n>\n\n";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
         let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence"]);
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("first record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("first record present")
+        {
             assert_eq!(id, "hd");
             assert_eq!(sequence, Cow::Borrowed(b""));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }
 
-        if let Record::Fasta { id, sequence } = pt.next()?.expect("second record present") {
+        if let Record::Sequence {
+            id,
+            sequence,
+            quality,
+        } = pt.next()?.expect("second record present")
+        {
             assert_eq!(id, "");
             assert_eq!(sequence, Cow::Borrowed(b""));
+            assert_eq!(quality, None);
         } else {
             panic!("FASTA reader returned non-FASTA record");
         }

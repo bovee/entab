@@ -25,15 +25,19 @@ where
         return Err("No parser could not be found for the data provided".into());
     };
 
-    write(&rec_reader.headers().join("\t").as_bytes())?;
-    write(b"\n")?;
+    let mut line_idx = 0;
     while let Some(n) = rec_reader.next()? {
+        if line_idx == 0 {
+            write(&n.headers().join("\t").as_bytes())?;
+            write(b"\n")?;
+        }
         n.write_field(0, &mut write)?;
         for i in 1..n.size() {
             write(b"\t")?;
             n.write_field(i, &mut write)?;
         }
         write(b"\n")?;
+        line_idx += 1;
     }
     Ok(())
 }

@@ -1,6 +1,4 @@
 use alloc::boxed::Box;
-use alloc::vec;
-use alloc::vec::Vec;
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -52,10 +50,6 @@ pub struct ChemstationMsReader<'r> {
 }
 
 impl<'r> RecordReader for ChemstationMsReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        vec!["time", "mz", "intensity"]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.n_scans_left == 0 {
             return Ok(None);

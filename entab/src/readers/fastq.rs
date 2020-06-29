@@ -1,6 +1,5 @@
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::vec;
-use alloc::vec::Vec;
 
 use memchr::memchr;
 
@@ -26,10 +25,6 @@ pub struct FastqReader<'r> {
 }
 
 impl<'r> RecordReader for FastqReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        vec!["id", "sequence", "quality"]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.rb.is_empty() {
             if self.rb.eof() {
@@ -113,10 +108,10 @@ impl<'r> RecordReader for FastqReader<'r> {
 
         let record = self.rb.consume(rec_end);
 
-        Ok(Some(Record::Fastq {
+        Ok(Some(Record::Sequence {
             id: alloc::str::from_utf8(&record[header_range])?,
-            sequence: &record[seq_range],
-            quality: &record[qual_range],
+            sequence: Cow::Borrowed(&record[seq_range]),
+            quality: Some(&record[qual_range]),
         }))
     }
 }
@@ -131,9 +126,8 @@ mod tests {
         const TEST_FASTQ: &[u8] = b"@id\nACGT\n+\n!!!!\n@id2\nTGCA\n+\n!!!!";
         let rb = ReadBuffer::from_slice(TEST_FASTQ);
         let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence", "quality"]);
 
-        if let Some(Record::Fastq {
+        if let Some(Record::Sequence {
             id,
             sequence,
             quality,
@@ -141,12 +135,12 @@ mod tests {
         {
             assert_eq!(id, "id");
             assert_eq!(sequence, &b"ACGT"[..]);
-            assert_eq!(quality, &b"!!!!"[..]);
+            assert_eq!(quality, Some(&b"!!!!"[..]));
         } else {
             panic!("FASTQ reader returned non-FASTQ reader");
         }
 
-        if let Some(Record::Fastq {
+        if let Some(Record::Sequence {
             id,
             sequence,
             quality,
@@ -154,7 +148,7 @@ mod tests {
         {
             assert_eq!(id, "id2");
             assert_eq!(sequence, &b"TGCA"[..]);
-            assert_eq!(quality, &b"!!!!"[..]);
+            assert_eq!(quality, Some(&b"!!!!"[..]));
         } else {
             panic!("FASTQ reader returned non-FASTQ reader");
         }
@@ -168,9 +162,8 @@ mod tests {
         const TEST_FASTQ: &[u8] = b"@id\r\nACGT\r\n+\r\n!!!!\r\n@id2\r\nTGCA\r\n+\r\n!!!!\r\n";
         let rb = ReadBuffer::from_slice(TEST_FASTQ);
         let mut pt = FastqReaderBuilder::default().to_reader(rb)?;
-        assert_eq!(pt.headers(), vec!["id", "sequence", "quality"]);
 
-        if let Some(Record::Fastq {
+        if let Some(Record::Sequence {
             id,
             sequence,
             quality,
@@ -178,12 +171,12 @@ mod tests {
         {
             assert_eq!(id, "id");
             assert_eq!(sequence, &b"ACGT"[..]);
-            assert_eq!(quality, &b"!!!!"[..]);
+            assert_eq!(quality, Some(&b"!!!!"[..]));
         } else {
             panic!("FASTQ reader returned non-FASTQ reader");
         }
 
-        if let Some(Record::Fastq {
+        if let Some(Record::Sequence {
             id,
             sequence,
             quality,
@@ -191,7 +184,7 @@ mod tests {
         {
             assert_eq!(id, "id2");
             assert_eq!(sequence, &b"TGCA"[..]);
-            assert_eq!(quality, &b"!!!!"[..]);
+            assert_eq!(quality, Some(&b"!!!!"[..]));
         } else {
             panic!("FASTQ reader returned non-FASTQ reader");
         }

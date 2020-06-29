@@ -1,7 +1,6 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::format;
-use alloc::vec::Vec;
 
 use serde::Serialize;
 
@@ -11,21 +10,6 @@ use crate::EtError;
 
 #[derive(Debug, Serialize)]
 pub enum Record<'r> {
-    Fasta {
-        id: &'r str,
-        sequence: Cow<'r, [u8]>,
-    },
-    Fastq {
-        id: &'r str,
-        sequence: &'r [u8],
-        quality: &'r [u8],
-    },
-    Kmer {
-        id: Cow<'r, str>,
-        kmer: Cow<'r, [u8]>,
-        sequence_index: usize,
-        kmer_index: usize,
-    },
     Mz {
         time: f64,
         mz: f64,
@@ -36,7 +20,6 @@ pub enum Record<'r> {
         mz: f64,
         intensity: f64,
     },
-    Raw(&'r [u8]),
     Sam {
         query_name: &'r str,
         flag: u16,
@@ -51,20 +34,48 @@ pub enum Record<'r> {
         qual: Cow<'r, [u8]>,
         extra: Cow<'r, [u8]>,
     },
-    Tsv(&'r [&'r str]),
+    Sequence {
+        id: &'r str,
+        sequence: Cow<'r, [u8]>,
+        quality: Option<&'r [u8]>,
+        // TODO: a kmer position or offset?
+    },
+    Tsv(&'r [&'r str], &'r [String]),
 }
 
 impl<'r> Record<'r> {
+    pub fn headers(&self) -> Cow<[&str]> {
+        match self {
+            Self::Mz { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
+            Self::MzFloat { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
+            Self::Sequence { .. } => Cow::Borrowed(&["id", "sequence", "quality"]),
+            Self::Sam { .. } => Cow::Borrowed(&[
+                "query_name",
+                "flag",
+                "ref_name",
+                "pos",
+                "mapq",
+                "cigar",
+                "rnext",
+                "pnext",
+                "tlen",
+                "seq",
+                "qual",
+                "extra",
+            ]),
+            Self::Tsv(_, headers) => {
+                Cow::Owned(headers.iter().map(|i| i.as_ref()).collect())
+            },
+        }
+    }
+
     pub fn size(&self) -> usize {
         match self {
             Self::Mz { .. } => 3,
             Self::MzFloat { .. } => 3,
-            Self::Kmer { .. } => 4,
-            Self::Fasta { .. } => 2,
-            Self::Fastq { .. } => 3,
-            Self::Raw { .. } => 1,
+            Self::Sequence { .. } => 3,
             Self::Sam { .. } => 12,
-            Self::Tsv(rec) => rec.len(),
+            Self::Tsv(rec, _) => rec.len(),
         }
     }
 
@@ -76,22 +87,12 @@ impl<'r> Record<'r> {
         W: FnMut(&[u8]) -> Result<(), EtError>,
     {
         match (self, index) {
-            (Self::Fasta { id, .. }, 0) => write(&replace_tabs(id.as_bytes(), b'|'))?,
-            (Self::Fasta { sequence, .. }, 1) => write(sequence.as_ref())?,
-            (Self::Fastq { id, .. }, 0) => write(&replace_tabs(id.as_bytes(), b'|'))?,
-            (Self::Fastq { sequence, .. }, 1) => write(sequence)?,
-            (Self::Fastq { quality, .. }, 2) => write(quality)?,
-            (Self::Kmer { id, .. }, 0) => write(&replace_tabs(id.as_bytes(), b'|'))?,
-            (Self::Kmer { kmer, .. }, 1) => write(kmer)?,
-            (Self::Kmer { sequence_index, .. }, 2) => write(sequence_index.to_string().as_bytes())?,
-            (Self::Kmer { kmer_index, .. }, 3) => write(kmer_index.to_string().as_bytes())?,
             (Self::Mz { time, .. }, 0) => write(format!("{:02}", time).as_bytes())?,
             (Self::Mz { mz, .. }, 1) => write(format!("{:02}", mz).as_bytes())?,
             (Self::Mz { intensity, .. }, 2) => write(intensity.to_string().as_bytes())?,
             (Self::MzFloat { time, .. }, 0) => write(format!("{:02}", time).as_bytes())?,
             (Self::MzFloat { mz, .. }, 1) => write(format!("{:02}", mz).as_bytes())?,
             (Self::MzFloat { intensity, .. }, 2) => write(format!("{:02}", intensity).as_bytes())?,
-            (Self::Raw(b), 0) => write(b)?,
             (Self::Sam { query_name, .. }, 0) => write(&replace_tabs(query_name.as_bytes(), b'|'))?,
             // TODO: better display for flags?
             (Self::Sam { flag, .. }, 1) => write(format!("{:b}", flag).as_bytes())?,
@@ -117,7 +118,14 @@ impl<'r> Record<'r> {
             (Self::Sam { seq, .. }, 9) => write(seq)?,
             (Self::Sam { qual, .. }, 10) => write(qual)?,
             (Self::Sam { extra, .. }, 11) => write(&replace_tabs(extra, b'|'))?,
-            (Self::Tsv(rec), i) => write(rec[i].as_bytes())?,
+            (Self::Sequence { id, .. }, 0) => write(&replace_tabs(id.as_bytes(), b'|'))?,
+            (Self::Sequence { sequence, .. }, 1) => write(sequence)?,
+            (Self::Sequence { quality, .. }, 2) => {
+                if let Some(q) = quality {
+                    write(q)?
+                };
+            }
+            (Self::Tsv(rec, _), i) => write(rec[i].as_bytes())?,
             _ => panic!("Index out of range"),
         }
         Ok(())
@@ -125,20 +133,10 @@ impl<'r> Record<'r> {
     // fn get(&self, field: &str) -> Option<Value>;
 }
 
-pub trait BindT<'b> {
-    type Assoc;
-}
-
-pub struct RecordT;
-impl<'b> BindT<'b> for RecordT {
-    type Assoc = Record<'b>;
-}
-
 pub trait ReaderBuilder {
     fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError>;
 }
 
 pub trait RecordReader {
-    fn headers(&self) -> Vec<&str>;
     fn next(&mut self) -> Result<Option<Record>, EtError>;
 }

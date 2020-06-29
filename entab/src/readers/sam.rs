@@ -36,8 +36,9 @@ impl ReaderBuilder for BamReaderBuilder {
             rb.reserve(4)?;
             let name_len = LittleEndian::read_u32(rb.partial_consume(4)) as usize;
             rb.reserve(name_len + 4)?;
-            let ref_name = String::from(alloc::str::from_utf8(rb.partial_consume(name_len - 1))?);
-            rb.partial_consume(1); // get the null terminator
+            let mut raw_ref_name = rb.partial_consume(name_len);
+            if raw_ref_name.last() == Some(&b'\x00') { raw_ref_name = &raw_ref_name[..name_len - 1] };
+            let ref_name = String::from(alloc::str::from_utf8(raw_ref_name)?);
             let ref_len = LittleEndian::read_u32(rb.partial_consume(4)) as usize;
             references.push((ref_name, ref_len));
             n_references -= 1;
@@ -46,7 +47,13 @@ impl ReaderBuilder for BamReaderBuilder {
     }
 }
 
-fn bytes_to_bam<'r>(data: &'r [u8], references: &'r [(String, usize)]) -> Result<Record<'r>, EtError> {
+fn bytes_to_bam<'r>(
+    data: &'r [u8],
+    references: &'r [(String, usize)],
+) -> Result<Record<'r>, EtError> {
+    if data.len() < 32 {
+        return Err("Record terminated abruptly".into());
+    }
     let raw_ref_name_id = LittleEndian::read_i32(&data[0..4]);
     let ref_name = if raw_ref_name_id < 0 {
         ""
@@ -130,11 +137,6 @@ pub struct BamReader<'r> {
 }
 
 impl<'r> RecordReader for BamReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        // FIXME: need header names
-        vec![]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         // each record in a BAM is a different gzip chunk so we
         // have to do a refill before each record
@@ -148,13 +150,14 @@ impl<'r> RecordReader for BamReader<'r> {
         self.rb.reserve(4)?;
         let rec_len = LittleEndian::read_u32(self.rb.partial_consume(4)) as usize;
         self.rb.reserve(rec_len)?;
-        let record = bytes_to_bam(self.rb.consume(rec_len), &self.references).map_err(|mut e| {
-            // we can't use `fill_pos` b/c that touchs the buffer
-            // and messes up the lifetimes :/
-            e.byte = Some(buffer_pos.0);
-            e.record = Some(buffer_pos.1 + 1);
-            e
-        })?;
+        let record =
+            bytes_to_bam(self.rb.consume(rec_len), &self.references).map_err(|mut e| {
+                // we can't use `fill_pos` b/c that touchs the buffer
+                // and messes up the lifetimes :/
+                e.byte = Some(buffer_pos.0);
+                e.record = Some(buffer_pos.1 + 1);
+                e
+            })?;
         Ok(Some(record))
     }
 }
@@ -263,11 +266,6 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
 }
 
 impl<'r> RecordReader for SamReader<'r> {
-    fn headers(&self) -> Vec<&str> {
-        // FIXME: need header names
-        vec![]
-    }
-
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
         Ok(if let Some(line) = self.rb.read_line()? {
@@ -349,6 +347,21 @@ mod tests {
             n_recs += 1;
         }
         assert_eq!(n_recs, 5);
+        Ok(())
+    }
+
+    #[cfg(all(feature = "compression", feature = "std"))]
+    #[test]
+    fn test_bam_fuzz_errors() -> Result<(), EtError> {
+        let data = [66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 125, 10, 10, 10, 10, 255, 255, 255, 255, 10, 10, 18];
+        let rb = ReadBuffer::from_slice(&data);
+        let mut reader = BamReaderBuilder::default().to_reader(rb)?;
+        assert!(reader.next().is_err());
+
+        let data = [66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 116, 116, 116, 246, 245, 245, 240, 10, 62, 8, 10, 255, 255, 255, 251, 255, 255, 255, 255, 255, 181, 181, 181, 181, 181, 181, 181, 117, 117, 117, 117, 117, 117, 181, 117, 117, 10, 10, 10, 10, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 181, 117, 117, 10, 10, 10, 10, 10, 10, 10, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 181, 117, 117, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 10, 0, 1, 0, 0, 0, 0, 0, 0, 0, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 10, 10, 10, 62, 10, 10, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 181, 117, 117, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 10, 0, 1, 0, 0, 0, 0, 0, 0, 0, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 10, 10, 10, 62, 10, 10, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 10, 10, 10, 62, 10, 10, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 117, 181, 117, 117, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 117, 117, 117, 117, 117, 117, 117, 117, 117, 62, 10, 10];
+        let rb = ReadBuffer::from_slice(&data);
+        assert!(BamReaderBuilder::default().to_reader(rb).is_err());
+
         Ok(())
     }
 }
