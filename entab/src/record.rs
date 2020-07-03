@@ -1,6 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::string::{String, ToString};
 
 use serde::Serialize;
 
@@ -63,9 +64,7 @@ impl<'r> Record<'r> {
                 "qual",
                 "extra",
             ]),
-            Self::Tsv(_, headers) => {
-                Cow::Owned(headers.iter().map(|i| i.as_ref()).collect())
-            },
+            Self::Tsv(_, headers) => Cow::Owned(headers.iter().map(|i| i.as_ref()).collect()),
         }
     }
 

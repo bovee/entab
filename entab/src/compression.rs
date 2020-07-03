@@ -5,26 +5,20 @@ use std::io::Read;
 use bzip2::read::BzDecoder;
 #[cfg(feature = "compression")]
 use flate2::read::MultiGzDecoder;
-#[cfg(feature = "compression")]
+#[cfg(feature = "lzma")]
 use xz2::read::XzDecoder;
 #[cfg(feature = "compression")]
 use zstd::stream::read::Decoder as ZstdDecoder;
+
+#[cfg(not(feature = "lzma"))]
+pub use fake_compression::XzDecoder;
+#[cfg(not(feature = "compression"))]
+pub use fake_compression::{BzDecoder, MultiGzDecoder, ZstdDecoder};
 
 use crate::filetype::{sniff_reader_filetype, FileType};
 use crate::EtError;
 
 /// Decompress a `Read` stream and returns the inferred file type
-/// (compiled without decompression support so decompression won't occur)
-#[cfg(not(feature = "compression"))]
-pub fn decompress<'a>(
-    reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), EtError> {
-    let (new_reader, file_type) = sniff_reader_filetype(reader)?;
-    Ok((new_reader, file_type, None))
-}
-
-/// Decompress a `Read` stream and returns the inferred file type
-#[cfg(feature = "compression")]
 pub fn decompress<'a>(
     reader: Box<dyn Read + 'a>,
 ) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), EtError> {
@@ -69,4 +63,44 @@ mod tests {
         assert_eq!(stream.read_to_end(&mut buf)?, 1392);
         Ok(())
     }
+}
+
+#[cfg(not(all(feature = "compression", feature = "lzma")))]
+#[allow(dead_code)]
+mod fake_compression {
+    use std::io::Read;
+
+    pub struct Fake;
+    impl Fake {
+        pub fn new<'r>(_: Box<dyn Read + 'r>) -> Self {
+            Fake
+        }
+    }
+    impl Read for Fake {
+        fn read(&mut self, _: &mut [u8]) -> Result<usize, std::io::Error> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "entab was not compiled with support for compressed files",
+            ))
+        }
+    }
+
+    pub struct ZstdDecoder;
+    impl ZstdDecoder {
+        pub fn new<'r>(_: Box<dyn Read + 'r>) -> Result<Self, std::io::Error> {
+            Ok(ZstdDecoder)
+        }
+    }
+    impl Read for ZstdDecoder {
+        fn read(&mut self, _: &mut [u8]) -> Result<usize, std::io::Error> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "entab was not compiled with support for compressed files",
+            ))
+        }
+    }
+
+    pub type BzDecoder = Fake;
+    pub type MultiGzDecoder = Fake;
+    pub type XzDecoder = Fake;
 }
