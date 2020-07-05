@@ -2,5 +2,6 @@
 members = [
   "entab",
   "entab-cli",
+  "entab-js",
   "entab-py",
 ]

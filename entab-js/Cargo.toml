@@ -1,0 +1,26 @@
+[package]
+name = "entab-js"
+version = "0.1.0"
+authors = ["Roderick <rbovee@gmail.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[dependencies]
+console_error_panic_hook = { version = "0.1.6", optional = true }
+entab = { path = "../entab", default-features = false, features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
+wee_alloc = { version = "0.4.5", optional = true }
+
+[dev-dependencies]
+js-sys = "0.3.41"
+wasm-bindgen-test = "0.3.13"
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
