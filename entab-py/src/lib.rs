@@ -17,7 +17,7 @@ fn to_py(err: EtError) -> PyErr {
     EntabError::py_err(err.to_string())
 }
 
-#[pyclass]
+#[pyclass(unsendable)]
 #[text_signature = "(/, data=None, filename=None, parser=None)"]
 pub struct Reader {
     #[pyo3(get)]
