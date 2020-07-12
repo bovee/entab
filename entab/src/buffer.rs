@@ -158,6 +158,7 @@ impl<'s> ReadBuffer<'s> {
         Ok(())
     }
 
+    /// Move the buffer to the start of the first found location of `pat`
     pub fn seek_pattern(&mut self, pat: &[u8]) -> Result<bool, EtError> {
         loop {
             if let Some(pos) = memchr(pat[0], &self[..]) {

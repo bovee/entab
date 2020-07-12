@@ -73,6 +73,18 @@ impl From<&str> for EtError {
     }
 }
 
+impl From<String> for EtError {
+    fn from(msg: String) -> Self {
+        EtError {
+            msg,
+            byte: None,
+            record: None,
+            #[cfg(feature = "std")]
+            orig_err: None,
+        }
+    }
+}
+
 impl From<FromUtf8Error> for EtError {
     fn from(error: FromUtf8Error) -> Self {
         EtError {
