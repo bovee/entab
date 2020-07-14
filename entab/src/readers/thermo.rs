@@ -1,6 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
@@ -9,7 +10,8 @@ use byteorder::{ByteOrder, LittleEndian};
 use serde::Serialize;
 
 use crate::buffer::ReadBuffer;
-use crate::record::{ReaderBuilder, Record, RecordReader};
+use crate::readers::{ReaderBuilder, RecordReader};
+use crate::record::Record;
 use crate::EtError;
 
 #[derive(Debug, Serialize)]
@@ -19,11 +21,11 @@ pub struct FloatMzRecord {
     intensity: f64,
 }
 
-pub struct ThermoMsReaderBuilder;
+pub struct ThermoDxfReaderBuilder;
 
-impl Default for ThermoMsReaderBuilder {
+impl Default for ThermoDxfReaderBuilder {
     fn default() -> Self {
-        ThermoMsReaderBuilder
+        ThermoDxfReaderBuilder
     }
 }
 
@@ -61,7 +63,7 @@ fn parse_cstring<'r>(rb: &'r mut ReadBuffer) -> Result<Cow<'r, str>, EtError> {
     })
 }
 
-impl ReaderBuilder for ThermoMsReaderBuilder {
+impl ReaderBuilder for ThermoDxfReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         if !rb.seek_pattern(b"CRawData")? {
             return Err("Could not find data".into());
@@ -81,7 +83,7 @@ impl ReaderBuilder for ThermoMsReaderBuilder {
         let n_scans_left =
             LittleEndian::read_u32(rb.partial_consume(4)) as usize / (4 + 8 * mzs.len());
 
-        Ok(Box::new(ThermoMsReader {
+        Ok(Box::new(ThermoIsoReader {
             rb,
             n_scans_left,
             cur_mz_idx: 0,
@@ -91,7 +93,7 @@ impl ReaderBuilder for ThermoMsReaderBuilder {
     }
 }
 
-pub struct ThermoMsReader<'r> {
+pub struct ThermoIsoReader<'r> {
     rb: ReadBuffer<'r>,
     n_scans_left: usize,
     cur_mz_idx: usize,
@@ -99,7 +101,7 @@ pub struct ThermoMsReader<'r> {
     cur_time: f64,
 }
 
-impl<'r> RecordReader for ThermoMsReader<'r> {
+impl<'r> RecordReader for ThermoIsoReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.n_scans_left == 0 {
             return Ok(None);
@@ -138,7 +140,7 @@ mod tests {
 
         let f = File::open("tests/data/b3_alkanes.dxf")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let builder = ThermoMsReaderBuilder::default();
+        let builder = ThermoDxfReaderBuilder::default();
         let mut reader = builder.to_reader(rb)?;
         if let Some(Record::MzFloat {
             time,

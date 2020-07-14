@@ -1,14 +1,13 @@
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 
 use serde::Serialize;
 
-use crate::buffer::ReadBuffer;
 use crate::utils::string::replace_tabs;
 use crate::EtError;
 
+/// A single record returned from parsing
 #[derive(Debug, Serialize)]
 pub enum Record<'r> {
     Mz {
@@ -45,6 +44,7 @@ pub enum Record<'r> {
 }
 
 impl<'r> Record<'r> {
+    /// Returns the headers associated with each field in the record
     pub fn headers(&self) -> Cow<[&str]> {
         match self {
             Self::Mz { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
@@ -68,6 +68,7 @@ impl<'r> Record<'r> {
         }
     }
 
+    /// Returns how many fields are in the record
     pub fn size(&self) -> usize {
         match self {
             Self::Mz { .. } => 3,
@@ -78,7 +79,7 @@ impl<'r> Record<'r> {
         }
     }
 
-    /// Writes a single field of the Record out.
+    /// Writes a single field of the Record out given its index.
     ///
     /// Note: W is not the Write trait to keep this no_std compatible.
     pub fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
@@ -132,10 +133,3 @@ impl<'r> Record<'r> {
     // fn get(&self, field: &str) -> Option<Value>;
 }
 
-pub trait ReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError>;
-}
-
-pub trait RecordReader {
-    fn next(&mut self) -> Result<Option<Record>, EtError>;
-}

@@ -4,7 +4,8 @@ use alloc::vec::Vec;
 use memchr::{memchr, memchr_iter};
 
 use crate::buffer::ReadBuffer;
-use crate::record::{ReaderBuilder, Record, RecordReader};
+use crate::readers::{ReaderBuilder, RecordReader};
+use crate::record::Record;
 use crate::EtError;
 pub struct FastaReaderBuilder;
 

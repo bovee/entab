@@ -5,7 +5,8 @@ use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;
 use crate::readers::fastq::FastqReader;
-use crate::record::{ReaderBuilder, Record, RecordReader};
+use crate::readers::{ReaderBuilder, RecordReader};
+use crate::record::Record;
 use crate::EtError;
 
 pub struct FastaKmerReaderBuilder {

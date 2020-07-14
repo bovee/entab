@@ -24,6 +24,7 @@ pub fn sniff_reader_filetype<'a>(
     Ok((Box::new(Cursor::new(first).chain(reader)), file_type))
 }
 
+/// A file format.
 #[derive(Debug, PartialEq)]
 pub enum FileType {
     // compression
@@ -58,16 +59,20 @@ pub enum FileType {
     // geology
     Las,
     // catch all
+    Hdf5,
     Tsv,
     Unknown,
 }
 
 impl FileType {
+    /// Given a slice from the beginning of the file, try to guess which file
+    /// format that file is in.
     pub fn from_magic(magic: &[u8]) -> FileType {
         if magic.len() > 8 {
             match &magic[..8] {
                 b"~VERSION" => return FileType::Las,
                 b"~Version" => return FileType::Las,
+                b"\x89HDF\r\n\x1A\n" => return FileType::Hdf5,
                 _ => {}
             }
         }
@@ -108,6 +113,8 @@ impl FileType {
         }
     }
 
+    /// Return the list of possible file extensions a given file format
+    /// could have.
     pub fn extensions(&self) -> &[&str] {
         match self {
             FileType::Gzip => &["gz", "gzip"],
@@ -122,6 +129,7 @@ impl FileType {
             FileType::Facs => &["fcs", "lmd"],
             FileType::Fasta => &["fa", "fasta", "fna", "faa"],
             FileType::Fastq => &["fq", "fastq"],
+            FileType::Hdf5 => &["hdf"],
             FileType::MzXml => &["mzxml"],
             FileType::NetCdf => &["cdf"],
             FileType::InficonHapsite => &["hps"],
@@ -134,6 +142,7 @@ impl FileType {
         }
     }
 
+    /// Returns the "best" parser for a given file
     pub fn to_parser_name(&self) -> &str {
         match self {
             FileType::AgilentChemstation => "chemstation",
@@ -141,6 +150,7 @@ impl FileType {
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",
+            FileType::ThermoDxf => "dxf",
             FileType::Tsv => "tsv",
             _ => "",
         }

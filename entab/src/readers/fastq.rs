@@ -4,7 +4,8 @@ use alloc::boxed::Box;
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::record::{ReaderBuilder, Record, RecordReader};
+use crate::readers::{ReaderBuilder, RecordReader};
+use crate::record::Record;
 use crate::EtError;
 pub struct FastqReaderBuilder;
 
