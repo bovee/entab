@@ -11,14 +11,15 @@ pub mod fasta;
 pub mod fastq;
 pub mod kmers;
 pub mod sam;
-pub mod thermo;
+pub mod thermo_iso;
 pub mod tsv;
 
 pub fn get_builder(parser_type: &str) -> Option<Box<dyn ReaderBuilder>> {
     Some(match parser_type {
         "bam" => Box::new(sam::BamReaderBuilder::default()),
+        "cf" => Box::new(thermo_iso::ThermoCfReaderBuilder::default()),
         "chemstation" => Box::new(chemstation::ChemstationMsReaderBuilder::default()),
-        "dxf" => Box::new(thermo::ThermoDxfReaderBuilder::default()),
+        "dxf" => Box::new(thermo_iso::ThermoDxfReaderBuilder::default()),
         "fasta" => Box::new(fasta::FastaReaderBuilder::default()),
         "fastq" => Box::new(fastq::FastqReaderBuilder::default()),
         "sam" => Box::new(sam::SamReaderBuilder::default()),

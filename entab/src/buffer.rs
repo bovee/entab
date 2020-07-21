@@ -158,19 +158,34 @@ impl<'s> ReadBuffer<'s> {
         Ok(())
     }
 
-    /// Move the buffer to the start of the first found location of `pat`
+    /// Move the buffer to the start of the first found location of `pat`.
+    /// If `pat` is not found, the buffer will be exhausted.
     pub fn seek_pattern(&mut self, pat: &[u8]) -> Result<bool, EtError> {
         loop {
             if let Some(pos) = memchr(pat[0], &self[..]) {
-                if (self.len() - pos >= pat.len()) && &self[pos..pos + pat.len()] == pat {
+                if pos + pat.len() > self.len() {
+                    if self.eof() {
+                        self.partial_consume(self.len());
+                        return Ok(false);
+                    }
+                    self.partial_consume(pos);
+                    self.refill()?;
+                    continue;
+                }
+                if &self[pos..pos + pat.len()] == pat {
                     self.partial_consume(pos);
                     break;
                 }
+                self.partial_consume(1);
+                continue;
             } else if self.eof() {
+                self.partial_consume(self.len());
                 return Ok(false);
             }
             // couldn't find the character; load more
-            self.partial_consume(self.len() - pat.len() + 1);
+            if self.len() > pat.len() - 1 {
+                self.partial_consume(self.len() + 1 - pat.len());
+            }
             self.refill()?;
         }
         Ok(true)
@@ -344,6 +359,10 @@ mod test {
         assert_eq!(rb.seek_pattern(b"3")?, true);
         assert_eq!(&rb[..], b"3");
         assert_eq!(rb.seek_pattern(b"1")?, false);
+
+        let mut rb = ReadBuffer::from_slice(b"ABC\n123\nEND");
+        assert_eq!(rb.seek_pattern(b"123")?, true);
+        assert_eq!(&rb[..], b"123\nEND");
         Ok(())
     }
 }

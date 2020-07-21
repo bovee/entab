@@ -132,4 +132,3 @@ impl<'r> Record<'r> {
     }
     // fn get(&self, field: &str) -> Option<Value>;
 }
-
