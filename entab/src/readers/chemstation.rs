@@ -96,6 +96,66 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
     }
 }
 
+pub struct ChemstationFidReaderBuilder;
+
+impl Default for ChemstationFidReaderBuilder {
+    fn default() -> Self {
+        ChemstationFidReaderBuilder
+    }
+}
+
+impl ReaderBuilder for ChemstationFidReaderBuilder {
+    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
+        rb.reserve(0x400)?;
+        let buffer = rb.partial_consume(400);
+        let time = f64::from(BigEndian::read_u32(&buffer[0x11A..0x11E])) / 60000.;
+        // next value (0x11E..) is the end time
+        Ok(Box::new(ChemstationFidReader {
+            rb,
+            time,
+            intensity: 0,
+        }))
+    }
+}
+
+pub struct ChemstationFidReader<'r> {
+    rb: ReadBuffer<'r>,
+    time: f64,
+    intensity: i64,
+}
+
+impl<'r> RecordReader for ChemstationFidReader<'r> {
+    fn next(&mut self) -> Result<Option<Record>, EtError> {
+        if self.rb.len() < 4 {
+            if self.rb.eof() {
+                return Ok(None);
+            } else {
+                self.rb.reserve(2)?;
+            }
+        }
+
+        let time = self.time;
+        // TODO: 0.2 / 60.0 should be obtained from the file???
+        self.time += 0.2 / 60.;
+
+        let intensity = BigEndian::read_i32(self.rb.consume(2));
+        if intensity == 32767 {
+            self.rb.reserve(6)?;
+            let high_value = BigEndian::read_i32(self.rb.partial_consume(4));
+            let low_value = BigEndian::read_u16(self.rb.partial_consume(2));
+            self.intensity = i64::from(high_value) * 65534 + i64::from(low_value);
+        } else {
+            self.intensity += i64::from(intensity);
+        }
+
+        Ok(Some(Record::MzFloat {
+            time,
+            mz: 0.,
+            intensity: self.intensity as f64,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

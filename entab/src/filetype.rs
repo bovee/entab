@@ -38,21 +38,23 @@ pub enum FileType {
     Fastq,
     Facs,
     Sam,
+    Scf, // http://staden.sourceforge.net/manual/formats_unix_2.html
+    Ztr, // http://staden.sourceforge.net/manual/formats_unix_12.html
     // chemoinformatics
     AgilentMs,       // ms   0x01, 0x32
     AgilentMsMsScan, // bin   0x01, 0x01
     AgilentChemstation,
     AgilentCsDad, // uv   0x02, 0x33
     AgilentDad,   // sd
-    AgilentFid,
+    AgilentFid,  // ch
     AgilentMwd,  // ch   0x02, 0x33
     AgilentMwd2, // ch   0x03, 0x31
     BrukerBaf,
     BrukerMsms,
     InficonHapsite,
+    MsRaw,
     ThermoCf,
     ThermoDxf,
-    ThermoRaw,
     WatersAutospec,
     NetCdf,
     MzXml,
@@ -73,6 +75,9 @@ impl FileType {
                 b"~VERSION" => return FileType::Las,
                 b"~Version" => return FileType::Las,
                 b"\x89HDF\r\n\x1A\n" => return FileType::Hdf5,
+                b"\x04\x03\x02\x01SPAH" => return FileType::InficonHapsite,
+                b"\xAEZTR\x0D\x0A\x1A\x0A" => return FileType::Ztr,
+                b"\x01\xA1F\x00i\x00n\x00" => return FileType::MsRaw,
                 _ => {}
             }
         }
@@ -82,6 +87,9 @@ impl FileType {
                 b"FCS3" => return FileType::Facs,
                 b"@HD\t" => return FileType::Sam,
                 b"@SQ\t" => return FileType::Sam,
+                b"\x2Escf" => return FileType::Scf,
+                [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstation,
+                [0x02, 0x38, 0x31, 0x00] => return FileType::AgilentFid,
                 [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
                 [0xFF, 0xFF, 0x60, 0x00] | [0xFF, 0xFF, 0x50, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
@@ -101,11 +109,8 @@ impl FileType {
             [0x0F, 0x8B] => return FileType::Gzip,
             [0x42, 0x5A] => return FileType::Bzip,
             [0xFD, 0x37] => return FileType::Lzma,
-            [0x01, 0x32] => return FileType::AgilentChemstation,
             [0x02, 0x38] => return FileType::AgilentFid,
             [0x24, 0x00] => return FileType::BrukerBaf,
-            [0x01, 0xA1] => return FileType::ThermoRaw,
-            [0x04, 0x03] => return FileType::InficonHapsite,
             [0x43, 0x44] => return FileType::NetCdf,
             _ => {}
         }
@@ -133,14 +138,16 @@ impl FileType {
             FileType::Fasta => &["fa", "fasta", "fna", "faa"],
             FileType::Fastq => &["fq", "fastq"],
             FileType::Hdf5 => &["hdf"],
+            FileType::MsRaw => &["raw"],
             FileType::MzXml => &["mzxml"],
             FileType::NetCdf => &["cdf"],
             FileType::InficonHapsite => &["hps"],
             FileType::Sam => &["sam"],
+            FileType::Scf => &["scf"],
             FileType::ThermoCf => &["cf"],
             FileType::ThermoDxf => &["dxf"],
-            FileType::ThermoRaw => &["raw"],
             FileType::WatersAutospec => &["idx"],
+            FileType::Ztr => &["ztr"],
             _ => &[""],
         }
     }
@@ -153,6 +160,7 @@ impl FileType {
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",
+            FileType::ThermoCf => "cf",
             FileType::ThermoDxf => "dxf",
             FileType::Tsv => "tsv",
             _ => "",
