@@ -14,10 +14,13 @@ fn create_reader() {
     // doesn't work for obvious reasons, but it'd be nice to test against a Uint8Array
     // let data = Uint8Array::new(&JsValue::from_str(">test\nACGT"));
     let data = b">test\nACGT";
-    let mut reader = Reader::new(data.to_vec().into_boxed_slice(), None).expect("Error creating the reader");
+    let mut reader =
+        Reader::new(data.to_vec().into_boxed_slice(), None).expect("Error creating the reader");
     assert_eq!(reader.parser(), "fasta");
     let raw_rec = reader.next().expect("Error reading first record");
-    let rec = raw_rec.dyn_into::<Object>().expect("next() returns an object");
+    let rec = raw_rec
+        .dyn_into::<Object>()
+        .expect("next() returns an object");
 
     let done = Reflect::get(&rec, &JsValue::from_str("done")).expect("record has done");
     assert!(done.is_falsy());

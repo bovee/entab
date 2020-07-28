@@ -5,8 +5,8 @@ use std::io::{Cursor, Read};
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::readers::get_builder;
-use entab::record::{Record as EtRecord, RecordReader};
+use entab::readers::{get_builder, RecordReader};
+use entab::record::Record as EtRecord;
 use entab::utils::error::EtError;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -118,9 +118,13 @@ fn to_owned_rec(rec: EtRecord) -> Result<Record, EtError> {
                 sequence: String::from_utf8(sequence.to_vec())?,
                 quality,
             }
-        },
+        }
         EtRecord::Tsv(recs, headers) => {
-            let map = headers.iter().zip(recs.iter()).map(|(k, v)| (k.clone(), v.to_string())).collect();
+            let map = headers
+                .iter()
+                .zip(recs.iter())
+                .map(|(k, v)| (k.clone(), v.to_string()))
+                .collect();
             Record::Tsv(map)
         }
     })
@@ -151,7 +155,9 @@ impl Reader {
         let reader = if let Some(builder) = get_builder(&parser_name) {
             builder.to_reader(buffer).map_err(to_js)?
         } else {
-            return Err(JsValue::from_str("No reader could be found for this file type"));
+            return Err(JsValue::from_str(
+                "No reader could be found for this file type",
+            ));
         };
         Ok(Reader {
             parser: parser_name.to_string(),
@@ -176,12 +182,14 @@ impl Reader {
             JsValue::from_serde(&NextRecord {
                 value: Some(to_owned_rec(value).map_err(to_js)?),
                 done: false,
-            }).map_err(|_| JsValue::from_str("Error translating record"))
+            })
+            .map_err(|_| JsValue::from_str("Error translating record"))
         } else {
             JsValue::from_serde(&NextRecord {
                 value: None,
                 done: false,
-            }).map_err(|_| JsValue::from_str("Error translating record"))
+            })
+            .map_err(|_| JsValue::from_str("Error translating record"))
         }
     }
 }

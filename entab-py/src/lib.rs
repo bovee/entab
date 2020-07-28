@@ -3,8 +3,8 @@ use std::io::{Cursor, Read};
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::readers::get_builder;
-use entab::record::{Record, RecordReader};
+use entab::readers::{get_builder, RecordReader};
+use entab::record::Record;
 use entab::utils::error::EtError;
 use pyo3::class::PyIterProtocol;
 use pyo3::prelude::*;

@@ -1,12 +1,10 @@
-use alloc::borrow::Cow;
+use alloc::borrow::{Cow, ToOwned};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
-
-use byteorder::{ByteOrder, LittleEndian};
 
 use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
@@ -93,7 +91,7 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.n_scans_left == 0 {
             // it appears the last u32 before the `FFFF04`... CRawData header
-            // is the number of sections in the data, but 
+            // is the number of sections in the data, but
             if self.first {
                 if !self.rb.seek_pattern(b"CRawData")? {
                     return Err("Could not find data".into());
@@ -105,7 +103,9 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
             } else {
                 // `8282` is the replacement for CRawData, but we pad it out a
                 // little in our search to help with specificity
-                if !self.rb.seek_pattern(b"\x00\x00\x00\x00\x00\x00\x00\x00\x82\x82\x03\x00\x00\x00\x2F\x00\xFF\xFE\xFF")? {
+                if !self.rb.seek_pattern(
+                    b"\x00\x00\x00\x00\x00\x00\x00\x00\x82\x82\x03\x00\x00\x00\x2F\x00\xFF\xFE\xFF",
+                )? {
                     return Ok(None);
                 }
                 // only consume up the to the `FFFEFF` part b/c that's part of the
@@ -121,32 +121,32 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
             self.mzs = mzs_from_gas(&gas_name)?;
 
             // `FFFEFF00` and then three u32s (values 0, 1, 1)
-            self.rb.reserve(17)?;
+            self.rb.reserve(16)?;
             self.rb.partial_consume(16);
 
-            if self.rb[0] == 0xFF {
+            if self.rb.extract::<u8>()? == 0xFF {
                 // CEvalGasData header and the u32 (value 1)
-                self.rb.reserve(25)?;
-                self.rb.partial_consume(21);
+                self.rb.reserve(20)?;
+                self.rb.partial_consume(20);
             } else {
                 // replacement sentinel (`8482`) and the u32 (value 1)
-                self.rb.reserve(10)?;
+                self.rb.reserve(6)?;
                 self.rb.partial_consume(6);
             }
 
-            let bytes_data = LittleEndian::read_u32(self.rb.partial_consume(4)) as usize;
+            let bytes_data = self.rb.extract::<u32>()? as usize;
             self.n_scans_left = bytes_data / (4 + 8 * self.mzs.len());
             self.cur_mz_idx = 0;
         }
         self.n_scans_left -= 1;
         if self.cur_mz_idx == 0 {
             self.rb.reserve(12)?;
-            self.cur_time = f64::from(LittleEndian::read_f32(self.rb.partial_consume(4)));
+            self.cur_time = f64::from(self.rb.extract::<f32>()?);
         } else {
             self.rb.reserve(8)?;
         }
 
-        let intensity = LittleEndian::read_f64(self.rb.consume(8));
+        let intensity = self.rb.extract::<f64>()?;
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 
@@ -157,7 +157,6 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
         }))
     }
 }
-
 
 pub struct ThermoCfReaderBuilder;
 
@@ -190,17 +189,19 @@ pub struct ThermoCfReader<'r> {
 impl<'r> RecordReader for ThermoCfReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         if self.n_scans_left == 0 {
-            if !self.rb.seek_pattern(b"\xFF\xFE\xFF\x00\xFF\xFE\xFF\x08R\x00a\x00w\x00 \x00D\x00a\x00t\x00a\x00")? {
+            if !self.rb.seek_pattern(
+                b"\xFF\xFE\xFF\x00\xFF\xFE\xFF\x08R\x00a\x00w\x00 \x00D\x00a\x00t\x00a\x00",
+            )? {
                 return Ok(None);
             }
             // pattern and then 3 u32's (values 0, 2, 2)
-            self.rb.reserve(37)?;
+            self.rb.reserve(36)?;
             self.rb.partial_consume(36);
             // read the title and an additional `030000002C00`
-            if self.rb[0] == 0xFF {
+            if self.rb.extract::<u8>()? == 0xFF {
                 // CRawDataScanStorage title
-                self.rb.reserve(35)?;
-                self.rb.partial_consume(35);
+                self.rb.reserve(34)?;
+                self.rb.partial_consume(34);
             } else {
                 // the title was elided (there's a 3E86 sentinel?)
                 self.rb.reserve(10)?;
@@ -212,11 +213,11 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
             self.mzs = mzs_from_gas(&gas_type)?;
 
             // then 4 u32's (0, 2, 0, 4) and a FEF0 block
-            self.rb.reserve(29)?;
+            self.rb.reserve(20)?;
             self.rb.partial_consume(20);
-            self.n_scans_left = LittleEndian::read_u32(self.rb.partial_consume(4)) as usize;
+            self.n_scans_left = self.rb.extract::<u32>()? as usize;
             // sanity check our guess for the masses
-            let n_mzs = LittleEndian::read_u32(self.rb.partial_consume(4)) as usize;
+            let n_mzs = self.rb.extract::<u32>()? as usize;
             if n_mzs != self.mzs.len() {
                 return Err(format!("Gas type {} has bad information", gas_type).into());
             }
@@ -224,10 +225,10 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
             // then a CBinary header (or replacement sentinel) followed by a u32
             // (value 2), a FEF0 block, another u32 (value 2), and then the number
             // of bytes of data that follow (value = n_scans * (4 + 8 * n_mzs))
-            if self.rb[0] == 0xFF {
+            if self.rb.extract::<u8>()? == 0xFF {
                 // CBinary title
-                self.rb.reserve(29)?;
-                self.rb.partial_consume(29);
+                self.rb.reserve(28)?;
+                self.rb.partial_consume(28);
             } else {
                 // the title was elided (there's a 4086 sentinel?)
                 self.rb.reserve(18)?;
@@ -237,12 +238,12 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
         self.n_scans_left -= 1;
         if self.cur_mz_idx == 0 {
             self.rb.reserve(12)?;
-            self.cur_time = f64::from(LittleEndian::read_f32(self.rb.partial_consume(4)));
+            self.cur_time = f64::from(self.rb.extract::<f32>()?);
         } else {
             self.rb.reserve(8)?;
         }
 
-        let intensity = LittleEndian::read_f64(self.rb.consume(8));
+        let intensity = self.rb.extract::<f64>()?;
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 

@@ -3,6 +3,7 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 #[cfg(feature = "std")]
 use alloc::vec::Vec;
+use core::convert::TryInto;
 #[cfg(feature = "std")]
 use core::mem::swap;
 use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
@@ -38,6 +39,8 @@ pub struct ReadBuffer<'s> {
     pub consumed: usize,
     /// Is this the last chunk before EOF?
     pub eof: bool,
+    /// The byte-order of the chunk; used for `extract`
+    pub is_little_endian: bool,
 }
 
 impl<'s> ReadBuffer<'s> {
@@ -72,6 +75,7 @@ impl<'s> ReadBuffer<'s> {
             record_pos: 0,
             consumed: 0,
             eof: false,
+            is_little_endian: true,
         })
     }
 
@@ -84,6 +88,7 @@ impl<'s> ReadBuffer<'s> {
             record_pos: 0,
             consumed: 0,
             eof: true,
+            is_little_endian: true,
         }
     }
 
@@ -224,6 +229,20 @@ impl<'s> ReadBuffer<'s> {
         (self.record_pos, self.reader_pos + self.consumed as u64)
     }
 
+    /// Read the next `amt` bytes in the buffer and mark them
+    /// as read.
+    pub fn read(&mut self, amt: usize) -> Result<&[u8], EtError> {
+        self.reserve(amt)?;
+        Ok(self.partial_consume(amt))
+    }
+
+    pub fn extract<T>(&mut self) -> Result<T, EtError>
+    where
+        T: FromBuffer,
+    {
+        T::get(self)
+    }
+
     /// Read a single line out of the buffer.
     ///
     /// Assumes all lines are terminated with a '\n' and an optional '\r'
@@ -255,6 +274,40 @@ impl<'s> ReadBuffer<'s> {
         Ok(Some(&buffer[..end]))
     }
 }
+
+pub trait FromBuffer: Sized {
+    fn get(rb: &mut ReadBuffer) -> Result<Self, EtError>;
+}
+
+macro_rules! impl_extract {
+    ($return:ty) => {
+        impl<'r> FromBuffer for $return {
+            fn get(rb: &mut ReadBuffer) -> Result<Self, EtError> {
+                rb.reserve(core::mem::size_of::<$return>())?;
+                let slice = rb
+                    .partial_consume(core::mem::size_of::<$return>())
+                    .try_into()
+                    .unwrap();
+                if rb.is_little_endian {
+                    Ok(<$return>::from_le_bytes(slice))
+                } else {
+                    Ok(<$return>::from_be_bytes(slice))
+                }
+            }
+        }
+    };
+}
+
+impl_extract!(i8);
+impl_extract!(u8);
+impl_extract!(i16);
+impl_extract!(u16);
+impl_extract!(i32);
+impl_extract!(u32);
+impl_extract!(i64);
+impl_extract!(u64);
+impl_extract!(f32);
+impl_extract!(f64);
 
 // It's not really possible to implement Index<(Bound, Bound)> or otherwise
 // make this generic over all forms of Range* so we do a little hacky business

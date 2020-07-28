@@ -46,9 +46,9 @@ pub enum FileType {
     AgilentChemstation,
     AgilentCsDad, // uv   0x02, 0x33
     AgilentDad,   // sd
-    AgilentFid,  // ch
-    AgilentMwd,  // ch   0x02, 0x33
-    AgilentMwd2, // ch   0x03, 0x31
+    AgilentFid,   // ch
+    AgilentMwd,   // ch   0x02, 0x33
+    AgilentMwd2,  // ch   0x03, 0x31
     BrukerBaf,
     BrukerMsms,
     InficonHapsite,
