@@ -39,8 +39,6 @@ pub struct ReadBuffer<'s> {
     pub consumed: usize,
     /// Is this the last chunk before EOF?
     pub eof: bool,
-    /// The byte-order of the chunk; used for `extract`
-    pub is_little_endian: bool,
 }
 
 impl<'s> ReadBuffer<'s> {
@@ -75,7 +73,6 @@ impl<'s> ReadBuffer<'s> {
             record_pos: 0,
             consumed: 0,
             eof: false,
-            is_little_endian: true,
         })
     }
 
@@ -88,7 +85,6 @@ impl<'s> ReadBuffer<'s> {
             record_pos: 0,
             consumed: 0,
             eof: true,
-            is_little_endian: true,
         }
     }
 
@@ -229,18 +225,19 @@ impl<'s> ReadBuffer<'s> {
         (self.record_pos, self.reader_pos + self.consumed as u64)
     }
 
-    /// Read the next `amt` bytes in the buffer and mark them
-    /// as read.
-    pub fn read(&mut self, amt: usize) -> Result<&[u8], EtError> {
-        self.reserve(amt)?;
-        Ok(self.partial_consume(amt))
-    }
-
-    pub fn extract<T>(&mut self) -> Result<T, EtError>
+    /// Get a record of type `T` from this ReadBuffer, taking a `state`
+    /// whose type is dependent on `T` and consuming the bytes used to
+    /// represent that record.
+    ///
+    /// Please note that each call to this function may resize the
+    /// underlying buffer and invalidate any previous references so you should
+    /// manually implement parsers that will retrieve multiple referential
+    /// records (e.g. calling extract::<&[u8]>() multiple times will not work).
+    pub fn extract<'r, T>(&'r mut self, state: T::State) -> Result<T, EtError>
     where
-        T: FromBuffer,
+        T: FromBuffer<'r, 's>,
     {
-        T::get(self)
+        T::get(self, state)
     }
 
     /// Read a single line out of the buffer.
@@ -275,24 +272,32 @@ impl<'s> ReadBuffer<'s> {
     }
 }
 
-pub trait FromBuffer: Sized {
-    fn get(rb: &mut ReadBuffer) -> Result<Self, EtError>;
+pub trait FromBuffer<'r, 's>: Sized {
+    type State;
+
+    fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError>;
+}
+
+pub enum Endian {
+    Big,
+    Little,
 }
 
 macro_rules! impl_extract {
     ($return:ty) => {
-        impl<'r> FromBuffer for $return {
-            fn get(rb: &mut ReadBuffer) -> Result<Self, EtError> {
+        impl<'r, 's> FromBuffer<'r, 's> for $return {
+            type State = Endian;
+
+            fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
                     .partial_consume(core::mem::size_of::<$return>())
                     .try_into()
                     .unwrap();
-                if rb.is_little_endian {
-                    Ok(<$return>::from_le_bytes(slice))
-                } else {
-                    Ok(<$return>::from_be_bytes(slice))
-                }
+                Ok(match state {
+                    Endian::Big => <$return>::from_be_bytes(slice),
+                    Endian::Little => <$return>::from_le_bytes(slice),
+                })
             }
         }
     };
@@ -308,6 +313,57 @@ impl_extract!(i64);
 impl_extract!(u64);
 impl_extract!(f32);
 impl_extract!(f64);
+
+impl<'r, 's> FromBuffer<'r, 's> for () {
+    type State = usize;
+
+    fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
+        rb.reserve(amt)?;
+        rb.partial_consume(amt);
+        Ok(())
+    }
+}
+
+impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
+    type State = usize;
+
+    fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
+        rb.reserve(amt)?;
+        Ok(rb.partial_consume(amt))
+    }
+}
+
+pub struct NewLine<'r>(pub &'r [u8]);
+
+impl<'r, 's> FromBuffer<'r, 's> for NewLine<'r> {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<Self, EtError> {
+        if rb.is_empty() {
+            return Ok(NewLine(b""));
+        }
+        // find the newline
+        let (end, to_consume) = loop {
+            if let Some(e) = memchr(b'\n', &rb[..]) {
+                if rb[..e].last() == Some(&b'\r') {
+                    break (e - 1, e + 1);
+                } else {
+                    break (e, e + 1);
+                }
+            } else if rb.eof() {
+                // we couldn't find a new line, but we are at the end of the file
+                // so return everything to the EOF
+                let l = rb.len();
+                break (l, l);
+            }
+            // couldn't find the character; load more
+            rb.refill()?;
+        };
+
+        let buffer = rb.consume(to_consume);
+        Ok(NewLine(&buffer[..end]))
+    }
+}
 
 // It's not really possible to implement Index<(Bound, Bound)> or otherwise
 // make this generic over all forms of Range* so we do a little hacky business

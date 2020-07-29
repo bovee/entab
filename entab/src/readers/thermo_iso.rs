@@ -6,43 +6,51 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 
-use crate::buffer::ReadBuffer;
+use crate::buffer::{Endian, FromBuffer};
+use crate::buffer::{ReadBuffer};
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
 use crate::EtError;
 
-fn parse_cstring<'r>(rb: &'r mut ReadBuffer) -> Result<Cow<'r, str>, EtError> {
-    if rb.is_empty() {
-        rb.reserve(1)?;
-    }
-    if rb[0] == 0xFF && rb.len() < 4 {
-        rb.reserve(4)?;
-    }
-    let (start, end, utf16) = if rb[0] != 0xFF {
-        (1, 1 + usize::from(rb[0]), false)
-    } else if rb[1..3] == [0xFF, 0xFF] {
-        (4, 4 + usize::from(rb[3]), false)
-    } else if rb[1..3] == [0xFE, 0xFF] {
-        (4, 4 + 2 * usize::from(rb[3]), true)
-    } else {
-        return Err("Unknown string header".into());
-    };
-    if rb.len() < end {
-        rb.reserve(end)?;
-    }
+pub struct CString<'r>(Cow<'r, str>);
 
-    let data = &rb.partial_consume(end)[start..];
-    Ok(if utf16 {
-        let iter = (0..end - start)
-            .step_by(2)
-            .map(|i| u16::from_le_bytes([data[i], data[i + 1]]));
-        decode_utf16(iter)
-            .map(|r| r.unwrap_or(REPLACEMENT_CHARACTER))
-            .collect::<String>()
-            .into()
-    } else {
-        alloc::str::from_utf8(data)?.into()
-    })
+impl<'r, 's> FromBuffer<'r, 's> for CString<'r> {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<CString<'r>, EtError> {
+        if rb.is_empty() {
+            rb.reserve(1)?;
+        }
+        if rb[0] == 0xFF && rb.len() < 4 {
+            rb.reserve(4)?;
+        }
+        let (start, end, utf16) = if rb[0] != 0xFF {
+            (1, 1 + usize::from(rb[0]), false)
+        } else if rb[1..3] == [0xFF, 0xFF] {
+            (4, 4 + usize::from(rb[3]), false)
+        } else if rb[1..3] == [0xFE, 0xFF] {
+            (4, 4 + 2 * usize::from(rb[3]), true)
+        } else {
+            return Err("Unknown string header".into());
+        };
+        if rb.len() < end {
+            rb.reserve(end)?;
+        }
+
+        let data = &rb.partial_consume(end)[start..];
+        let string = if utf16 {
+            let iter = (0..end - start)
+                .step_by(2)
+                .map(|i| u16::from_le_bytes([data[i], data[i + 1]]));
+            decode_utf16(iter)
+                .map(|r| r.unwrap_or(REPLACEMENT_CHARACTER))
+                .collect::<String>()
+                .into()
+        } else {
+            alloc::str::from_utf8(data)?.into()
+        };
+        Ok(CString(string))
+    }
 }
 
 fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
@@ -113,7 +121,7 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
                 self.rb.partial_consume(16);
             }
 
-            let gas_name = parse_cstring(&mut self.rb)?;
+            let gas_name = self.rb.extract::<CString>(())?.0;
             if gas_name == "" {
                 return Ok(None);
             }
@@ -124,7 +132,7 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
             self.rb.reserve(16)?;
             self.rb.partial_consume(16);
 
-            if self.rb.extract::<u8>()? == 0xFF {
+            if self.rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CEvalGasData header and the u32 (value 1)
                 self.rb.reserve(20)?;
                 self.rb.partial_consume(20);
@@ -134,19 +142,19 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
                 self.rb.partial_consume(6);
             }
 
-            let bytes_data = self.rb.extract::<u32>()? as usize;
+            let bytes_data = self.rb.extract::<u32>(Endian::Little)? as usize;
             self.n_scans_left = bytes_data / (4 + 8 * self.mzs.len());
             self.cur_mz_idx = 0;
         }
         self.n_scans_left -= 1;
         if self.cur_mz_idx == 0 {
             self.rb.reserve(12)?;
-            self.cur_time = f64::from(self.rb.extract::<f32>()?);
+            self.cur_time = f64::from(self.rb.extract::<f32>(Endian::Little)?);
         } else {
             self.rb.reserve(8)?;
         }
 
-        let intensity = self.rb.extract::<f64>()?;
+        let intensity = self.rb.extract::<f64>(Endian::Little)?;
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 
@@ -198,7 +206,7 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
             self.rb.reserve(36)?;
             self.rb.partial_consume(36);
             // read the title and an additional `030000002C00`
-            if self.rb.extract::<u8>()? == 0xFF {
+            if self.rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CRawDataScanStorage title
                 self.rb.reserve(34)?;
                 self.rb.partial_consume(34);
@@ -209,15 +217,15 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
             }
             // Now there's a CString with the type of the gas
             // remove "Trace Data" from the front of the string
-            let gas_type = &parse_cstring(&mut self.rb)?[11..].to_owned();
+            let gas_type = self.rb.extract::<CString>(())?.0[11..].to_owned();
             self.mzs = mzs_from_gas(&gas_type)?;
 
             // then 4 u32's (0, 2, 0, 4) and a FEF0 block
             self.rb.reserve(20)?;
             self.rb.partial_consume(20);
-            self.n_scans_left = self.rb.extract::<u32>()? as usize;
+            self.n_scans_left = self.rb.extract::<u32>(Endian::Little)? as usize;
             // sanity check our guess for the masses
-            let n_mzs = self.rb.extract::<u32>()? as usize;
+            let n_mzs = self.rb.extract::<u32>(Endian::Little)? as usize;
             if n_mzs != self.mzs.len() {
                 return Err(format!("Gas type {} has bad information", gas_type).into());
             }
@@ -225,7 +233,7 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
             // then a CBinary header (or replacement sentinel) followed by a u32
             // (value 2), a FEF0 block, another u32 (value 2), and then the number
             // of bytes of data that follow (value = n_scans * (4 + 8 * n_mzs))
-            if self.rb.extract::<u8>()? == 0xFF {
+            if self.rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CBinary title
                 self.rb.reserve(28)?;
                 self.rb.partial_consume(28);
@@ -238,12 +246,12 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
         self.n_scans_left -= 1;
         if self.cur_mz_idx == 0 {
             self.rb.reserve(12)?;
-            self.cur_time = f64::from(self.rb.extract::<f32>()?);
+            self.cur_time = f64::from(self.rb.extract::<f32>(Endian::Little)?);
         } else {
             self.rb.reserve(8)?;
         }
 
-        let intensity = self.rb.extract::<f64>()?;
+        let intensity = self.rb.extract::<f64>(Endian::Little)?;
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 

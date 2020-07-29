@@ -151,7 +151,7 @@ impl Reader {
         let (reader, filetype, _) = decompress(stream).map_err(to_js)?;
         let buffer = ReadBuffer::new(reader).map_err(to_js)?;
 
-        let parser_name = parser.unwrap_or(filetype.to_parser_name().to_string());
+        let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name().to_string());
         let reader = if let Some(builder) = get_builder(&parser_name) {
             builder.to_reader(buffer).map_err(to_js)?
         } else {

@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 
+use crate::buffer::Endian;
 use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
@@ -15,11 +16,10 @@ impl Default for ChemstationMsReaderBuilder {
 
 impl ReaderBuilder for ChemstationMsReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        rb.is_little_endian = false;
         rb.reserve(266)?;
         let n_scans_pos = if &rb[5..7] == b"GC" { 322 } else { 280 };
         rb.partial_consume(266);
-        let raw_records_start = usize::from(rb.extract::<u16>()?);
+        let raw_records_start = usize::from(rb.extract::<u16>(Endian::Big)?);
         if raw_records_start <= 142 {
             return Err("Invalid start position in header".into());
         }
@@ -29,7 +29,7 @@ impl ReaderBuilder for ChemstationMsReaderBuilder {
         if records_start < n_scans_pos {
             return Err(EtError::new("File ended abruptly"));
         }
-        let n_scans = usize::from(rb.extract::<u16>()?);
+        let n_scans = usize::from(rb.extract::<u16>(Endian::Big)?);
         rb.partial_consume(records_start - n_scans_pos - 2);
 
         Ok(Box::new(ChemstationMsReader {
@@ -57,23 +57,23 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
         // refill case
         if self.n_mzs_left == 0 {
             // handle the record header
-            let raw_n_mzs_left: u16 = self.rb.extract()?;
+            let raw_n_mzs_left: u16 = self.rb.extract(Endian::Big)?;
             if raw_n_mzs_left <= 14 {
                 return Err(EtError::new("Invalid record header").fill_pos(&self.rb));
             }
             self.n_mzs_left = usize::from((raw_n_mzs_left - 13) / 2);
-            self.cur_time = f64::from(self.rb.extract::<u32>()?) / 60000.;
-            self.rb.read(12)?;
+            self.cur_time = f64::from(self.rb.extract::<u32>(Endian::Big)?) / 60000.;
+            self.rb.extract(12_usize)?;
         };
 
         // just read the mz/intensity
-        let mz = f64::from(self.rb.extract::<u16>()?) / 20.;
-        let raw_intensity: u16 = self.rb.extract()?;
+        let mz = f64::from(self.rb.extract::<u16>(Endian::Big)?) / 20.;
+        let raw_intensity: u16 = self.rb.extract(Endian::Big)?;
         let intensity = u64::from(raw_intensity & 16383) * 8u64.pow(u32::from(raw_intensity) >> 14);
         if self.n_mzs_left == 1 {
             self.n_scans_left -= 1;
             // eat the footer and bump the record number
-            self.rb.read(10)?;
+            self.rb.extract(10_usize)?;
             self.rb.consume(0);
         }
         self.n_mzs_left -= 1;
@@ -96,11 +96,10 @@ impl Default for ChemstationFidReaderBuilder {
 
 impl ReaderBuilder for ChemstationFidReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        rb.is_little_endian = false;
-        rb.read(282)?;
-        let time = f64::from(rb.extract::<u32>()?) / 60000.;
+        rb.extract(282_usize)?;
+        let time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
         // next value (0x11E..) is the end time
-        rb.read(738)?;
+        rb.extract(738_usize)?;
 
         Ok(Box::new(ChemstationFidReader {
             rb,
@@ -126,11 +125,11 @@ impl<'r> RecordReader for ChemstationFidReader<'r> {
         // TODO: 0.2 / 60.0 should be obtained from the file???
         self.time += 0.2 / 60.;
 
-        let intensity: i32 = self.rb.extract()?;
+        let intensity: i32 = self.rb.extract(Endian::Big)?;
         if intensity == 32767 {
             self.rb.reserve(6)?;
-            let high_value: i32 = self.rb.extract()?;
-            let low_value: u16 = self.rb.extract()?;
+            let high_value: i32 = self.rb.extract(Endian::Big)?;
+            let low_value: u16 = self.rb.extract(Endian::Big)?;
             self.intensity = i64::from(high_value) * 65534 + i64::from(low_value);
         } else {
             self.intensity += i64::from(intensity);

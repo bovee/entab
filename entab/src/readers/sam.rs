@@ -5,6 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::TryInto;
 
+use crate::buffer::{Endian, NewLine};
 use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
@@ -21,27 +22,27 @@ impl Default for BamReaderBuilder {
 impl ReaderBuilder for BamReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
         // read the magic & header length, and then the header
-        if rb.read(4)? != b"BAM\x01" {
+        if rb.extract::<&[u8]>(4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
         }
-        let header_len = rb.extract::<u32>()? as usize;
+        let header_len = rb.extract::<u32>(Endian::Little)? as usize;
         rb.reserve(header_len + 8)?;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
         let _ = rb.partial_consume(header_len);
 
         // read the reference sequence data
-        let mut n_references = rb.extract::<u32>()? as usize;
+        let mut n_references = rb.extract::<u32>(Endian::Little)? as usize;
 
         let mut references = Vec::new();
         while n_references > 0 {
-            let name_len = rb.extract::<u32>()? as usize;
-            let mut raw_ref_name = rb.read(name_len)?;
+            let name_len = rb.extract::<u32>(Endian::Little)? as usize;
+            let mut raw_ref_name = rb.extract::<&[u8]>(name_len)?;
             if raw_ref_name.last() == Some(&b'\x00') {
                 raw_ref_name = &raw_ref_name[..name_len - 1]
             };
             let ref_name = String::from(alloc::str::from_utf8(raw_ref_name)?);
-            let ref_len = rb.extract::<u32>()? as usize;
+            let ref_len = rb.extract::<u32>(Endian::Little)? as usize;
             references.push((ref_name, ref_len));
             n_references -= 1;
         }
@@ -57,46 +58,46 @@ fn extract_bam_record<'r, 's>(
     if record_len < 32 {
         return Err("Record is unexpectedly short".into());
     }
-    let raw_ref_name_id: i32 = reader.extract()?;
+    let raw_ref_name_id: i32 = reader.extract(Endian::Little)?;
     let ref_name = if raw_ref_name_id < 0 {
         ""
     } else {
         &references[raw_ref_name_id as usize].0
     };
-    let raw_pos: i32 = reader.extract()?;
+    let raw_pos: i32 = reader.extract(Endian::Little)?;
     let pos = if raw_pos == -1 {
         None
     } else {
         Some(raw_pos as u64)
     };
-    let query_name_len = usize::from(reader.extract::<u8>()?);
-    let raw_mapq: u8 = reader.extract()?;
+    let query_name_len = usize::from(reader.extract::<u8>(Endian::Little)?);
+    let raw_mapq: u8 = reader.extract(Endian::Little)?;
     let mapq = if raw_mapq == 255 {
         None
     } else {
         Some(raw_mapq)
     };
     // don't care about the BAI index bin - &data[10..12]
-    reader.read(2)?;
-    let n_cigar_op = usize::from(reader.extract::<u16>()?);
-    let flag: u16 = reader.extract()?;
-    let seq_len = reader.extract::<u32>()? as usize;
-    let raw_rnext_id: i32 = reader.extract()?;
+    reader.extract(2_usize)?;
+    let n_cigar_op = usize::from(reader.extract::<u16>(Endian::Little)?);
+    let flag: u16 = reader.extract(Endian::Little)?;
+    let seq_len = reader.extract::<u32>(Endian::Little)? as usize;
+    let raw_rnext_id: i32 = reader.extract(Endian::Little)?;
     let rnext = if raw_rnext_id < 0 {
         ""
     } else {
         &references[raw_rnext_id as usize].0
     };
-    let raw_pnext: i32 = reader.extract()?;
+    let raw_pnext: i32 = reader.extract(Endian::Little)?;
     let pnext = if raw_pnext == -1 {
         None
     } else {
         Some(raw_pnext as u32)
     };
-    let tlen: i32 = reader.extract()?;
+    let tlen: i32 = reader.extract(Endian::Little)?;
 
     // now parse the variable length records
-    let data = reader.read(record_len - 32)?;
+    let data = reader.extract::<&[u8]>(record_len - 32)?;
 
     let mut start = query_name_len;
     let mut query_name = &data[..start];
@@ -159,7 +160,7 @@ impl<'r> RecordReader for BamReader<'r> {
 
         // now read the record itself
         let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
-        let rec_len = self.rb.extract::<u32>()? as usize;
+        let rec_len = self.rb.extract::<u32>(Endian::Little)? as usize;
         let record =
             extract_bam_record(&mut self.rb, rec_len, &self.references).map_err(|mut e| {
                 // we can't use `fill_pos` b/c that touchs the buffer
@@ -278,18 +279,18 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
 impl<'r> RecordReader for SamReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
-        Ok(if let Some(line) = self.rb.read_line()? {
-            let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
-            Some(strs_to_sam(&chunks).map_err(|mut e| {
-                // we can't use `fill_pos` b/c that touchs the buffer
-                // and messes up the lifetimes :/
-                e.byte = Some(buffer_pos.0);
-                e.record = Some(buffer_pos.1 + 1);
-                e
-            })?)
-        } else {
-            None
-        })
+        let line = self.rb.extract::<NewLine>(())?.0;
+        if line == b"" {
+            return Ok(None);
+        }
+        let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
+        Ok(Some(strs_to_sam(&chunks).map_err(|mut e| {
+            // we can't use `fill_pos` b/c that touchs the buffer
+            // and messes up the lifetimes :/
+            e.byte = Some(buffer_pos.0);
+            e.record = Some(buffer_pos.1 + 1);
+            e
+        })?))
     }
 }
 

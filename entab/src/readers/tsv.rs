@@ -6,6 +6,7 @@ use core::mem;
 
 use memchr::memchr;
 
+use crate::buffer::NewLine;
 use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
@@ -77,18 +78,18 @@ impl Default for TsvReaderBuilder {
 
 impl ReaderBuilder for TsvReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        let headers: Vec<String> = if let Some(line) = rb.read_line()? {
-            // prefill with something impossible so we can tell how big
-            let mut buffer = vec!["\t"; 32];
-            split(&mut buffer, line, self.delim_char, self.quote_char)?;
-            buffer
-                .into_iter()
-                .filter(|i| i != &"\t")
-                .map(String::from)
-                .collect()
-        } else {
+        let header = rb.extract::<NewLine>(())?.0;
+        if header == b"" {
             return Err(EtError::new("could not read headers from TSV").fill_pos(&rb));
-        };
+        }
+        // prefill with something impossible so we can tell how big
+        let mut buffer = vec!["\t"; 32];
+        split(&mut buffer, header, self.delim_char, self.quote_char)?;
+        let headers: Vec<String> = buffer
+            .into_iter()
+            .filter(|i| i != &"\t")
+            .map(String::from)
+            .collect();
         let n_headers = headers.len();
 
         let reader = TsvReader {
@@ -113,21 +114,22 @@ pub struct TsvReader<'r> {
 
 impl<'r> RecordReader for TsvReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        if let Some(line) = self.rb.read_line()? {
-            // this is nasty, but I *think* it's sound as long as no other
-            // code messes with cur_line in between iterations of `next`?
-            //
-            unsafe {
-                split(
-                    mem::transmute(&mut self.cur_line),
-                    line,
-                    self.delim_char,
-                    self.quote_char,
-                )
-                .map_err(|e| e.fill_pos(&self.rb))?;
-            }
-        } else {
+        let line = self.rb.extract::<NewLine>(())?.0;
+        if line == b"" {
             return Ok(None);
+        }
+
+        // this is nasty, but I *think* it's sound as long as no other
+        // code messes with cur_line in between iterations of `next`?
+        //
+        unsafe {
+            split(
+                mem::transmute(&mut self.cur_line),
+                line,
+                self.delim_char,
+                self.quote_char,
+            )
+            .map_err(|e| e.fill_pos(&self.rb))?;
         }
 
         // we pass along the headers too since they can be variable for tsvs
