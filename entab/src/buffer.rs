@@ -239,37 +239,6 @@ impl<'s> ReadBuffer<'s> {
     {
         T::get(self, state)
     }
-
-    /// Read a single line out of the buffer.
-    ///
-    /// Assumes all lines are terminated with a '\n' and an optional '\r'
-    /// before so should handle almost all current text file formats, but
-    /// may fail on older '\r' only formats.
-    pub fn read_line(&mut self) -> Result<Option<&[u8]>, EtError> {
-        if self.is_empty() {
-            return Ok(None);
-        }
-        // find the newline
-        let (end, to_consume) = loop {
-            if let Some(e) = memchr(b'\n', &self[..]) {
-                if self[..e].last() == Some(&b'\r') {
-                    break (e - 1, e + 1);
-                } else {
-                    break (e, e + 1);
-                }
-            } else if self.eof() {
-                // we couldn't find a new line, but we are at the end of the file
-                // so return everything to the EOF
-                let l = self.len();
-                break (l, l);
-            }
-            // couldn't find the character; load more
-            self.refill()?;
-        };
-
-        let buffer = self.consume(to_consume);
-        Ok(Some(&buffer[..end]))
-    }
 }
 
 pub trait FromBuffer<'r, 's>: Sized {
@@ -333,6 +302,11 @@ impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
     }
 }
 
+/// Used to read a single line out of the buffer.
+///
+/// Assumes all lines are terminated with a '\n' and an optional '\r'
+/// before so should handle almost all current text file formats, but
+/// may fail on older '\r' only formats.
 pub struct NewLine<'r>(pub &'r [u8]);
 
 impl<'r, 's> FromBuffer<'r, 's> for NewLine<'r> {
@@ -395,6 +369,7 @@ mod test {
     use crate::EtError;
 
     use super::ReadBuffer;
+    use super::NewLine;
 
     #[cfg(feature = "std")]
     #[test]
@@ -430,7 +405,11 @@ mod test {
         let mut rb = ReadBuffer::with_capacity(3, reader)?;
 
         let mut ix = 0;
-        while let Some(l) = rb.read_line()? {
+        loop {
+            let l = rb.extract::<NewLine>(())?.0;
+            if l == b"" {
+                break;
+            }
             match ix {
                 0 => assert_eq!(l, b"1"),
                 1 => assert_eq!(l, b"2"),
@@ -447,7 +426,11 @@ mod test {
     fn test_read_lines_from_slice() -> Result<(), EtError> {
         let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
         let mut ix = 0;
-        while let Some(l) = rb.read_line()? {
+        loop {
+            let l = rb.extract::<NewLine>(())?.0;
+            if l == b"" {
+                break;
+            }
             match ix {
                 0 => assert_eq!(l, b"1"),
                 1 => assert_eq!(l, b"2"),

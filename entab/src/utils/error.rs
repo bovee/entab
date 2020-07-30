@@ -88,9 +88,6 @@ impl From<String> for EtError {
 impl From<FromUtf8Error> for EtError {
     fn from(error: FromUtf8Error) -> Self {
         EtError {
-            #[cfg(not(feature = "std"))]
-            msg: error.to_string(),
-            #[cfg(feature = "std")]
             msg: error.to_string(),
             byte: None,
             record: None,
@@ -104,9 +101,6 @@ impl From<FromUtf8Error> for EtError {
 impl From<IoError> for EtError {
     fn from(error: IoError) -> Self {
         EtError {
-            #[cfg(not(feature = "std"))]
-            msg: error.to_string(),
-            #[cfg(feature = "std")]
             msg: error.to_string(),
             byte: None,
             record: None,
@@ -119,9 +113,6 @@ impl From<IoError> for EtError {
 impl From<Utf8Error> for EtError {
     fn from(error: Utf8Error) -> Self {
         EtError {
-            #[cfg(not(feature = "std"))]
-            msg: error.to_string(),
-            #[cfg(feature = "std")]
             msg: error.to_string(),
             byte: None,
             record: None,
@@ -134,9 +125,6 @@ impl From<Utf8Error> for EtError {
 impl From<ParseIntError> for EtError {
     fn from(error: ParseIntError) -> Self {
         EtError {
-            #[cfg(not(feature = "std"))]
-            msg: error.to_string(),
-            #[cfg(feature = "std")]
             msg: error.to_string(),
             byte: None,
             record: None,

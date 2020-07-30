@@ -6,7 +6,7 @@ use entab::buffer::ReadBuffer;
 use entab::readers::chemstation::ChemstationMsReaderBuilder;
 use entab::readers::fasta::FastaReaderBuilder;
 use entab::readers::fastq::FastqReaderBuilder;
-use entab::record::ReaderBuilder;
+use entab::readers::ReaderBuilder;
 
 fn benchmark_readers(c: &mut Criterion) {
     c.bench_function("chemstation reader", |b| {
