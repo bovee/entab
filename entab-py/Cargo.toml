@@ -7,11 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-entab = { path = "../entab", default-features = false, features = ["std", "compression"] }
+entab_base = { package = "entab", path = "../entab", default-features = false, features = ["std", "compression"] }
 memmap = "0.7"
-pyo3 = { version = "0.11.1", features =["extension-module"] }
+pyo3 = "0.11.1"
 
 [lib]
 name = "entab"
 crate-type = ["cdylib"]
-# required-features = ["pyo3/extension-module"]
+
+[features]
+maturin = ["pyo3/extension-module"]

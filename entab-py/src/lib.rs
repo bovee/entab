@@ -1,11 +1,11 @@
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use entab::buffer::ReadBuffer;
-use entab::compression::decompress;
-use entab::readers::{get_builder, RecordReader};
-use entab::record::Record;
-use entab::utils::error::EtError;
+use entab_base::buffer::ReadBuffer;
+use entab_base::compression::decompress;
+use entab_base::readers::{get_builder, RecordReader};
+use entab_base::record::Record;
+use entab_base::utils::error::EtError;
 use pyo3::class::PyIterProtocol;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
@@ -17,6 +17,7 @@ fn to_py(err: EtError) -> PyErr {
     EntabError::py_err(err.to_string())
 }
 
+// TODO: remove the unsendable; by wrapping reader in an Arc?
 #[pyclass(unsendable)]
 #[text_signature = "(/, data=None, filename=None, parser=None)"]
 pub struct Reader {
@@ -162,4 +163,18 @@ impl Reader {
 fn entab(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Reader>()?;
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reader_creation() -> PyResult<()> {
+        // a filename or data has to be passed in
+        assert!(Reader::new(None, None, None).is_err());
+
+        Ok(())
+    }
 }

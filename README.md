@@ -18,3 +18,6 @@ cargo install entab-cli
 
 There are bindings for two languages, Python and JavaScript, that support
 reading data streams and converting them into a series of records.
+
+The Javascript library can be installed with `npm install entab` and the
+Python library can be installed with `pip install entab`.

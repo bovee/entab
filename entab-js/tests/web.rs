@@ -2,7 +2,7 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use entab_js::Reader;
+use entab::Reader;
 use js_sys::{Object, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;

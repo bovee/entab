@@ -3,11 +3,11 @@ mod utils;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-use entab::buffer::ReadBuffer;
-use entab::compression::decompress;
-use entab::readers::{get_builder, RecordReader};
-use entab::record::Record as EtRecord;
-use entab::utils::error::EtError;
+use entab_base::buffer::ReadBuffer;
+use entab_base::compression::decompress;
+use entab_base::readers::{get_builder, RecordReader};
+use entab_base::record::Record as EtRecord;
+use entab_base::utils::error::EtError;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
