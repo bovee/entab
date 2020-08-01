@@ -52,11 +52,6 @@ impl PyIterProtocol for Reader {
                     mz,
                     intensity,
                 } => record_class.as_ref(py).call1((time, mz, intensity))?,
-                Record::MzFloat {
-                    time,
-                    mz,
-                    intensity,
-                } => record_class.as_ref(py).call1((time, mz, intensity))?,
                 Record::Sam {
                     query_name,
                     flag,

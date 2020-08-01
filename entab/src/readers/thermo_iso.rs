@@ -158,7 +158,7 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 
-        Ok(Some(Record::MzFloat {
+        Ok(Some(Record::Mz {
             time: self.cur_time / 60.,
             mz,
             intensity,
@@ -255,7 +255,7 @@ impl<'r> RecordReader for ThermoCfReader<'r> {
         let mz = self.mzs[self.cur_mz_idx];
         self.cur_mz_idx = (self.cur_mz_idx + 1) % self.mzs.len();
 
-        Ok(Some(Record::MzFloat {
+        Ok(Some(Record::Mz {
             time: self.cur_time / 60.,
             mz,
             intensity,
@@ -279,7 +279,7 @@ mod tests {
         let rb = ReadBuffer::new(Box::new(&f))?;
         let builder = ThermoDxfReaderBuilder::default();
         let mut reader = builder.to_reader(rb)?;
-        if let Some(Record::MzFloat {
+        if let Some(Record::Mz {
             time,
             mz,
             intensity,
@@ -304,7 +304,7 @@ mod tests {
         let rb = ReadBuffer::new(Box::new(&f))?;
         let builder = ThermoCfReaderBuilder::default();
         let mut reader = builder.to_reader(rb)?;
-        if let Some(Record::MzFloat {
+        if let Some(Record::Mz {
             time,
             mz,
             intensity,

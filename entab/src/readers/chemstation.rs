@@ -69,7 +69,7 @@ impl<'r> RecordReader for ChemstationMsReader<'r> {
         // just read the mz/intensity
         let mz = f64::from(self.rb.extract::<u16>(Endian::Big)?) / 20.;
         let raw_intensity: u16 = self.rb.extract(Endian::Big)?;
-        let intensity = u64::from(raw_intensity & 16383) * 8u64.pow(u32::from(raw_intensity) >> 14);
+        let intensity = f64::from(raw_intensity & 16383) * 8f64.powi(i32::from(raw_intensity) >> 14);
         if self.n_mzs_left == 1 {
             self.n_scans_left -= 1;
             // eat the footer and bump the record number
@@ -136,7 +136,7 @@ impl<'r> RecordReader for ChemstationFidReader<'r> {
         }
         self.rb.consume(0);
 
-        Ok(Some(Record::MzFloat {
+        Ok(Some(Record::Mz {
             time,
             mz: 0.,
             intensity: self.intensity as f64,
@@ -166,7 +166,7 @@ mod tests {
         {
             assert!((time - 0.079166).abs() < 0.000001);
             assert!((mz - 915.7).abs() < 0.000001);
-            assert_eq!(intensity, 112);
+            assert_eq!(intensity, 112.);
         } else {
             panic!("Chemstation reader returned non-Mz record");
         }
@@ -178,7 +178,7 @@ mod tests {
         {
             assert!((time - 0.079166).abs() < 0.000001);
             assert!((mz - 865.4).abs() < 0.000001);
-            assert_eq!(intensity, 184);
+            assert_eq!(intensity, 184.);
         } else {
             panic!("Chemstation reader returned non-Mz record");
         }

@@ -27,11 +27,6 @@ pub enum Record {
     Mz {
         time: f64,
         mz: f64,
-        intensity: u64,
-    },
-    MzFloat {
-        time: f64,
-        mz: f64,
         intensity: f64,
     },
     Sam {
@@ -63,15 +58,6 @@ fn to_owned_rec(rec: EtRecord) -> Result<Record, EtError> {
             mz,
             intensity,
         } => Record::Mz {
-            time,
-            mz,
-            intensity,
-        },
-        EtRecord::MzFloat {
-            time,
-            mz,
-            intensity,
-        } => Record::MzFloat {
             time,
             mz,
             intensity,

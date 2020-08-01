@@ -13,11 +13,6 @@ pub enum Record<'r> {
     Mz {
         time: f64,
         mz: f64,
-        intensity: u64,
-    },
-    MzFloat {
-        time: f64,
-        mz: f64,
         intensity: f64,
     },
     Sam {
@@ -48,7 +43,6 @@ impl<'r> Record<'r> {
     pub fn headers(&self) -> Cow<[&str]> {
         match self {
             Self::Mz { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
-            Self::MzFloat { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
             Self::Sequence { .. } => Cow::Borrowed(&["id", "sequence", "quality"]),
             Self::Sam { .. } => Cow::Borrowed(&[
                 "query_name",
@@ -72,7 +66,6 @@ impl<'r> Record<'r> {
     pub fn size(&self) -> usize {
         match self {
             Self::Mz { .. } => 3,
-            Self::MzFloat { .. } => 3,
             Self::Sequence { .. } => 3,
             Self::Sam { .. } => 12,
             Self::Tsv(rec, _) => rec.len(),
@@ -89,10 +82,7 @@ impl<'r> Record<'r> {
         match (self, index) {
             (Self::Mz { time, .. }, 0) => write(format!("{:02}", time).as_bytes())?,
             (Self::Mz { mz, .. }, 1) => write(format!("{:02}", mz).as_bytes())?,
-            (Self::Mz { intensity, .. }, 2) => write(intensity.to_string().as_bytes())?,
-            (Self::MzFloat { time, .. }, 0) => write(format!("{:02}", time).as_bytes())?,
-            (Self::MzFloat { mz, .. }, 1) => write(format!("{:02}", mz).as_bytes())?,
-            (Self::MzFloat { intensity, .. }, 2) => write(format!("{:02}", intensity).as_bytes())?,
+            (Self::Mz { intensity, .. }, 2) => write(format!("{:02}", intensity).as_bytes())?,
             (Self::Sam { query_name, .. }, 0) => write(&replace_tabs(query_name.as_bytes(), b'|'))?,
             // TODO: better display for flags?
             (Self::Sam { flag, .. }, 1) => write(format!("{:b}", flag).as_bytes())?,
