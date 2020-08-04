@@ -7,6 +7,101 @@ use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
 use crate::EtError;
+
+use alloc::borrow::Cow;
+
+pub struct FastaRecord<'r> {
+    id: &'r str,
+    sequence: Cow<'r, [u8]>,
+}
+
+use crate::buffer::FromBuffer;
+
+impl<'r, 's> FromBuffer<'r, 's> for Option<FastaRecord<'r>> {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+        if rb.is_empty() {
+            return Ok(None);
+        }
+        if rb[0] != b'>' {
+            return Err(EtError::new("Valid FASTA records start with '>'"));
+        }
+        let mut seq_newlines: Vec<usize> = Vec::new();
+        let (header_range, seq_range, rec_end) = loop {
+            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &rb[..]) {
+                if p > 0 && rb[p - 1] == b'\r' {
+                    // strip out the \r too if this is a \r\n ending
+                    (p - 1, p + 1)
+                } else {
+                    (p, p + 1)
+                }
+            } else if rb.eof() {
+                return Err("Incomplete record".into());
+            } else {
+                rb.refill()?;
+                continue;
+            };
+            let mut found_end = false;
+            for raw_pos in memchr_iter(b'\n', &rb[seq_start..]) {
+                let pos = seq_start + raw_pos;
+                if pos > 0 && rb[pos - 1] == b'\r' {
+                    seq_newlines.push(raw_pos - 1);
+                }
+                seq_newlines.push(raw_pos);
+                if pos + 1 < rb.len() && rb[pos + 1] == b'>' {
+                    found_end = true;
+                    break;
+                }
+            }
+            if !found_end && !rb.eof() {
+                rb.refill()?;
+                seq_newlines.truncate(0);
+                continue;
+            }
+            let (seq_end, rec_end) = if found_end {
+                // found_end only happens if we added a newline
+                // so the pop is safe to unwrap
+                let mut endpos = seq_newlines.pop().unwrap();
+                let rec_end = seq_start + endpos + 1;
+
+                // remove trailing consecutive newlines (e.g. \r\n)
+                // from the end
+                while endpos > 0 && seq_newlines.last() == Some(endpos - 1).as_ref() {
+                    endpos = seq_newlines.pop().unwrap();
+                }
+                (seq_start + endpos, rec_end)
+            } else {
+                // at eof; just return the end
+                (rb.len(), rb.len())
+            };
+            break (1..header_end, seq_start..seq_end, rec_end);
+        };
+
+        let record = rb.consume(rec_end);
+
+        let header = &record[header_range];
+        let raw_sequence = &record[seq_range];
+        let sequence = if seq_newlines.is_empty() {
+            raw_sequence.into()
+        } else {
+            let mut new_buf = Vec::with_capacity(raw_sequence.len() - seq_newlines.len());
+            let mut start = 0;
+            for pos in seq_newlines {
+                new_buf.extend_from_slice(&raw_sequence[start..pos]);
+                start = pos + 1;
+            }
+            new_buf.extend_from_slice(&raw_sequence[start..]);
+            new_buf.into()
+        };
+
+        Ok(Some(FastaRecord {
+            id: alloc::str::from_utf8(header)?,
+            sequence,
+        }))
+    }
+}
+
 pub struct FastaReaderBuilder;
 
 impl Default for FastaReaderBuilder {
@@ -27,84 +122,12 @@ pub struct FastaReader<'r> {
 
 impl<'r> RecordReader for FastaReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        if self.rb.is_empty() {
-            return Ok(None);
-        }
-        if self.rb[0] != b'>' {
-            return Err(EtError::new("Valid FASTA records start with '>'").fill_pos(&self.rb));
-        }
-        let mut seq_newlines: Vec<usize> = Vec::new();
-        let (header_range, seq_range, rec_end) = loop {
-            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &self.rb[..]) {
-                if p > 0 && self.rb[p - 1] == b'\r' {
-                    // strip out the \r too if this is a \r\n ending
-                    (p - 1, p + 1)
-                } else {
-                    (p, p + 1)
-                }
-            } else if self.rb.eof() {
-                return Err(EtError::new("Incomplete record").fill_pos(&self.rb));
-            } else {
-                self.rb.refill()?;
-                continue;
-            };
-            let mut found_end = false;
-            for raw_pos in memchr_iter(b'\n', &self.rb[seq_start..]) {
-                let pos = seq_start + raw_pos;
-                if pos > 0 && self.rb[pos - 1] == b'\r' {
-                    seq_newlines.push(raw_pos - 1);
-                }
-                seq_newlines.push(raw_pos);
-                if pos + 1 < self.rb.len() && self.rb[pos + 1] == b'>' {
-                    found_end = true;
-                    break;
-                }
+        Ok(self.rb.extract::<Option<FastaRecord>>(())?.map(|r: FastaRecord| {
+            Record::Sequence {
+                id: r.id,
+                sequence: r.sequence,
+                quality: None,
             }
-            if !found_end && !self.rb.eof() {
-                self.rb.refill()?;
-                seq_newlines.truncate(0);
-                continue;
-            }
-            let (seq_end, rec_end) = if found_end {
-                // found_end only happens if we added a newline
-                // so the pop is safe to unwrap
-                let mut endpos = seq_newlines.pop().unwrap();
-                let rec_end = seq_start + endpos + 1;
-
-                // remove trailing consecutive newlines (e.g. \r\n)
-                // from the end
-                while endpos > 0 && seq_newlines.last() == Some(endpos - 1).as_ref() {
-                    endpos = seq_newlines.pop().unwrap();
-                }
-                (seq_start + endpos, rec_end)
-            } else {
-                // at eof; just return the end
-                (self.rb.len(), self.rb.len())
-            };
-            break (1..header_end, seq_start..seq_end, rec_end);
-        };
-
-        let record = self.rb.consume(rec_end);
-
-        let header = &record[header_range];
-        let raw_sequence = &record[seq_range];
-        let sequence = if seq_newlines.is_empty() {
-            raw_sequence.into()
-        } else {
-            let mut new_buf = Vec::with_capacity(raw_sequence.len() - seq_newlines.len());
-            let mut start = 0;
-            for pos in seq_newlines {
-                new_buf.extend_from_slice(&raw_sequence[start..pos]);
-                start = pos + 1;
-            }
-            new_buf.extend_from_slice(&raw_sequence[start..]);
-            new_buf.into()
-        };
-
-        Ok(Some(Record::Sequence {
-            id: alloc::str::from_utf8(header)?,
-            sequence,
-            quality: None,
         }))
     }
 }

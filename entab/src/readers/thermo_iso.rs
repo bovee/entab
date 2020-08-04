@@ -17,7 +17,7 @@ pub struct CString<'r>(Cow<'r, str>);
 impl<'r, 's> FromBuffer<'r, 's> for CString<'r> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<CString<'r>, EtError> {
+    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             rb.reserve(1)?;
         }

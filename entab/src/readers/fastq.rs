@@ -1,4 +1,3 @@
-use alloc::borrow::Cow;
 use alloc::boxed::Box;
 
 use memchr::memchr;
@@ -7,6 +6,107 @@ use crate::buffer::ReadBuffer;
 use crate::readers::{ReaderBuilder, RecordReader};
 use crate::record::Record;
 use crate::EtError;
+
+pub struct FastqRecord<'r> {
+    id: &'r str,
+    sequence: &'r [u8],
+    quality: &'r [u8]
+}
+
+use crate::buffer::FromBuffer;
+
+impl<'r, 's> FromBuffer<'r, 's> for Option<FastqRecord<'r>> {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+        if rb.is_empty() {
+            if rb.eof() {
+                return Ok(None);
+            }
+            rb.refill()?;
+            // if the buffer perfectly aligns, it's possible we could do a zero-byte read
+            // and now we're in an EOF
+            if rb.eof() {
+                return Ok(None);
+            }
+        }
+        if rb[0] != b'@' {
+            return Err("Valid FASTQ records start with '@'".into());
+        }
+        let (header_range, seq_range, qual_range, rec_end) = loop {
+            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &rb[..]) {
+                if p > 0 && rb[p - 1] == b'\r' {
+                    // strip out the \r too if this is a \r\n ending
+                    (p - 1, p + 1)
+                } else {
+                    (p, p + 1)
+                }
+            } else if rb.eof() {
+                return Err("Record ended prematurely in header".into());
+            } else {
+                rb.refill()?;
+                continue;
+            };
+            let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &rb[seq_start..]) {
+                if p == 0 || rb[seq_start + p - 1] != b'\n' {
+                    return Err("Unexpected + found in sequence".into());
+                }
+                // the + is technically part of the next header so we're
+                // already one short before we even check the \r
+                if seq_start + p > 2 && rb[seq_start + p - 2] == b'\r' {
+                    // strip out the \r too if this is a \r\n ending
+                    (seq_start + p - 2, seq_start + p)
+                } else {
+                    (seq_start + p - 1, seq_start + p)
+                }
+            } else if rb.eof() {
+                return Err("Record ended prematurely in sequence".into());
+            } else {
+                rb.refill()?;
+                continue;
+            };
+            let qual_start = if let Some(p) = memchr(b'\n', &rb[id2_start..]) {
+                id2_start + p + 1
+            } else if rb.eof() {
+                return Err("Record ended prematurely in second header".into());
+            } else {
+                rb.refill()?;
+                continue;
+            };
+
+            let qual_end = qual_start + (seq_end - seq_start);
+            let mut rec_end = qual_end + (id2_start - seq_end);
+            // sometimes the terminal one or two newlines might be missing
+            // so we deduct here to avoid a error overconsuming
+            if rec_end > rb.len() && rb.eof() {
+                rec_end -= id2_start - seq_end;
+            }
+
+            if qual_end > rb.len() && rb.eof() {
+                return Err("Record ended prematurely in quality".into());
+            } else if rec_end > rb.len() && !rb.eof() {
+                rb.refill()?;
+                continue;
+            }
+
+            break (
+                1..header_end,
+                seq_start..seq_end,
+                qual_start..qual_end,
+                rec_end,
+            );
+        };
+
+        let record = rb.consume(rec_end);
+
+        Ok(Some(FastqRecord {
+            id: alloc::str::from_utf8(&record[header_range])?,
+            sequence: &record[seq_range],
+            quality: &record[qual_range],
+        }))
+    }
+}
+
 pub struct FastqReaderBuilder;
 
 impl Default for FastqReaderBuilder {
@@ -27,92 +127,12 @@ pub struct FastqReader<'r> {
 
 impl<'r> RecordReader for FastqReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        if self.rb.is_empty() {
-            if self.rb.eof() {
-                return Ok(None);
+        Ok(self.rb.extract::<Option<FastqRecord>>(())?.map(|r: FastqRecord| {
+            Record::Sequence {
+                id: r.id,
+                sequence: r.sequence.into(),
+                quality: Some(r.quality),
             }
-            self.rb.refill()?;
-            // if the buffer perfectly aligns, it's possible we could do a zero-byte read
-            // and now we're in an EOF
-            if self.rb.eof() {
-                return Ok(None);
-            }
-        }
-        if self.rb[0] != b'@' {
-            return Err(EtError::new("Valid FASTQ records start with '@'").fill_pos(&self.rb));
-        }
-        let (header_range, seq_range, qual_range, rec_end) = loop {
-            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &self.rb[..]) {
-                if p > 0 && self.rb[p - 1] == b'\r' {
-                    // strip out the \r too if this is a \r\n ending
-                    (p - 1, p + 1)
-                } else {
-                    (p, p + 1)
-                }
-            } else if self.rb.eof() {
-                return Err(EtError::new("Record ended prematurely in header").fill_pos(&self.rb));
-            } else {
-                self.rb.refill()?;
-                continue;
-            };
-            let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &self.rb[seq_start..]) {
-                if p == 0 || self.rb[seq_start + p - 1] != b'\n' {
-                    return Err(EtError::new("Unexpected + found in sequence").fill_pos(&self.rb));
-                }
-                // the + is technically part of the next header so we're
-                // already one short before we even check the \r
-                if seq_start + p > 2 && self.rb[seq_start + p - 2] == b'\r' {
-                    // strip out the \r too if this is a \r\n ending
-                    (seq_start + p - 2, seq_start + p)
-                } else {
-                    (seq_start + p - 1, seq_start + p)
-                }
-            } else if self.rb.eof() {
-                return Err(EtError::new("Record ended prematurely in sequence").fill_pos(&self.rb));
-            } else {
-                self.rb.refill()?;
-                continue;
-            };
-            let qual_start = if let Some(p) = memchr(b'\n', &self.rb[id2_start..]) {
-                id2_start + p + 1
-            } else if self.rb.eof() {
-                return Err(
-                    EtError::new("Record ended prematurely in second header").fill_pos(&self.rb)
-                );
-            } else {
-                self.rb.refill()?;
-                continue;
-            };
-
-            let qual_end = qual_start + (seq_end - seq_start);
-            let mut rec_end = qual_end + (id2_start - seq_end);
-            // sometimes the terminal one or two newlines might be missing
-            // so we deduct here to avoid a error overconsuming
-            if rec_end > self.rb.len() && self.rb.eof() {
-                rec_end -= id2_start - seq_end;
-            }
-
-            if qual_end > self.rb.len() && self.rb.eof() {
-                return Err(EtError::new("Record ended prematurely in quality").fill_pos(&self.rb));
-            } else if rec_end > self.rb.len() && !self.rb.eof() {
-                self.rb.refill()?;
-                continue;
-            }
-
-            break (
-                1..header_end,
-                seq_start..seq_end,
-                qual_start..qual_end,
-                rec_end,
-            );
-        };
-
-        let record = self.rb.consume(rec_end);
-
-        Ok(Some(Record::Sequence {
-            id: alloc::str::from_utf8(&record[header_range])?,
-            sequence: Cow::Borrowed(&record[seq_range]),
-            quality: Some(&record[qual_range]),
         }))
     }
 }

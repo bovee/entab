@@ -78,10 +78,11 @@ impl Default for TsvReaderBuilder {
 
 impl ReaderBuilder for TsvReaderBuilder {
     fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        let header = rb.extract::<NewLine>(())?.0;
-        if header == b"" {
+        let header = if let Some(NewLine(h)) = rb.extract(())? {
+            h
+        } else {
             return Err(EtError::new("could not read headers from TSV").fill_pos(&rb));
-        }
+        };
         // prefill with something impossible so we can tell how big
         let mut buffer = vec!["\t"; 32];
         split(&mut buffer, header, self.delim_char, self.quote_char)?;
@@ -114,10 +115,11 @@ pub struct TsvReader<'r> {
 
 impl<'r> RecordReader for TsvReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        let line = self.rb.extract::<NewLine>(())?.0;
-        if line == b"" {
+        let line = if let Some(NewLine(l)) = self.rb.extract(())? {
+            l
+        } else {
             return Ok(None);
-        }
+        };
 
         // this is nasty, but I *think* it's sound as long as no other
         // code messes with cur_line in between iterations of `next`?

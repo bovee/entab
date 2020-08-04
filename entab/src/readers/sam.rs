@@ -288,18 +288,18 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
 impl<'r> RecordReader for SamReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
-        let line = self.rb.extract::<NewLine>(())?.0;
-        if line == b"" {
-            return Ok(None);
-        }
-        let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
-        Ok(Some(strs_to_sam(&chunks).map_err(|mut e| {
-            // we can't use `fill_pos` b/c that touchs the buffer
-            // and messes up the lifetimes :/
-            e.byte = Some(buffer_pos.0);
-            e.record = Some(buffer_pos.1 + 1);
-            e
-        })?))
+        Ok(if let Some(NewLine(line)) = self.rb.extract(())? {
+            let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
+            Some(strs_to_sam(&chunks).map_err(|mut e| {
+                // we can't use `fill_pos` b/c that touchs the buffer
+                // and messes up the lifetimes :/
+                e.byte = Some(buffer_pos.0);
+                e.record = Some(buffer_pos.1 + 1);
+                e
+            })?)
+        } else {
+            None
+        })
     }
 }
 

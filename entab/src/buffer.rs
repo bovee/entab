@@ -233,11 +233,17 @@ impl<'s> ReadBuffer<'s> {
     /// underlying buffer and invalidate any previous references so you should
     /// manually implement parsers that will retrieve multiple referential
     /// records (e.g. calling extract::<&[u8]>() multiple times will not work).
+    #[inline]
     pub fn extract<'r, T>(&'r mut self, state: T::State) -> Result<T, EtError>
     where
         T: FromBuffer<'r, 's>,
     {
-        T::get(self, state)
+        let (record_pos, byte_pos) = self.get_pos();
+        T::get(self, state).map_err(|mut e| {
+            e.record = Some(record_pos);
+            e.byte = Some(byte_pos);
+            e
+        })
     }
 }
 
@@ -257,6 +263,7 @@ macro_rules! impl_extract {
         impl<'r, 's> FromBuffer<'r, 's> for $return {
             type State = Endian;
 
+            #[inline]
             fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
@@ -286,6 +293,7 @@ impl_extract!(f64);
 impl<'r, 's> FromBuffer<'r, 's> for () {
     type State = usize;
 
+    #[inline]
     fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(amt)?;
         rb.partial_consume(amt);
@@ -296,6 +304,7 @@ impl<'r, 's> FromBuffer<'r, 's> for () {
 impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
     type State = usize;
 
+    #[inline]
     fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(amt)?;
         Ok(rb.partial_consume(amt))
@@ -309,12 +318,13 @@ impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
 /// may fail on older '\r' only formats.
 pub struct NewLine<'r>(pub &'r [u8]);
 
-impl<'r, 's> FromBuffer<'r, 's> for NewLine<'r> {
+impl<'r, 's> FromBuffer<'r, 's> for Option<NewLine<'r>> {
     type State = ();
 
+    #[inline]
     fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
-            return Ok(NewLine(b""));
+            return Ok(None);
         }
         // find the newline
         let (end, to_consume) = loop {
@@ -335,7 +345,7 @@ impl<'r, 's> FromBuffer<'r, 's> for NewLine<'r> {
         };
 
         let buffer = rb.consume(to_consume);
-        Ok(NewLine(&buffer[..end]))
+        Ok(Some(NewLine(&buffer[..end])))
     }
 }
 
@@ -405,11 +415,7 @@ mod test {
         let mut rb = ReadBuffer::with_capacity(3, reader)?;
 
         let mut ix = 0;
-        loop {
-            let l = rb.extract::<NewLine>(())?.0;
-            if l == b"" {
-                break;
-            }
+        while let Some(NewLine(l)) = rb.extract(())? {
             match ix {
                 0 => assert_eq!(l, b"1"),
                 1 => assert_eq!(l, b"2"),
@@ -426,11 +432,7 @@ mod test {
     fn test_read_lines_from_slice() -> Result<(), EtError> {
         let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
         let mut ix = 0;
-        loop {
-            let l = rb.extract::<NewLine>(())?.0;
-            if l == b"" {
-                break;
-            }
+        while let Some(NewLine(l)) = rb.extract(())? {
             match ix {
                 0 => assert_eq!(l, b"1"),
                 1 => assert_eq!(l, b"2"),
