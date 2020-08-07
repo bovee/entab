@@ -17,10 +17,11 @@ pub struct FastaRecord<'r> {
 
 use crate::buffer::FromBuffer;
 
-impl<'r, 's> FromBuffer<'r, 's> for Option<FastaRecord<'r>> {
+
+impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             return Ok(None);
         }

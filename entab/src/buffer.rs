@@ -236,7 +236,7 @@ impl<'s> ReadBuffer<'s> {
     #[inline]
     pub fn extract<'r, T>(&'r mut self, state: T::State) -> Result<T, EtError>
     where
-        T: FromBuffer<'r, 's>,
+        T: FromBuffer<'r>,
     {
         let (record_pos, byte_pos) = self.get_pos();
         T::get(self, state).map_err(|mut e| {
@@ -247,10 +247,10 @@ impl<'s> ReadBuffer<'s> {
     }
 }
 
-pub trait FromBuffer<'r, 's>: Sized {
+pub trait FromBuffer<'r>: Sized {
     type State;
 
-    fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError>;
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError>;
 }
 
 pub enum Endian {
@@ -260,11 +260,11 @@ pub enum Endian {
 
 macro_rules! impl_extract {
     ($return:ty) => {
-        impl<'r, 's> FromBuffer<'r, 's> for $return {
+        impl<'r> FromBuffer<'r> for $return {
             type State = Endian;
 
             #[inline]
-            fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError> {
+            fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
                     .partial_consume(core::mem::size_of::<$return>())
@@ -290,22 +290,22 @@ impl_extract!(u64);
 impl_extract!(f32);
 impl_extract!(f64);
 
-impl<'r, 's> FromBuffer<'r, 's> for () {
+impl<'r> FromBuffer<'r> for () {
     type State = usize;
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(amt)?;
         rb.partial_consume(amt);
         Ok(())
     }
 }
 
-impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
+impl<'r> FromBuffer<'r> for &'r [u8] {
     type State = usize;
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer<'s>, amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(amt)?;
         Ok(rb.partial_consume(amt))
     }
@@ -318,11 +318,11 @@ impl<'r, 's> FromBuffer<'r, 's> for &'r [u8] {
 /// may fail on older '\r' only formats.
 pub struct NewLine<'r>(pub &'r [u8]);
 
-impl<'r, 's> FromBuffer<'r, 's> for Option<NewLine<'r>> {
+impl<'r> FromBuffer<'r> for Option<NewLine<'r>> {
     type State = ();
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             return Ok(None);
         }

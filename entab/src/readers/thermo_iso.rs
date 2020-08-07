@@ -14,10 +14,10 @@ use crate::EtError;
 
 pub struct CString<'r>(Cow<'r, str>);
 
-impl<'r, 's> FromBuffer<'r, 's> for CString<'r> {
+impl<'r> FromBuffer<'r> for CString<'r> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _state: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             rb.reserve(1)?;
         }

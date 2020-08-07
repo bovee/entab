@@ -15,10 +15,10 @@ pub struct FastqRecord<'r> {
 
 use crate::buffer::FromBuffer;
 
-impl<'r, 's> FromBuffer<'r, 's> for Option<FastqRecord<'r>> {
+impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             if rb.eof() {
                 return Ok(None);

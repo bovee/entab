@@ -14,10 +14,10 @@ pub struct ChemstationMsState {
 
 use crate::buffer::FromBuffer;
 
-impl<'r, 's> FromBuffer<'r, 's> for ChemstationMsState {
+impl<'r> FromBuffer<'r> for ChemstationMsState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(266)?;
         let n_scans_pos = if &rb[5..7] == b"GC" { 322 } else { 280 };
         rb.partial_consume(266);
@@ -48,10 +48,10 @@ pub struct ChemstationMs {
     intensity: f64,
 }
 
-impl<'r, 's> FromBuffer<'r, 's> for Option<ChemstationMs> {
+impl<'r> FromBuffer<'r> for Option<ChemstationMs> {
     type State = &'r mut ChemstationMsState;
 
-    fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
         if state.n_scans_left == 0 {
             return Ok(None);
         }
@@ -129,10 +129,10 @@ pub struct ChemstationFidState {
     intensity: f64,
 }
 
-impl<'r, 's> FromBuffer<'r, 's> for ChemstationFidState {
+impl<'r> FromBuffer<'r> for ChemstationFidState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer<'s>, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
         rb.extract(282_usize)?;
         let time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
         // next value (0x11E..) is the end time
@@ -150,10 +150,10 @@ pub struct ChemstationFid {
     intensity: f64,
 }
 
-impl<'r, 's> FromBuffer<'r, 's> for Option<ChemstationFid> {
+impl<'r> FromBuffer<'r> for Option<ChemstationFid> {
     type State = &'r mut ChemstationFidState;
 
-    fn get(rb: &'r mut ReadBuffer<'s>, state: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
         if rb.len() < 4 && rb.eof() {
             return Ok(None);
         }
