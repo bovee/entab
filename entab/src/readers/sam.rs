@@ -1,5 +1,4 @@
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -7,20 +6,17 @@ use core::convert::TryInto;
 
 use crate::buffer::{Endian, NewLine};
 use crate::buffer::ReadBuffer;
-use crate::readers::{ReaderBuilder, RecordReader};
+use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
 
-pub struct BamReaderBuilder;
-
-impl Default for BamReaderBuilder {
-    fn default() -> Self {
-        BamReaderBuilder
-    }
+pub struct BamReader<'r> {
+    rb: ReadBuffer<'r>,
+    references: Vec<(String, usize)>,
 }
 
-impl ReaderBuilder for BamReaderBuilder {
-    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
+impl<'r> BamReader<'r> {
+    pub fn new(mut rb: ReadBuffer<'r>) -> Result<Self, EtError> {
         // read the magic & header length, and then the header
         if rb.extract::<&[u8]>(4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
@@ -46,7 +42,7 @@ impl ReaderBuilder for BamReaderBuilder {
             references.push((ref_name, ref_len));
             n_references -= 1;
         }
-        Ok(Box::new(BamReader { rb, references }))
+        Ok(BamReader { rb, references })
     }
 }
 
@@ -151,11 +147,6 @@ fn extract_bam_record<'r, 's>(
     })
 }
 
-pub struct BamReader<'r> {
-    rb: ReadBuffer<'r>,
-    references: Vec<(String, usize)>,
-}
-
 impl<'r> RecordReader for BamReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
         // each record in a BAM is a different gzip chunk so we
@@ -180,16 +171,12 @@ impl<'r> RecordReader for BamReader<'r> {
     }
 }
 
-pub struct SamReaderBuilder;
-
-impl Default for SamReaderBuilder {
-    fn default() -> Self {
-        SamReaderBuilder
-    }
+pub struct SamReader<'r> {
+    rb: ReadBuffer<'r>,
 }
 
-impl ReaderBuilder for SamReaderBuilder {
-    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
+impl<'r> SamReader<'r> {
+    pub fn new(mut rb: ReadBuffer<'r>) -> Result<Self, EtError> {
         // eventually we should read the headers and pass them along
         // to the Reader as metadata once we support that
         rb.reserve(1)?;
@@ -202,13 +189,8 @@ impl ReaderBuilder for SamReaderBuilder {
             rb.partial_consume(1);
         }
 
-        let reader = SamReader { rb };
-        Ok(Box::new(reader))
+        Ok(SamReader { rb })
     }
-}
-
-pub struct SamReader<'r> {
-    rb: ReadBuffer<'r>,
 }
 
 fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
@@ -315,8 +297,7 @@ mod tests {
 
         let f = File::open("tests/data/test.sam")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let builder = SamReaderBuilder::default();
-        let mut reader = builder.to_reader(rb)?;
+        let mut reader = SamReader::new(rb)?;
         if let Some(Record::Sam {
             query_name, seq, ..
         }) = reader.next()?
@@ -339,7 +320,7 @@ mod tests {
     #[test]
     fn test_sam_no_data() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(b"@HD\ttest\n");
-        let mut reader = SamReaderBuilder::default().to_reader(rb)?;
+        let mut reader = SamReader::new(rb)?;
         assert!(reader.next()?.is_none());
         Ok(())
     }
@@ -357,8 +338,7 @@ mod tests {
         assert_eq!(filetype, FileType::Bam);
         assert_eq!(compress, Some(FileType::Gzip));
         let rb = ReadBuffer::new(stream)?;
-        let builder = BamReaderBuilder::default();
-        let mut reader = builder.to_reader(rb)?;
+        let mut reader = BamReader::new(rb)?;
 
         if let Some(Record::Sam {
             query_name, seq, ..
@@ -391,7 +371,7 @@ mod tests {
             10, 10, 18,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReaderBuilder::default().to_reader(rb)?;
+        let mut reader = BamReader::new(rb)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -416,21 +396,21 @@ mod tests {
             117, 117, 117, 117, 117, 117, 117, 117, 62, 10, 10,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        assert!(BamReaderBuilder::default().to_reader(rb).is_err());
+        assert!(BamReader::new(rb).is_err());
 
         let data = [66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 105, 0, 110, 0, 0, 0, 0];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReaderBuilder::default().to_reader(rb)?;
+        let mut reader = BamReader::new(rb)?;
         assert!(reader.next().is_err());
 
         let data = [66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 252, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 138, 138, 138, 138, 138, 227, 10, 10, 14, 10, 20, 10, 10, 10, 10, 62, 10, 249, 62, 10, 200, 62, 10, 134, 62, 10, 10, 10, 255, 255, 255, 255, 138, 138, 138, 138, 138, 138, 116, 117, 138, 138, 138, 1, 0, 138, 138, 138, 138, 138, 138, 138, 138, 138, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240, 138, 138, 138, 138, 0, 0, 0, 0, 0, 255, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 10, 227, 205, 205, 205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240, 10, 10, 116, 116, 116, 174, 90, 10, 10, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240, 116, 116, 116, 174, 90, 84, 82, 13, 10, 26, 10, 116, 116, 116, 116, 116, 246, 245, 245, 240, 0, 0, 0, 0, 255, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 10, 227, 205, 205, 205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240, 10, 10, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240, 116, 116, 116, 116, 116, 246, 245, 245, 240, 0, 0, 0, 0, 255, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 10, 227, 205, 205, 205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139, 139, 116, 116, 116, 116, 116, 246, 245, 245, 240];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReaderBuilder::default().to_reader(rb)?;
+        let mut reader = BamReader::new(rb)?;
         assert!(reader.next().is_err());
 
         let data = [66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 62, 10, 134, 10, 62, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 4, 10, 10, 103, 10, 10, 10, 181, 181, 181, 181, 181, 181, 181, 181, 62, 10, 10, 10, 10, 10, 10, 10, 68, 61, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 107, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReaderBuilder::default().to_reader(rb)?;
+        let mut reader = BamReader::new(rb)?;
         assert!(reader.next().is_err());
 
         Ok(())

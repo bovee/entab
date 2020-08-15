@@ -3,7 +3,7 @@ use std::io::{Cursor, Read};
 
 use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
-use entab_base::readers::{get_builder, RecordReader};
+use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Record;
 use entab_base::utils::error::EtError;
 use pyo3::class::PyIterProtocol;
@@ -136,13 +136,7 @@ impl Reader {
         let buffer = ReadBuffer::new(reader).map_err(to_py)?;
 
         let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name());
-        let reader = if let Some(builder) = get_builder(parser_name) {
-            builder.to_reader(buffer).map_err(to_py)?
-        } else {
-            return Err(EntabError::py_err(
-                "No parser could be found for the data provided",
-            ));
-        };
+        let reader = get_reader(parser_name, buffer).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
         Ok(Reader {

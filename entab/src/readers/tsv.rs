@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -8,7 +7,7 @@ use memchr::memchr;
 
 use crate::buffer::NewLine;
 use crate::buffer::ReadBuffer;
-use crate::readers::{ReaderBuilder, RecordReader};
+use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
 
@@ -50,34 +49,16 @@ fn split<'a>(
     Ok(())
 }
 
-pub struct TsvReaderBuilder {
+pub struct TsvReader<'r> {
+    rb: ReadBuffer<'r>,
+    headers: Vec<String>,
     delim_char: u8,
     quote_char: u8,
+    cur_line: Vec<&'r str>,
 }
 
-impl TsvReaderBuilder {
-    pub fn delim(mut self, delim_char: u8) -> Self {
-        self.delim_char = delim_char;
-        self
-    }
-
-    pub fn quote(mut self, quote_char: u8) -> Self {
-        self.quote_char = quote_char;
-        self
-    }
-}
-
-impl Default for TsvReaderBuilder {
-    fn default() -> Self {
-        TsvReaderBuilder {
-            delim_char: b'\t',
-            quote_char: b'"',
-        }
-    }
-}
-
-impl ReaderBuilder for TsvReaderBuilder {
-    fn to_reader<'r>(&self, mut rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
+impl<'r> TsvReader<'r> {
+    pub fn new(mut rb: ReadBuffer<'r>, delim_char: u8, quote_char: u8) -> Result<Self, EtError> {
         let header = if let Some(NewLine(h)) = rb.extract(())? {
             h
         } else {
@@ -85,7 +66,7 @@ impl ReaderBuilder for TsvReaderBuilder {
         };
         // prefill with something impossible so we can tell how big
         let mut buffer = vec!["\t"; 32];
-        split(&mut buffer, header, self.delim_char, self.quote_char)?;
+        split(&mut buffer, header, delim_char, quote_char)?;
         let headers: Vec<String> = buffer
             .into_iter()
             .filter(|i| i != &"\t")
@@ -93,24 +74,14 @@ impl ReaderBuilder for TsvReaderBuilder {
             .collect();
         let n_headers = headers.len();
 
-        let reader = TsvReader {
+        Ok(TsvReader {
             rb,
             headers,
             cur_line: vec![""; n_headers],
-            delim_char: self.delim_char,
-            quote_char: self.quote_char,
-        };
-
-        Ok(Box::new(reader))
+            delim_char: delim_char,
+            quote_char: quote_char,
+        })
     }
-}
-
-pub struct TsvReader<'r> {
-    rb: ReadBuffer<'r>,
-    headers: Vec<String>,
-    delim_char: u8,
-    quote_char: u8,
-    cur_line: Vec<&'r str>,
 }
 
 impl<'r> RecordReader for TsvReader<'r> {
@@ -148,7 +119,7 @@ mod test {
     fn test_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
+        let mut pt = TsvReader::new(rb, b'\t', b'"')?;
 
         let mut ix = 0;
         while let Some(Record::Tsv(l, h)) = pt.next()? {
@@ -168,7 +139,7 @@ mod test {
     fn test_two_size_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReaderBuilder::default().to_reader(rb)?;
+        let mut pt = TsvReader::new(rb, b'\t', b'"')?;
 
         let mut ix = 0;
         while let Some(Record::Tsv(l, h)) = pt.next()? {

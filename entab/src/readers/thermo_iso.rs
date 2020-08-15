@@ -1,5 +1,4 @@
 use alloc::borrow::{Cow, ToOwned};
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -8,7 +7,7 @@ use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 
 use crate::buffer::{Endian, FromBuffer};
 use crate::buffer::{ReadBuffer};
-use crate::readers::{ReaderBuilder, RecordReader};
+use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
 
@@ -65,27 +64,6 @@ fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
     })
 }
 
-pub struct ThermoDxfReaderBuilder;
-
-impl Default for ThermoDxfReaderBuilder {
-    fn default() -> Self {
-        ThermoDxfReaderBuilder
-    }
-}
-
-impl ReaderBuilder for ThermoDxfReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        Ok(Box::new(ThermoDxfReader {
-            rb,
-            first: true,
-            n_scans_left: 0,
-            cur_mz_idx: 0,
-            mzs: vec![],
-            cur_time: 0.,
-        }))
-    }
-}
-
 pub struct ThermoDxfReader<'r> {
     rb: ReadBuffer<'r>,
     first: bool,
@@ -93,6 +71,19 @@ pub struct ThermoDxfReader<'r> {
     cur_mz_idx: usize,
     mzs: Vec<f64>,
     cur_time: f64,
+}
+
+impl<'r> ThermoDxfReader<'r> {
+    pub fn new(rb: ReadBuffer<'r>) -> Result<Self, EtError> {
+        Ok(ThermoDxfReader {
+            rb,
+            first: true,
+            n_scans_left: 0,
+            cur_mz_idx: 0,
+            mzs: vec![],
+            cur_time: 0.,
+        })
+    }
 }
 
 impl<'r> RecordReader for ThermoDxfReader<'r> {
@@ -166,32 +157,24 @@ impl<'r> RecordReader for ThermoDxfReader<'r> {
     }
 }
 
-pub struct ThermoCfReaderBuilder;
-
-impl Default for ThermoCfReaderBuilder {
-    fn default() -> Self {
-        ThermoCfReaderBuilder
-    }
-}
-
-impl ReaderBuilder for ThermoCfReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        Ok(Box::new(ThermoCfReader {
-            rb,
-            n_scans_left: 0,
-            cur_mz_idx: 0,
-            mzs: vec![],
-            cur_time: 0.,
-        }))
-    }
-}
-
 pub struct ThermoCfReader<'r> {
     rb: ReadBuffer<'r>,
     n_scans_left: usize,
     cur_mz_idx: usize,
     mzs: Vec<f64>,
     cur_time: f64,
+}
+
+impl<'r> ThermoCfReader<'r> {
+    pub fn new(rb: ReadBuffer<'r>) -> Result<Self, EtError> {
+        Ok(ThermoCfReader {
+            rb,
+            n_scans_left: 0,
+            cur_mz_idx: 0,
+            mzs: vec![],
+            cur_time: 0.,
+        })
+    }
 }
 
 impl<'r> RecordReader for ThermoCfReader<'r> {
@@ -277,8 +260,7 @@ mod tests {
 
         let f = File::open("tests/data/b3_alkanes.dxf")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let builder = ThermoDxfReaderBuilder::default();
-        let mut reader = builder.to_reader(rb)?;
+        let mut reader = ThermoDxfReader::new(rb)?;
         if let Some(Record::Mz {
             time,
             mz,
@@ -302,8 +284,7 @@ mod tests {
 
         let f = File::open("tests/data/test-0000.cf")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let builder = ThermoCfReaderBuilder::default();
-        let mut reader = builder.to_reader(rb)?;
+        let mut reader = ThermoCfReader::new(rb)?;
         if let Some(Record::Mz {
             time,
             mz,

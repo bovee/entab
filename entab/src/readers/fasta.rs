@@ -1,10 +1,9 @@
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use memchr::{memchr, memchr_iter};
 
 use crate::buffer::ReadBuffer;
-use crate::readers::{ReaderBuilder, RecordReader};
+use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
 
@@ -103,22 +102,14 @@ impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
     }
 }
 
-pub struct FastaReaderBuilder;
-
-impl Default for FastaReaderBuilder {
-    fn default() -> Self {
-        FastaReaderBuilder
-    }
-}
-
-impl ReaderBuilder for FastaReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        Ok(Box::new(FastaReader { rb }))
-    }
-}
-
 pub struct FastaReader<'r> {
     rb: ReadBuffer<'r>,
+}
+
+impl<'r> FastaReader<'r> {
+    pub fn new(rb: ReadBuffer<'r>) -> Result<Self, EtError> {
+        Ok(FastaReader { rb })
+    }
 }
 
 impl<'r> RecordReader for FastaReader<'r> {
@@ -144,7 +135,7 @@ mod tests {
     fn test_fasta_reading() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\n>id2\nTGCA";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
+        let mut pt = FastaReader::new(rb)?;
 
         let mut ix = 0;
         while let Some(Record::Sequence { id, sequence, .. }) = pt.next()? {
@@ -169,7 +160,7 @@ mod tests {
     fn test_fasta_multiline() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\nAAAA\n>id2\nTGCA";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
+        let mut pt = FastaReader::new(rb)?;
 
         if let Record::Sequence {
             id,
@@ -205,7 +196,7 @@ mod tests {
     fn test_fasta_multiline_extra_newlines() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\r\nACGT\r\nAAAA\r\n>id2\r\nTGCA\r\n";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
+        let mut pt = FastaReader::new(rb)?;
 
         if let Record::Sequence {
             id,
@@ -241,7 +232,7 @@ mod tests {
     fn test_fasta_empty_fields() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">hd\n\n>\n\n";
         let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReaderBuilder::default().to_reader(rb)?;
+        let mut pt = FastaReader::new(rb)?;
 
         if let Record::Sequence {
             id,

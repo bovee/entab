@@ -5,7 +5,7 @@ use std::io::{Cursor, Read};
 
 use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
-use entab_base::readers::{get_builder, RecordReader};
+use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Record as EtRecord;
 use entab_base::utils::error::EtError;
 use serde::Serialize;
@@ -138,13 +138,7 @@ impl Reader {
         let buffer = ReadBuffer::new(reader).map_err(to_js)?;
 
         let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name().to_string());
-        let reader = if let Some(builder) = get_builder(&parser_name) {
-            builder.to_reader(buffer).map_err(to_js)?
-        } else {
-            return Err(JsValue::from_str(
-                "No reader could be found for this file type",
-            ));
-        };
+        let reader = get_reader(&parser_name, buffer).map_err(to_js)?;
         Ok(Reader {
             parser: parser_name.to_string(),
             reader,

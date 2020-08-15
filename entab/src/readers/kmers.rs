@@ -1,42 +1,31 @@
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::string::String;
 use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;
 use crate::readers::fastq::FastqReader;
-use crate::readers::{ReaderBuilder, RecordReader};
+use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
-
-pub struct FastaKmerReaderBuilder {
-    // TODO: add a skip N's?
-    // TODO: add a remove newlines? (default true)
-    k: u8,
-}
-
-impl Default for FastaKmerReaderBuilder {
-    fn default() -> Self {
-        FastaKmerReaderBuilder { k: 21 }
-    }
-}
-
-impl ReaderBuilder for FastaKmerReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        Ok(Box::new(FastaKmerReader {
-            rb,
-            id: None,
-            seq_pos: 0,
-            k: self.k as usize,
-        }))
-    }
-}
 
 pub struct FastaKmerReader<'r> {
     rb: ReadBuffer<'r>,
     id: Option<String>,
     seq_pos: usize,
     k: usize,
+}
+
+impl<'r> FastaKmerReader<'r> {
+    pub fn new(rb: ReadBuffer<'r>, k: u8) -> Result<Self, EtError> {
+        // TODO: add a skip N's?
+        // TODO: add a remove newlines? (default true)
+        Ok(FastaKmerReader {
+            rb,
+            id: None,
+            seq_pos: 0,
+            k: k as usize,
+        })
+    }
 }
 
 impl<'r> RecordReader for FastaKmerReader<'r> {
@@ -65,36 +54,26 @@ impl<'r> RecordReader for FastaKmerReader<'r> {
     }
 }
 
-pub struct FastqKmerReaderBuilder {
-    // TODO: add a quality mask?
-    k: u8,
-}
-
-impl Default for FastqKmerReaderBuilder {
-    fn default() -> Self {
-        FastqKmerReaderBuilder { k: 21 }
-    }
-}
-
-impl ReaderBuilder for FastqKmerReaderBuilder {
-    fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
-        let fastq_reader = FastqReader { rb };
-        Ok(Box::new(FastqKmerReader {
-            fastq_reader,
-            k: self.k as usize,
-            id: "",
-            kmer_pos: 0,
-            sequence: b"",
-        }))
-    }
-}
-
 pub struct FastqKmerReader<'r> {
     fastq_reader: FastqReader<'r>,
     k: usize,
     id: &'r str,
     kmer_pos: usize,
     sequence: &'r [u8],
+}
+
+impl<'r> FastqKmerReader<'r> {
+    pub fn new(rb: ReadBuffer<'r>, k: u8) -> Result<Self, EtError> {
+        // TODO: add a quality mask?
+        let fastq_reader = FastqReader { rb };
+        Ok(FastqKmerReader {
+            fastq_reader,
+            k: k as usize,
+            id: "",
+            kmer_pos: 0,
+            sequence: b"",
+        })
+    }
 }
 
 impl<'r> RecordReader for FastqKmerReader<'r> {

@@ -7,11 +7,13 @@
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
 //! use entab::Record;
-//! use entab::readers::ReaderBuilder;
-//! use entab::readers::fasta::FastaReaderBuilder;
+//! use entab::buffer::ReadBuffer;
+//! use entab::readers::RecordReader;
+//! use entab::readers::fasta::FastaReader;
 //!
 //! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
-//! let mut reader = FastaReaderBuilder::default().from_stream(file)?;
+//! let buffer = ReadBuffer::new(file)?;
+//! let mut reader = FastaReader::new(buffer)?;
 //! while let Some(Record::Sequence { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }

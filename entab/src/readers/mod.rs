@@ -14,19 +14,20 @@ pub mod sam;
 pub mod thermo_iso;
 pub mod tsv;
 
-pub fn get_builder(parser_type: &str) -> Option<Box<dyn ReaderBuilder>> {
-    Some(match parser_type {
-        "bam" => Box::new(sam::BamReaderBuilder::default()),
-        "cf" => Box::new(thermo_iso::ThermoCfReaderBuilder::default()),
-        "chemstation" => Box::new(chemstation::ChemstationMsReaderBuilder::default()),
-        "dxf" => Box::new(thermo_iso::ThermoDxfReaderBuilder::default()),
-        "fasta" => Box::new(fasta::FastaReaderBuilder::default()),
-        "fastq" => Box::new(fastq::FastqReaderBuilder::default()),
-        "sam" => Box::new(sam::SamReaderBuilder::default()),
-        "tsv" => Box::new(tsv::TsvReaderBuilder::default()),
-        _ => return None,
+pub fn get_reader<'r>(parser_type: &str, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError> {
+    Ok(match parser_type {
+        "bam" => Box::new(sam::BamReader::new(rb)?),
+        "cf" => Box::new(thermo_iso::ThermoCfReader::new(rb)?),
+        "chemstation" => Box::new(chemstation::ChemstationMsReader::new(rb)?),
+        "dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb)?),
+        "fasta" => Box::new(fasta::FastaReader::new(rb)?),
+        "fastq" => Box::new(fastq::FastqReader::new(rb)?),
+        "sam" => Box::new(sam::SamReader::new(rb)?),
+        "tsv" => Box::new(tsv::TsvReader::new(rb, b'\t', b'"')?),
+        _ => return Err(EtError::new("No parser available for the filetype determine")),
     })
 }
+
 
 pub trait ReaderBuilder {
     fn to_reader<'r>(&self, rb: ReadBuffer<'r>) -> Result<Box<dyn RecordReader + 'r>, EtError>;

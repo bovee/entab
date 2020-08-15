@@ -8,7 +8,7 @@ use memmap::Mmap;
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
 use entab::filetype::FileType;
-use entab::readers::get_builder;
+use entab::readers::get_reader;
 use entab::EtError;
 
 pub fn write_reader_to_tsv<W>(
@@ -19,11 +19,7 @@ pub fn write_reader_to_tsv<W>(
 where
     W: FnMut(&[u8]) -> Result<(), EtError>,
 {
-    let mut rec_reader = if let Some(builder) = get_builder(filetype.to_parser_name()) {
-        builder.to_reader(buffer)?
-    } else {
-        return Err("No parser could not be found for the data provided".into());
-    };
+    let mut rec_reader = get_reader(filetype.to_parser_name(), buffer)?;
 
     let mut line_idx = 0;
     while let Some(n) = rec_reader.next()? {
