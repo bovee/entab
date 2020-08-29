@@ -120,5 +120,6 @@ impl<'r> Record<'r> {
         }
         Ok(())
     }
+
     // fn get(&self, field: &str) -> Option<Value>;
 }

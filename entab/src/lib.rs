@@ -31,6 +31,8 @@ pub mod buffer;
 pub mod compression;
 /// File format inference
 pub mod filetype;
+/// Lightweight parsers to read records out of buffers
+mod parsers;
 /// Parsers for specific file formats
 pub mod readers;
 /// Record and abstract record reading
@@ -38,6 +40,5 @@ pub mod record;
 /// Miscellanous utility functions and error handling
 pub mod utils;
 
-pub use readers::ReaderBuilder;
 pub use record::Record;
 pub use utils::error::EtError;

@@ -1,37 +1,148 @@
-use crate::buffer::Endian;
 use crate::buffer::ReadBuffer;
-use crate::readers::RecordReader;
+use crate::impl_reader;
+use crate::parsers::{Endian, FromBuffer, FromSlice};
 use crate::record::Record;
 use crate::EtError;
 
+fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'r [u8], EtError> {
+    rb.reserve(268)?;
+
+    // figure out how big the header should be and then get it
+    let raw_header_size = u32::out_of(&rb[264..268], Endian::Big)? as usize;
+    if raw_header_size == 0 {
+        return Err(EtError::new("Invalid header length of 0"));
+    }
+    let mut header_size = 2 * (raw_header_size - 1);
+    if !ms_format {
+        header_size *= 256;
+    }
+    if header_size < 512 {
+        return Err(EtError::new("Header length too short"));
+    }
+    rb.reserve(header_size)?;
+    Ok(rb.partial_consume(header_size))
+}
+
+#[derive(Debug)]
+pub struct ChemstationMetadata {
+    start_time: f64,
+    end_time: f64,
+    signal_name: String,
+    offset_correction: f64,
+    mult_correction: f64,
+}
+
+fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
+    let start_time = f64::from(i32::out_of(&header[282..], Endian::Big)?) / 60000.;
+    let end_time = f64::from(i32::out_of(&header[286..], Endian::Big)?) / 60000.;
+
+    let offset_correction = f64::out_of(&header[636..], Endian::Big)?;
+    let mult_correction = f64::out_of(&header[644..], Endian::Big)?;
+
+    let signal_name_len = usize::from(header[596]);
+    let signal_name = String::from_utf8((&header[597..597 + signal_name_len]).to_vec())?;
+
+    Ok(ChemstationMetadata {
+        start_time,
+        end_time,
+        signal_name,
+        offset_correction,
+        mult_correction,
+    })
+}
+
+#[derive(Debug)]
+pub struct ChemstationFidState {
+    cur_time: f64,
+    cur_delta: f64,
+    cur_intensity: f64,
+    time_step: f64,
+    metadata: ChemstationMetadata,
+}
+
+impl<'r> FromBuffer<'r> for ChemstationFidState {
+    type State = ();
+
+    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+        let header = read_agilent_header(&mut rb, false)?;
+        let metadata = get_metadata(&header)?;
+
+        Ok(ChemstationFidState {
+            cur_time: metadata.start_time,
+            cur_intensity: 0.,
+            cur_delta: 0.,
+            time_step: 0.2,
+            metadata,
+        })
+    }
+}
+
+pub struct ChemstationFidRecord {
+    time: f64,
+    intensity: f64,
+}
+
+impl<'r> From<ChemstationFidRecord> for Record<'r> {
+    fn from(record: ChemstationFidRecord) -> Self {
+        Record::Mz {
+            time: record.time,
+            mz: 0.,
+            intensity: record.intensity,
+        }
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
+    type State = &'r mut ChemstationFidState;
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+        if rb.len() < 2 {
+            rb.refill()?;
+        }
+        if rb.is_empty() && rb.eof() {
+            return Ok(None);
+        } else if rb.len() == 1 && rb.eof() {
+            return Err(EtError::new("FID record was incomplete"));
+        }
+        let time = state.cur_time;
+        state.cur_time += state.time_step;
+
+        let intensity: i16 = rb.extract(Endian::Big)?;
+        if intensity == 32767 {
+            rb.reserve(6)?;
+            state.cur_delta = 0.;
+            let high_value: i32 = rb.extract(Endian::Big)?;
+            let low_value: u16 = rb.extract(Endian::Big)?;
+            state.cur_intensity = f64::from(high_value) * 65534. + f64::from(low_value);
+        } else {
+            state.cur_delta += f64::from(intensity);
+            state.cur_intensity += state.cur_delta;
+        }
+        rb.consume(0);
+
+        Ok(Some(ChemstationFidRecord {
+            time,
+            intensity: state.cur_intensity * state.metadata.mult_correction
+                + state.metadata.offset_correction,
+        }))
+    }
+}
+
+#[derive(Debug)]
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
     cur_time: f64,
 }
 
-use crate::buffer::FromBuffer;
-
 impl<'r> FromBuffer<'r> for ChemstationMsState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
-        rb.reserve(266)?;
-        let n_scans_pos = if &rb[5..7] == b"GC" { 322 } else { 280 };
-        rb.partial_consume(266);
-        let raw_records_start = usize::from(rb.extract::<u16>(Endian::Big)?);
-        if raw_records_start <= 142 {
-            return Err("Invalid start position in header".into());
-        }
-        let records_start = 2 * raw_records_start - 2;
-        rb.reserve(records_start - 268)?;
-        rb.partial_consume(n_scans_pos - 268);
-        if records_start < n_scans_pos {
-            return Err(EtError::new("File ended abruptly"));
-        }
-        let n_scans = usize::from(rb.extract::<u16>(Endian::Big)?);
-        rb.partial_consume(records_start - n_scans_pos - 2);
+    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+        let header = read_agilent_header(&mut rb, true)?;
+        let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
+        // TODO: get other metadata
         Ok(ChemstationMsState {
             n_scans_left: n_scans,
             n_mzs_left: 0,
@@ -40,13 +151,23 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
     }
 }
 
-pub struct ChemstationMs {
+pub struct ChemstationMsRecord {
     time: f64,
     mz: f64,
     intensity: f64,
 }
 
-impl<'r> FromBuffer<'r> for Option<ChemstationMs> {
+impl<'r> From<ChemstationMsRecord> for Record<'r> {
+    fn from(record: ChemstationMsRecord) -> Self {
+        Record::Mz {
+            time: record.time,
+            mz: record.mz,
+            intensity: record.intensity,
+        }
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
     type State = &'r mut ChemstationMsState;
 
     fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
@@ -69,7 +190,8 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMs> {
         // just read the mz/intensity
         let mz = f64::from(rb.extract::<u16>(Endian::Big)?) / 20.;
         let raw_intensity: u16 = rb.extract(Endian::Big)?;
-        let intensity = f64::from(raw_intensity & 16383) * 8f64.powi(i32::from(raw_intensity) >> 14);
+        let intensity =
+            f64::from(raw_intensity & 16383) * 8f64.powi(i32::from(raw_intensity) >> 14);
         if state.n_mzs_left == 1 {
             state.n_scans_left -= 1;
             // eat the footer and bump the record number
@@ -78,7 +200,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMs> {
         }
         state.n_mzs_left -= 1;
 
-        Ok(Some(ChemstationMs {
+        Ok(Some(ChemstationMsRecord {
             time: state.cur_time,
             mz,
             intensity,
@@ -86,116 +208,259 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMs> {
     }
 }
 
-pub struct ChemstationMsReader<'r> {
-    rb: ReadBuffer<'r>,
-    state: ChemstationMsState,
+#[derive(Debug)]
+pub struct ChemstationMwdState {
+    n_wvs_left: usize,
+    cur_time: f64,
+    cur_intensity: f64,
+    time_step: f64,
+    metadata: ChemstationMetadata,
 }
 
-impl<'r> ChemstationMsReader<'r> {
-    pub fn new(mut rb: ReadBuffer<'r>) -> Result<Self, EtError> {
-        let state = rb.extract(())?;
-        Ok(ChemstationMsReader {
-            rb,
-            state,
+impl<'r> FromBuffer<'r> for ChemstationMwdState {
+    type State = ();
+
+    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+        let header = read_agilent_header(&mut rb, false)?;
+        let metadata = get_metadata(&header)?;
+
+        Ok(ChemstationMwdState {
+            n_wvs_left: 0,
+            cur_time: metadata.start_time,
+            cur_intensity: 0.,
+            time_step: 0.2,
+            metadata,
         })
     }
 }
 
-impl<'r> RecordReader for ChemstationMsReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
-        let record: Option<ChemstationMs> = self.rb.extract(&mut self.state)?;
-        Ok(record.map(|ChemstationMs { time, mz, intensity }| {
-            Record::Mz {
-                time,
-                mz,
-                intensity,
+pub struct ChemstationMwdRecord<'r> {
+    signal_name: &'r str,
+    time: f64,
+    intensity: f64,
+}
+
+impl<'r> From<ChemstationMwdRecord<'r>> for Record<'r> {
+    fn from(record: ChemstationMwdRecord) -> Self {
+        // signal name is something like "MWD A, Sig=210,5 Ref=360,100"
+        let mz = record
+            .signal_name
+            .splitn(2, "Sig=")
+            .nth(1)
+            .and_then(|last_part| {
+                last_part
+                    .splitn(2, ',')
+                    .next()
+                    .and_then(|sig_name| sig_name.parse::<f64>().ok())
+            })
+            .unwrap_or_else(|| 0.);
+
+        Record::Mz {
+            time: record.time,
+            mz,
+            intensity: record.intensity,
+        }
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
+    type State = &'r mut ChemstationMwdState;
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+        if rb.is_empty() && rb.eof() {
+            return Ok(None);
+        }
+        if state.n_wvs_left == 0 {
+            // mask out the top nibble because it's always 0b0001 (i hope?)
+            state.n_wvs_left = usize::from(rb.extract::<u16>(Endian::Big)?) & 0b111111111111;
+            if state.n_wvs_left == 0 {
+                // TODO: consume the rest of the file so this can't accidentally repeat?
+                return Ok(None);
             }
+        }
+
+        let time = state.cur_time;
+        state.cur_time += state.time_step;
+
+        let intensity: i16 = rb.extract(Endian::Big)?;
+        if intensity == -32768 {
+            state.cur_intensity = f64::from(rb.extract::<i32>(Endian::Big)?);
+        } else {
+            state.cur_intensity += f64::from(intensity);
+        }
+        state.n_wvs_left -= 1;
+        rb.consume(0);
+
+        Ok(Some(ChemstationMwdRecord {
+            signal_name: &state.metadata.signal_name,
+            time,
+            intensity: state.cur_intensity * state.metadata.mult_correction
+                + state.metadata.offset_correction,
         }))
     }
 }
 
-pub struct ChemstationFidState {
-    time: f64,
-    intensity: f64,
+#[derive(Debug)]
+pub struct ChemstationUvState {
+    n_scans_left: usize,
+    n_wvs_left: usize,
+    cur_time: f64,
+    cur_intensity: f64,
+    cur_wv: f64,
+    wv_step: f64,
 }
 
-impl<'r> FromBuffer<'r> for ChemstationFidState {
+impl<'r> FromBuffer<'r> for ChemstationUvState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
-        rb.extract(282_usize)?;
-        let time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
-        // next value (0x11E..) is the end time
-        rb.extract(738_usize)?;
+    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+        let header = read_agilent_header(&mut rb, false)?;
+        let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
-        Ok(ChemstationFidState {
-            time,
-            intensity: 0.,
+        // TODO: get other metadata
+        Ok(ChemstationUvState {
+            n_scans_left: n_scans,
+            n_wvs_left: 0,
+            cur_time: 0.,
+            cur_wv: 0.,
+            cur_intensity: 0.,
+            wv_step: 0.,
         })
     }
 }
 
-pub struct ChemstationFid {
+#[derive(Debug)]
+pub struct ChemstationUvRecord {
     time: f64,
+    wavelength: f64,
     intensity: f64,
 }
 
-impl<'r> FromBuffer<'r> for Option<ChemstationFid> {
-    type State = &'r mut ChemstationFidState;
+impl<'r> From<ChemstationUvRecord> for Record<'r> {
+    fn from(record: ChemstationUvRecord) -> Self {
+        Record::Mz {
+            time: record.time,
+            mz: record.wavelength,
+            intensity: record.intensity,
+        }
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
+    type State = &'r mut ChemstationUvState;
 
     fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
-        if rb.len() < 4 && rb.eof() {
+        if state.n_scans_left == 0 {
             return Ok(None);
         }
 
-        let time = state.time;
-        // TODO: 0.2 / 60.0 should be obtained from the file???
-        state.time += 0.2 / 60.;
+        // refill case
+        if state.n_wvs_left == 0 {
+            rb.extract(4_usize)?;
+            // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
+            state.cur_time = (rb.extract::<u32>(Endian::Little)? as f64) / 60000.;
+            let wv_start: u16 = rb.extract(Endian::Little)?;
+            let wv_end: u16 = rb.extract(Endian::Little)?;
+            let wv_step: u16 = rb.extract(Endian::Little)?;
 
-        let intensity: i32 = rb.extract(Endian::Big)?;
-        if intensity == 32767 {
-            rb.reserve(6)?;
-            let high_value: i32 = rb.extract(Endian::Big)?;
-            let low_value: u16 = rb.extract(Endian::Big)?;
-            state.intensity = f64::from(high_value) * 65534. + f64::from(low_value);
+            state.n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
+            state.cur_wv = f64::from(wv_start) / 20.;
+            state.wv_step = f64::from(wv_step) / 20.;
+            rb.extract(8_usize)?;
+        };
+
+        let delta = rb.extract::<i16>(Endian::Little)?;
+        if delta == -32768 {
+            state.cur_intensity = f64::from(rb.extract::<u32>(Endian::Little)?);
         } else {
-            state.intensity += f64::from(intensity);
+            state.cur_intensity += f64::from(delta);
         }
-        rb.consume(0);
 
-        Ok(Some(ChemstationFid {
-            time,
-            intensity: state.intensity,
+        if state.n_wvs_left == 1 {
+            state.n_scans_left -= 1;
+            // eat the footer and bump the record number
+            rb.consume(0);
+        }
+        state.n_wvs_left -= 1;
+
+        Ok(Some(ChemstationUvRecord {
+            time: state.cur_time,
+            wavelength: state.cur_wv,
+            intensity: state.cur_intensity / 2000.,
         }))
     }
 }
 
+impl_reader!(
+    ChemstationFidReader,
+    ChemstationFidState,
+    ChemstationFidRecord
+);
+impl_reader!(ChemstationMsReader, ChemstationMsState, ChemstationMsRecord);
+impl_reader!(
+    ChemstationMwdReader,
+    ChemstationMwdState,
+    ChemstationMwdRecord
+);
+impl_reader!(ChemstationUvReader, ChemstationUvState, ChemstationUvRecord);
 
 // scratch with offsets for info in different files
 
-// FID - 02 38 31 00
-//  * 264 - header_chunks // 2 + 1
-//  * 282 - x min? (i32?)
-//  * 286 - x max? (i32?)
-
-
-// MWD - 02 33 30 00
+// FID - 02 38 31 00 ("81") (missing 01 38 00 00)
+// MWD - 02 33 30 00 ("30")
+// (possibly also 03 31 37 39 and 03 31 38 31 ?)
+//  - 5 - "GC / MS Data File" or other?
 //  - 24 - Sample Name
+//  - 86 - Sample Description?
 //  - 148 - Operator Name
 //  - 178 - Run Date
+//  - 208 - Instrument Name
+//  - 218 - LC or GC
 //  - 228 - Method Name
-//  * 264 - header_chunks // 2 + 1
-//  * 282 - x min? (i32?)
-//  * 286 - x max? (i32?)
+//  * 264 - 512 byte header chunks // 2 + 1
+//  * 282 - Start Time (i32)
+//  * 286 - End Time (i32)
+//  M 322 - Collection software?
+//  M 355 - Software Version?
+//  M 405 - Another Version?
+//  - 530 - lower end of mz/wv range?
+//  - 532 - upper end of mz/wv range?
 //  - 580 - Units
-//  - 596 - Channel Info
-//   1024 - data start?
+//  M 596 - Channel Info (str)
+//  - 644 - (f32/64?)
 
-// LC - 03 31 33 31
-//  * 264 - header_chunks // 2 + 1
+// MS - 01 32 00 00 ("2") (missing 02 32 30?)
+//  - 5 - "GC / MS Data File" or other?
+//  ^ 24 - Sample Name
+//  ^ 86 - Sample Description?
+//  ^ 148 - Operator Name
+//  ^ 178 - Run Date
+//  ^ 208 - Instrument Name
+//  ^ 218 - LC or GC
+//  ^ 228 - Method Name
+//  - 252 - Sequence? (u16)
+//  - 254 - Vial? (u16)
+//  - 256 - Replicate? (u16)
+//  - 260 - TIC Offset? (i32)
+//  - 264 - total header bytes // 2 + 1
+//  - 272 - Normalization offset? (i32)
+//  ^ 282 - Start Time (i32)
+//  ^ 286 - End Time (i32)
+//  - 322 - Number of records
+//  - 368 - "GC / MS Data File" as utf16
+//  - 448 - Instrument name as utf16
+//  - 576 - "GC"
+//  - 616 - Method directory
+//  5768 - data start (GC)
+
+// LC - 03 31 33 31 ("131")
+//  * 264 - 512 byte header chunks // 2 + 1
+//  ? 278 - Number of Records
 //  - 858 - Sample Name
 //  - 1880 - Operator Name
 //  - 2391 - Run Date
+//  - 2492 - Instrument Name
+//  - 2533 - "LC"
 //  - 2574 - Method Name
 //  - 3093 - Units
 //   4096 - data start?
@@ -204,10 +469,40 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFid> {
 mod tests {
     use super::*;
     use crate::buffer::ReadBuffer;
+    use crate::readers::RecordReader;
 
     #[cfg(feature = "std")]
     #[test]
-    fn test_chemstation_reader() -> Result<(), EtError> {
+    fn test_chemstation_reader_fid() -> Result<(), EtError> {
+        use std::fs::File;
+
+        let f = File::open("tests/data/test_fid.ch")?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
+        let mut reader = ChemstationFidReader::new(rb)?;
+        if let Record::Mz {
+            time,
+            mz,
+            intensity,
+        } = reader.next()?.unwrap()
+        {
+            // TODO: try to confirm this time is correct
+            assert!((time - 20184.8775).abs() < 0.0001);
+            assert_eq!(mz, 0.);
+            assert!((intensity - 17.500).abs() < 0.001);
+        } else {
+            panic!("Chemstation reader returned non-Mz record");
+        }
+        let mut n_mzs = 1;
+        while let Some(_) = reader.next()? {
+            n_mzs += 1;
+        }
+        assert_eq!(n_mzs, 2699);
+        Ok(())
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_chemstation_reader_ms() -> Result<(), EtError> {
         use std::fs::File;
 
         let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS")?;
@@ -245,6 +540,62 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_chemstation_reader_mwd() -> Result<(), EtError> {
+        use std::fs::File;
+
+        let f = File::open("tests/data/chemstation_mwd.d/mwd1A.ch")?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
+        let mut reader = ChemstationMwdReader::new(rb)?;
+        if let Record::Mz {
+            time,
+            mz,
+            intensity,
+        } = reader.next()?.unwrap()
+        {
+            assert!((time - -0.039667).abs() < 0.000001);
+            assert_eq!(mz, 210.);
+            assert!((intensity - -36.34977).abs() < 0.00001);
+        } else {
+            panic!("Chemstation reader returned non-Mz record");
+        }
+        let mut n_mzs = 1;
+        while let Some(_) = reader.next()? {
+            n_mzs += 1;
+        }
+        assert_eq!(n_mzs, 1801);
+        Ok(())
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_chemstation_reader_uv() -> Result<(), EtError> {
+        use std::fs::File;
+
+        let f = File::open("tests/data/carotenoid_extract.d/dad1.uv")?;
+        let rb = ReadBuffer::new(Box::new(&f))?;
+        let mut reader = ChemstationUvReader::new(rb)?;
+        if let Record::Mz {
+            time,
+            mz,
+            intensity,
+        } = reader.next()?.unwrap()
+        {
+            assert!((time - 0.001333).abs() < 0.000001);
+            assert!((mz - 200.).abs() < 0.000001);
+            assert_eq!(intensity, -15.6675);
+        } else {
+            panic!("Chemstation reader returned non-Mz record");
+        }
+        let mut n_mzs = 1;
+        while let Some(_) = reader.next()? {
+            n_mzs += 1;
+        }
+        assert_eq!(n_mzs, 6744 * 301);
+        Ok(())
+    }
+
     #[test]
     fn test_chemstation_reader_bad_fuzzes() -> Result<(), EtError> {
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xaf%\xa8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>\n\xe3\x86\x86\n>>\n\n\n\n>\n\n\n\xaf%\x00\x00\x00\x00\x00\x00\x01\x04\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>>\n\n\n\n>\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n>\n\n\n\n>";
@@ -253,8 +604,7 @@ mod tests {
 
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n>\n\xE3\x86\n>\n>\n\n>\n\xE3\x86&\n>@\x10\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n>\n\xE3\n\n\n\n\n\n\x14\n\n\n\n>\n\xC8>\n\x86\n>\n\n\n\n\n\n\n\n\n\n\n\n>\n\xE3\xCD\xCD\xCD\x00\x00\n\n\n\n\n\n>\n\n>\n\x00\n\x00\n\n\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\x00>\x0b\n\x01\x00>\n\n\n\x00>\n\n\x01\x00>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\x00\x00\x00\n\n\n\n\n>\n\xE3\xCD\n>\n\n>\n\xE3\n>@W\n\n+\n\n\n>\n\n>\n\xE3>*\n\x86*\n\x86\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\x01\x00\x00\x00\x00\x00\x00\x01>\n\n>\n\n>\n\xE3\n\n\n\n\n\x01\x00\x00\x00\x00\x00\x00\x00\n\xE3\n>@W>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00";
         let rb = ReadBuffer::from_slice(test_data);
-        let mut reader = ChemstationMsReader::new(rb)?;
-        assert!(reader.next().is_err());
+        assert!(ChemstationMsReader::new(rb).is_err());
 
         let test_data = b"\x012>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xAF%\xA8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nVVVVV\n\n\xAF%\xA8\x00\xFE\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\n\n\n\n\n\n\n\n\n>";
         let rb = ReadBuffer::from_slice(test_data);

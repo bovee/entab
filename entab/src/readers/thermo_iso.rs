@@ -5,8 +5,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 
-use crate::buffer::{Endian, FromBuffer};
-use crate::buffer::{ReadBuffer};
+use crate::buffer::ReadBuffer;
+use crate::parsers::{Endian, FromBuffer};
 use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;

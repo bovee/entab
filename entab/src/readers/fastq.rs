@@ -1,6 +1,7 @@
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
+use crate::parsers::FromBuffer;
 use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
@@ -8,10 +9,8 @@ use crate::EtError;
 pub struct FastqRecord<'r> {
     id: &'r str,
     sequence: &'r [u8],
-    quality: &'r [u8]
+    quality: &'r [u8],
 }
-
-use crate::buffer::FromBuffer;
 
 impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
     type State = ();
@@ -117,13 +116,14 @@ impl<'r> FastqReader<'r> {
 
 impl<'r> RecordReader for FastqReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        Ok(self.rb.extract::<Option<FastqRecord>>(())?.map(|r: FastqRecord| {
-            Record::Sequence {
+        Ok(self
+            .rb
+            .extract::<Option<FastqRecord>>(())?
+            .map(|r: FastqRecord| Record::Sequence {
                 id: r.id,
                 sequence: r.sequence.into(),
                 quality: Some(r.quality),
-            }
-        }))
+            }))
     }
 }
 

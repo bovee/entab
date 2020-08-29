@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use memchr::{memchr, memchr_iter};
 
 use crate::buffer::ReadBuffer;
+use crate::parsers::FromBuffer;
 use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
@@ -13,9 +14,6 @@ pub struct FastaRecord<'r> {
     id: &'r str,
     sequence: Cow<'r, [u8]>,
 }
-
-use crate::buffer::FromBuffer;
-
 
 impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
     type State = ();
@@ -114,13 +112,14 @@ impl<'r> FastaReader<'r> {
 
 impl<'r> RecordReader for FastaReader<'r> {
     fn next(&mut self) -> Result<Option<Record>, EtError> {
-        Ok(self.rb.extract::<Option<FastaRecord>>(())?.map(|r: FastaRecord| {
-            Record::Sequence {
+        Ok(self
+            .rb
+            .extract::<Option<FastaRecord>>(())?
+            .map(|r: FastaRecord| Record::Sequence {
                 id: r.id,
                 sequence: r.sequence,
                 quality: None,
-            }
-        }))
+            }))
     }
 }
 

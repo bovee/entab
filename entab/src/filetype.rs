@@ -41,14 +41,12 @@ pub enum FileType {
     Scf, // http://staden.sourceforge.net/manual/formats_unix_2.html
     Ztr, // http://staden.sourceforge.net/manual/formats_unix_12.html
     // chemoinformatics
-    AgilentMs,       // ms   0x01, 0x32
     AgilentMsMsScan, // bin   0x01, 0x01
-    AgilentChemstation,
-    AgilentCsDad, // uv   0x02, 0x33
-    AgilentDad,   // sd
-    AgilentFid,   // ch
-    AgilentMwd,   // ch   0x02, 0x33
-    AgilentMwd2,  // ch   0x03, 0x31
+    AgilentChemstationFid,
+    AgilentChemstationMs,
+    AgilentChemstationMwd,
+    AgilentChemstationUv,
+    AgilentDad, // sd
     BrukerBaf,
     BrukerMsms,
     InficonHapsite,
@@ -88,8 +86,10 @@ impl FileType {
                 b"@HD\t" => return FileType::Sam,
                 b"@SQ\t" => return FileType::Sam,
                 b"\x2Escf" => return FileType::Scf,
-                [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstation,
-                [0x02, 0x38, 0x31, 0x00] => return FileType::AgilentFid,
+                [0x02, 0x38, 0x31, 0x00] => return FileType::AgilentChemstationFid,
+                [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstationMs,
+                [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
+                [0x03, 0x31, 0x33, 0x31] => return FileType::AgilentChemstationUv,
                 [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
                 [0xFF, 0xFF, 0x60, 0x00] | [0xFF, 0xFF, 0x50, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
@@ -109,7 +109,6 @@ impl FileType {
             [0x0F, 0x8B] => return FileType::Gzip,
             [0x42, 0x5A] => return FileType::Bzip,
             [0xFD, 0x37] => return FileType::Lzma,
-            [0x02, 0x38] => return FileType::AgilentFid,
             [0x24, 0x00] => return FileType::BrukerBaf,
             [0x43, 0x44] => return FileType::NetCdf,
             _ => {}
@@ -129,8 +128,10 @@ impl FileType {
             FileType::Bzip => &["bz", "bz2", "bzip"],
             FileType::Lzma => &["xz"],
             FileType::Zstd => &["zstd"],
-            FileType::AgilentChemstation => &["ms"],
-            FileType::AgilentFid => &["ch"],
+            FileType::AgilentChemstationFid => &["ch"],
+            FileType::AgilentChemstationMs => &["ms"],
+            FileType::AgilentChemstationMwd => &["ch"],
+            FileType::AgilentChemstationUv => &["uv"],
             FileType::Bam => &["bam"],
             FileType::BrukerBaf => &["baf"],
             FileType::BrukerMsms => &["ami"],
@@ -155,7 +156,10 @@ impl FileType {
     /// Returns the "best" parser for a given file
     pub fn to_parser_name(&self) -> &str {
         match self {
-            FileType::AgilentChemstation => "chemstation",
+            FileType::AgilentChemstationFid => "chemstation_fid",
+            FileType::AgilentChemstationMs => "chemstation_ms",
+            FileType::AgilentChemstationMwd => "chemstation_mwd",
+            FileType::AgilentChemstationUv => "chemstation_uv",
             FileType::Bam => "bam",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",

@@ -1,0 +1,52 @@
+ 443 41e0 4ce5bade  1ff
+Method       Method started:  line# 2 vial# 11 inj# 1       15:46:38 11/18/10
+  67 41e0 4ce5bade    0
+Method       Instrument running sample Vial 11              15:46:38 11/18/10
+   0 1da9 4ce5bb2b  600
+1100 THM   1 Column temperature (left)  = 40.0 °C           15:47:55 11/18/10
+   0 1da9 4ce5bb2b  600
+1100 THM   1 Column temperature (right) = 24.6 °C           15:47:55 11/18/10
+   0 1da7 4ce5bb2b  600
+1100 PMP   1 Pressure = 47.1 bar                            15:47:55 11/18/10
+   0 1da4 4ce5bb2b    0
+G1946D     1 Lock object register failed.                   15:47:55 11/18/10
+   0 1da9 4ce5bdfb  600
+1100 THM   1 Column temperature (left)  = 40.0 °C           15:59:55 11/18/10
+   0 1da9 4ce5bdfb  600
+1100 THM   1 Column temperature (right) = 24.6 °C           15:59:55 11/18/10
+   0 1da7 4ce5bdfb  600
+1100 PMP   1 Pressure = 53.1 bar                            15:59:55 11/18/10
+   0 1da4 4ce5bdfc    0
+G1946D     1 Lock object register failed.                   15:59:56 11/18/10
+   0 1da4 4ce5bdfc    0
+G1946D     1 Lock object register failed.                   15:59:56 11/18/10
+   0 1da4 4ce5bdfc    0
+G1946D     1 Lock object register failed.                   15:59:56 11/18/10
+  67 41e0 4ce5beb1    0
+Method       Instrument run completed                       16:02:57 11/18/10
+  70 41de 4ce5beb1    0
+CP Macro     ... was not created.                           16:02:57 11/18/10
+  70 41de 4ce5beb1    0
+CP Macro     The MSDIAG.REG is incomplete. Msparm.txt  ...  16:02:57 11/18/10
+ 875 41e0 4ce5beb3    0
+Method       Saving Method RUN.M                            16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     Analyzing rawdata 101118Q1.D                   16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     No detector signal requested in Signal Detail  16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     Error in Hook PostRun : BatchPostRun           16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     ========================================       16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     In Command ObjHdrVal in macro BatchAddNewRun   16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     at line 319 in file C:\HPCHEM\CORE\BATCH.MCX   16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     Error 16420 occurred:                          16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     Item doesn't exist                             16:02:59 11/18/10
+  70 41de 4ce5beb3    0
+CP Macro     ========================================       16:02:59 11/18/10
+  67 41e0 4ce5beb3    0
+Method       Method completed                               16:02:59 11/18/10

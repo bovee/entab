@@ -5,8 +5,8 @@ use core::mem;
 
 use memchr::memchr;
 
-use crate::buffer::NewLine;
 use crate::buffer::ReadBuffer;
+use crate::parsers::NewLine;
 use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
@@ -78,8 +78,8 @@ impl<'r> TsvReader<'r> {
             rb,
             headers,
             cur_line: vec![""; n_headers],
-            delim_char: delim_char,
-            quote_char: quote_char,
+            delim_char,
+            quote_char,
         })
     }
 }
