@@ -13,7 +13,7 @@
 //!
 //! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
 //! let buffer = ReadBuffer::new(file)?;
-//! let mut reader = FastaReader::new(buffer)?;
+//! let mut reader = FastaReader::new(buffer, ())?;
 //! while let Some(Record::Sequence { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }

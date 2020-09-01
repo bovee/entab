@@ -68,12 +68,10 @@ impl_extract!(f32);
 impl_extract!(f64);
 
 impl<'r> FromBuffer<'r> for () {
-    type State = usize;
+    type State = ();
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer, amt: Self::State) -> Result<Self, EtError> {
-        rb.reserve(amt)?;
-        rb.partial_consume(amt);
+    fn get(_rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
         Ok(())
     }
 }

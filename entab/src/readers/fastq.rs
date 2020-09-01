@@ -1,8 +1,8 @@
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
+use crate::impl_reader;
 use crate::parsers::FromBuffer;
-use crate::readers::RecordReader;
 use crate::record::Record;
 use crate::EtError;
 
@@ -12,10 +12,20 @@ pub struct FastqRecord<'r> {
     quality: &'r [u8],
 }
 
-impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
-    type State = ();
+impl<'r> From<FastqRecord<'r>> for Record<'r> {
+    fn from(record: FastqRecord<'r>) -> Self {
+        Record::Sequence {
+            id: record.id,
+            sequence: record.sequence.into(),
+            quality: Some(record.quality),
+        }
+    }
+}
 
-    fn get(rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
+    type State = &'r mut ();
+
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         if rb.is_empty() {
             if rb.eof() {
                 return Ok(None);
@@ -104,39 +114,19 @@ impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
     }
 }
 
-pub struct FastqReader<'r> {
-    pub rb: ReadBuffer<'r>,
-}
-
-impl<'r> FastqReader<'r> {
-    pub fn new(rb: ReadBuffer<'r>) -> Result<Self, EtError> {
-        Ok(FastqReader { rb })
-    }
-}
-
-impl<'r> RecordReader for FastqReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
-        Ok(self
-            .rb
-            .extract::<Option<FastqRecord>>(())?
-            .map(|r: FastqRecord| Record::Sequence {
-                id: r.id,
-                sequence: r.sequence.into(),
-                quality: Some(r.quality),
-            }))
-    }
-}
+impl_reader!(FastqReader, FastqRecord, (), ());
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::buffer::ReadBuffer;
+    use crate::readers::RecordReader;
 
     #[test]
     fn test_fastq_reading() -> Result<(), EtError> {
         const TEST_FASTQ: &[u8] = b"@id\nACGT\n+\n!!!!\n@id2\nTGCA\n+\n!!!!";
         let rb = ReadBuffer::from_slice(TEST_FASTQ);
-        let mut pt = FastqReader::new(rb)?;
+        let mut pt = FastqReader::new(rb, ())?;
 
         if let Some(Record::Sequence {
             id,
@@ -172,7 +162,7 @@ mod tests {
     fn test_fastq_extra_newlines() -> Result<(), EtError> {
         const TEST_FASTQ: &[u8] = b"@id\r\nACGT\r\n+\r\n!!!!\r\n@id2\r\nTGCA\r\n+\r\n!!!!\r\n";
         let rb = ReadBuffer::from_slice(TEST_FASTQ);
-        let mut pt = FastqReader::new(rb)?;
+        let mut pt = FastqReader::new(rb, ())?;
 
         if let Some(Record::Sequence {
             id,
@@ -208,12 +198,12 @@ mod tests {
     fn test_fastq_pathological_sequences() -> Result<(), EtError> {
         const TEST_FASTQ_1: &[u8] = b"@DF\n+\n+\n!";
         let rb = ReadBuffer::from_slice(TEST_FASTQ_1);
-        let mut pt = FastqReader::new(rb)?;
+        let mut pt = FastqReader::new(rb, ())?;
         assert!(pt.next().is_err());
 
         const TEST_FASTQ_2: &[u8] = b"@\n";
         let rb = ReadBuffer::from_slice(TEST_FASTQ_2);
-        let mut pt = FastqReader::new(rb)?;
+        let mut pt = FastqReader::new(rb, ())?;
         assert!(pt.next().is_err());
 
         Ok(())
@@ -226,7 +216,7 @@ mod tests {
 
         let f = File::open("tests/data/test.fastq")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = FastqReader::new(rb)?;
+        let mut reader = FastqReader::new(rb, ())?;
         while let Some(_) = reader.next()? {}
         Ok(())
     }

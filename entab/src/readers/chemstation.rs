@@ -63,7 +63,7 @@ pub struct ChemstationFidState {
 impl<'r> FromBuffer<'r> for ChemstationFidState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
@@ -138,7 +138,7 @@ pub struct ChemstationMsState {
 impl<'r> FromBuffer<'r> for ChemstationMsState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         let header = read_agilent_header(&mut rb, true)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
@@ -184,7 +184,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
             }
             state.n_mzs_left = usize::from((raw_n_mzs_left - 13) / 2);
             state.cur_time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
-            rb.extract(12_usize)?;
+            rb.extract::<&[u8]>(12_usize)?;
         };
 
         // just read the mz/intensity
@@ -195,7 +195,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
         if state.n_mzs_left == 1 {
             state.n_scans_left -= 1;
             // eat the footer and bump the record number
-            rb.extract(10_usize)?;
+            rb.extract::<&[u8]>(10_usize)?;
             rb.consume(0);
         }
         state.n_mzs_left -= 1;
@@ -220,7 +220,7 @@ pub struct ChemstationMwdState {
 impl<'r> FromBuffer<'r> for ChemstationMwdState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
@@ -313,7 +313,7 @@ pub struct ChemstationUvState {
 impl<'r> FromBuffer<'r> for ChemstationUvState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
+    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
@@ -356,7 +356,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
 
         // refill case
         if state.n_wvs_left == 0 {
-            rb.extract(4_usize)?;
+            rb.extract::<&[u8]>(4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
             state.cur_time = (rb.extract::<u32>(Endian::Little)? as f64) / 60000.;
             let wv_start: u16 = rb.extract(Endian::Little)?;
@@ -366,7 +366,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
             state.n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
-            rb.extract(8_usize)?;
+            rb.extract::<&[u8]>(8_usize)?;
         };
 
         let delta = rb.extract::<i16>(Endian::Little)?;
@@ -393,16 +393,28 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
 
 impl_reader!(
     ChemstationFidReader,
+    ChemstationFidRecord,
     ChemstationFidState,
-    ChemstationFidRecord
+    ()
 );
-impl_reader!(ChemstationMsReader, ChemstationMsState, ChemstationMsRecord);
+impl_reader!(
+    ChemstationMsReader,
+    ChemstationMsRecord,
+    ChemstationMsState,
+    ()
+);
 impl_reader!(
     ChemstationMwdReader,
+    ChemstationMwdRecord,
     ChemstationMwdState,
-    ChemstationMwdRecord
+    ()
 );
-impl_reader!(ChemstationUvReader, ChemstationUvState, ChemstationUvRecord);
+impl_reader!(
+    ChemstationUvReader,
+    ChemstationUvRecord,
+    ChemstationUvState,
+    ()
+);
 
 // scratch with offsets for info in different files
 
@@ -478,7 +490,7 @@ mod tests {
 
         let f = File::open("tests/data/test_fid.ch")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = ChemstationFidReader::new(rb)?;
+        let mut reader = ChemstationFidReader::new(rb, ())?;
         if let Record::Mz {
             time,
             mz,
@@ -507,7 +519,7 @@ mod tests {
 
         let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = ChemstationMsReader::new(rb)?;
+        let mut reader = ChemstationMsReader::new(rb, ())?;
         if let Record::Mz {
             time,
             mz,
@@ -547,7 +559,7 @@ mod tests {
 
         let f = File::open("tests/data/chemstation_mwd.d/mwd1A.ch")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = ChemstationMwdReader::new(rb)?;
+        let mut reader = ChemstationMwdReader::new(rb, ())?;
         if let Record::Mz {
             time,
             mz,
@@ -575,7 +587,7 @@ mod tests {
 
         let f = File::open("tests/data/carotenoid_extract.d/dad1.uv")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = ChemstationUvReader::new(rb)?;
+        let mut reader = ChemstationUvReader::new(rb, ())?;
         if let Record::Mz {
             time,
             mz,
@@ -600,15 +612,15 @@ mod tests {
     fn test_chemstation_reader_bad_fuzzes() -> Result<(), EtError> {
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xaf%\xa8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>\n\xe3\x86\x86\n>>\n\n\n\n>\n\n\n\xaf%\x00\x00\x00\x00\x00\x00\x01\x04\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>>\n\n\n\n>\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n>\n\n\n\n>";
         let rb = ReadBuffer::from_slice(test_data);
-        assert!(ChemstationMsReader::new(rb).is_err());
+        assert!(ChemstationMsReader::new(rb, ()).is_err());
 
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n>\n\xE3\x86\n>\n>\n\n>\n\xE3\x86&\n>@\x10\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n>\n\xE3\n\n\n\n\n\n\x14\n\n\n\n>\n\xC8>\n\x86\n>\n\n\n\n\n\n\n\n\n\n\n\n>\n\xE3\xCD\xCD\xCD\x00\x00\n\n\n\n\n\n>\n\n>\n\x00\n\x00\n\n\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\x00>\x0b\n\x01\x00>\n\n\n\x00>\n\n\x01\x00>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\x00\x00\x00\n\n\n\n\n>\n\xE3\xCD\n>\n\n>\n\xE3\n>@W\n\n+\n\n\n>\n\n>\n\xE3>*\n\x86*\n\x86\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\x01\x00\x00\x00\x00\x00\x00\x01>\n\n>\n\n>\n\xE3\n\n\n\n\n\x01\x00\x00\x00\x00\x00\x00\x00\n\xE3\n>@W>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00";
         let rb = ReadBuffer::from_slice(test_data);
-        assert!(ChemstationMsReader::new(rb).is_err());
+        assert!(ChemstationMsReader::new(rb, ()).is_err());
 
         let test_data = b"\x012>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xAF%\xA8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nVVVVV\n\n\xAF%\xA8\x00\xFE\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\n\n\n\n\n\n\n\n\n>";
         let rb = ReadBuffer::from_slice(test_data);
-        assert!(ChemstationMsReader::new(rb).is_err());
+        assert!(ChemstationMsReader::new(rb, ()).is_err());
 
         Ok(())
     }

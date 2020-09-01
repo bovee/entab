@@ -6,8 +6,8 @@ use core::mem;
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::NewLine;
-use crate::readers::RecordReader;
+use crate::impl_reader;
+use crate::parsers::{FromBuffer, NewLine};
 use crate::record::Record;
 use crate::EtError;
 
@@ -49,16 +49,19 @@ fn split<'a>(
     Ok(())
 }
 
-pub struct TsvReader<'r> {
-    rb: ReadBuffer<'r>,
+pub struct TsvState {
     headers: Vec<String>,
     delim_char: u8,
     quote_char: u8,
-    cur_line: Vec<&'r str>,
+    // by storing the vec in here, we save an allocation on each line
+    cur_line: Vec<&'static str>,
 }
 
-impl<'r> TsvReader<'r> {
-    pub fn new(mut rb: ReadBuffer<'r>, delim_char: u8, quote_char: u8) -> Result<Self, EtError> {
+impl<'r> FromBuffer<'r> for TsvState {
+    type State = (/* delim_char */ u8, /* quote_char */ u8);
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+        let (delim_char, quote_char) = state;
         let header = if let Some(NewLine(h)) = rb.extract(())? {
             h
         } else {
@@ -74,8 +77,7 @@ impl<'r> TsvReader<'r> {
             .collect();
         let n_headers = headers.len();
 
-        Ok(TsvReader {
-            rb,
+        Ok(TsvState {
             headers,
             cur_line: vec![""; n_headers],
             delim_char,
@@ -84,9 +86,22 @@ impl<'r> TsvReader<'r> {
     }
 }
 
-impl<'r> RecordReader for TsvReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
-        let line = if let Some(NewLine(l)) = self.rb.extract(())? {
+pub struct TsvRecord<'r> {
+    fields: &'r [&'r str],
+    headers: &'r [String],
+}
+
+impl<'r> From<TsvRecord<'r>> for Record<'r> {
+    fn from(record: TsvRecord<'r>) -> Self {
+        Record::Tsv(record.fields, record.headers)
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<TsvRecord<'r>> {
+    type State = &'r mut TsvState;
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+        let line = if let Some(NewLine(l)) = rb.extract(())? {
             l
         } else {
             return Ok(None);
@@ -94,32 +109,37 @@ impl<'r> RecordReader for TsvReader<'r> {
 
         // this is nasty, but I *think* it's sound as long as no other
         // code messes with cur_line in between iterations of `next`?
-        //
         unsafe {
             split(
-                mem::transmute(&mut self.cur_line),
+                mem::transmute(&mut state.cur_line),
                 line,
-                self.delim_char,
-                self.quote_char,
+                state.delim_char,
+                state.quote_char,
             )
-            .map_err(|e| e.fill_pos(&self.rb))?;
+            .map_err(|e| e.fill_pos(&rb))?;
         }
 
         // we pass along the headers too since they can be variable for tsvs
-        Ok(Some(Record::Tsv(&self.cur_line, &self.headers)))
+        Ok(Some(TsvRecord {
+            fields: &state.cur_line,
+            headers: &state.headers,
+        }))
     }
 }
+
+impl_reader!(TsvReader, TsvRecord, TsvState, (u8, u8));
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::buffer::ReadBuffer;
+    use crate::readers::RecordReader;
 
     #[test]
     fn test_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReader::new(rb, b'\t', b'"')?;
+        let mut pt = TsvReader::new(rb, (b'\t', b'"'))?;
 
         let mut ix = 0;
         while let Some(Record::Tsv(l, h)) = pt.next()? {
@@ -139,7 +159,7 @@ mod test {
     fn test_two_size_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
         let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReader::new(rb, b'\t', b'"')?;
+        let mut pt = TsvReader::new(rb, (b'\t', b'"'))?;
 
         let mut ix = 0;
         while let Some(Record::Tsv(l, h)) = pt.next()? {

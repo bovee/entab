@@ -5,18 +5,19 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, NewLine};
-use crate::readers::RecordReader;
+use crate::impl_reader;
+use crate::parsers::{Endian, FromBuffer, NewLine};
 use crate::record::Record;
 use crate::EtError;
 
-pub struct BamReader<'r> {
-    rb: ReadBuffer<'r>,
+pub struct BamState {
     references: Vec<(String, usize)>,
 }
 
-impl<'r> BamReader<'r> {
-    pub fn new(mut rb: ReadBuffer<'r>) -> Result<Self, EtError> {
+impl<'r> FromBuffer<'r> for BamState {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         // read the magic & header length, and then the header
         if rb.extract::<&[u8]>(4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
@@ -42,7 +43,7 @@ impl<'r> BamReader<'r> {
             references.push((ref_name, ref_len));
             n_references -= 1;
         }
-        Ok(BamReader { rb, references })
+        Ok(BamState { references })
     }
 }
 
@@ -50,7 +51,7 @@ fn extract_bam_record<'r, 's>(
     reader: &'r mut ReadBuffer<'s>,
     record_len: usize,
     references: &'r [(String, usize)],
-) -> Result<Record<'r>, EtError> {
+) -> Result<BamRecord<'r>, EtError> {
     if record_len < 32 {
         return Err("Record is unexpectedly short".into());
     }
@@ -76,7 +77,7 @@ fn extract_bam_record<'r, 's>(
         Some(raw_mapq)
     };
     // don't care about the BAI index bin - &data[10..12]
-    reader.extract(2_usize)?;
+    reader.extract::<&[u8]>(2_usize)?;
     let n_cigar_op = usize::from(reader.extract::<u16>(Endian::Little)?);
     let flag: u16 = reader.extract(Endian::Little)?;
     let seq_len = reader.extract::<u32>(Endian::Little)? as usize;
@@ -130,7 +131,7 @@ fn extract_bam_record<'r, 's>(
         Cow::Owned(qual)
     };
 
-    Ok(Record::Sam {
+    Ok(BamRecord {
         query_name: alloc::str::from_utf8(query_name)?,
         flag,
         ref_name,
@@ -147,36 +148,73 @@ fn extract_bam_record<'r, 's>(
     })
 }
 
-impl<'r> RecordReader for BamReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
+pub struct BamRecord<'r> {
+    query_name: &'r str,
+    flag: u16,
+    ref_name: &'r str,
+    pos: Option<u64>,
+    mapq: Option<u8>,
+    cigar: Cow<'r, [u8]>,
+    rnext: &'r str,
+    pnext: Option<u32>,
+    tlen: i32,
+    seq: Cow<'r, [u8]>,
+    qual: Cow<'r, [u8]>,
+    extra: Cow<'r, [u8]>,
+}
+
+impl<'r> From<BamRecord<'r>> for Record<'r> {
+    fn from(record: BamRecord<'r>) -> Self {
+        Record::Sam {
+            query_name: record.query_name,
+            flag: record.flag,
+            ref_name: record.ref_name,
+            pos: record.pos,
+            mapq: record.mapq,
+            cigar: record.cigar,
+            rnext: record.rnext,
+            pnext: record.pnext,
+            tlen: record.tlen,
+            seq: record.seq,
+            qual: record.qual,
+            extra: record.extra,
+        }
+    }
+}
+
+impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
+    type State = &'r mut BamState;
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
         // each record in a BAM is a different gzip chunk so we
         // have to do a refill before each record
-        self.rb.refill()?;
-        if self.rb.is_empty() && self.rb.eof {
+        rb.refill()?;
+        if rb.is_empty() && rb.eof {
             return Ok(None);
         }
 
         // now read the record itself
-        let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
-        let rec_len = self.rb.extract::<u32>(Endian::Little)? as usize;
-        let record =
-            extract_bam_record(&mut self.rb, rec_len, &self.references).map_err(|mut e| {
-                // we can't use `fill_pos` b/c that touchs the buffer
-                // and messes up the lifetimes :/
-                e.byte = Some(buffer_pos.0);
-                e.record = Some(buffer_pos.1 + 1);
-                e
-            })?;
+        let buffer_pos = (rb.reader_pos, rb.record_pos);
+        let rec_len = rb.extract::<u32>(Endian::Little)? as usize;
+        let record = extract_bam_record(rb, rec_len, &state.references).map_err(|mut e| {
+            // we can't use `fill_pos` b/c that touchs the buffer
+            // and messes up the lifetimes :/
+            e.byte = Some(buffer_pos.0);
+            e.record = Some(buffer_pos.1 + 1);
+            e
+        })?;
         Ok(Some(record))
     }
 }
 
-pub struct SamReader<'r> {
-    rb: ReadBuffer<'r>,
-}
+impl_reader!(BamReader, BamRecord, BamState, ());
 
-impl<'r> SamReader<'r> {
-    pub fn new(mut rb: ReadBuffer<'r>) -> Result<Self, EtError> {
+pub struct SamState {}
+
+impl<'r> FromBuffer<'r> for SamState {
+    type State = ();
+
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         // eventually we should read the headers and pass them along
         // to the Reader as metadata once we support that
         rb.reserve(1)?;
@@ -189,11 +227,45 @@ impl<'r> SamReader<'r> {
             rb.partial_consume(1);
         }
 
-        Ok(SamReader { rb })
+        Ok(SamState {})
     }
 }
 
-fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
+pub struct SamRecord<'r> {
+    query_name: &'r str,
+    flag: u16,
+    ref_name: &'r str,
+    pos: Option<u64>,
+    mapq: Option<u8>,
+    cigar: Cow<'r, [u8]>,
+    rnext: &'r str,
+    pnext: Option<u32>,
+    tlen: i32,
+    seq: Cow<'r, [u8]>,
+    qual: Cow<'r, [u8]>,
+    extra: Cow<'r, [u8]>,
+}
+
+impl<'r> From<SamRecord<'r>> for Record<'r> {
+    fn from(record: SamRecord<'r>) -> Self {
+        Record::Sam {
+            query_name: record.query_name,
+            flag: record.flag,
+            ref_name: record.ref_name,
+            pos: record.pos,
+            mapq: record.mapq,
+            cigar: record.cigar,
+            rnext: record.rnext,
+            pnext: record.pnext,
+            tlen: record.tlen,
+            seq: record.seq,
+            qual: record.qual,
+            extra: record.extra,
+        }
+    }
+}
+
+fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<SamRecord<'r>, EtError> {
     if chunks.len() < 11 {
         return Err("Sam record too short".into());
     }
@@ -251,7 +323,7 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
         }
         joined.into()
     };
-    Ok(Record::Sam {
+    Ok(SamRecord {
         query_name: alloc::str::from_utf8(chunks[0])?,
         flag: alloc::str::from_utf8(chunks[1])?.parse()?,
         ref_name,
@@ -267,10 +339,12 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<Record<'r>, EtError> {
     })
 }
 
-impl<'r> RecordReader for SamReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
-        let buffer_pos = (self.rb.reader_pos, self.rb.record_pos);
-        Ok(if let Some(NewLine(line)) = self.rb.extract(())? {
+impl<'r> FromBuffer<'r> for Option<SamRecord<'r>> {
+    type State = &'r mut SamState;
+
+    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+        let buffer_pos = (rb.reader_pos, rb.record_pos);
+        Ok(if let Some(NewLine(line)) = rb.extract(())? {
             let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
             Some(strs_to_sam(&chunks).map_err(|mut e| {
                 // we can't use `fill_pos` b/c that touchs the buffer
@@ -285,9 +359,12 @@ impl<'r> RecordReader for SamReader<'r> {
     }
 }
 
+impl_reader!(SamReader, SamRecord, SamState, ());
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readers::RecordReader;
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[cfg(feature = "std")]
@@ -297,7 +374,7 @@ mod tests {
 
         let f = File::open("tests/data/test.sam")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
-        let mut reader = SamReader::new(rb)?;
+        let mut reader = SamReader::new(rb, ())?;
         if let Some(Record::Sam {
             query_name, seq, ..
         }) = reader.next()?
@@ -320,7 +397,7 @@ mod tests {
     #[test]
     fn test_sam_no_data() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(b"@HD\ttest\n");
-        let mut reader = SamReader::new(rb)?;
+        let mut reader = SamReader::new(rb, ())?;
         assert!(reader.next()?.is_none());
         Ok(())
     }
@@ -338,7 +415,7 @@ mod tests {
         assert_eq!(filetype, FileType::Bam);
         assert_eq!(compress, Some(FileType::Gzip));
         let rb = ReadBuffer::new(stream)?;
-        let mut reader = BamReader::new(rb)?;
+        let mut reader = BamReader::new(rb, ())?;
 
         if let Some(Record::Sam {
             query_name, seq, ..
@@ -371,7 +448,7 @@ mod tests {
             10, 10, 18,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReader::new(rb)?;
+        let mut reader = BamReader::new(rb, ())?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -396,13 +473,13 @@ mod tests {
             117, 117, 117, 117, 117, 117, 117, 117, 62, 10, 10,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        assert!(BamReader::new(rb).is_err());
+        assert!(BamReader::new(rb, ()).is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 105, 0, 110, 0, 0, 0, 0,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReader::new(rb)?;
+        let mut reader = BamReader::new(rb, ())?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -427,7 +504,7 @@ mod tests {
             139, 116, 116, 116, 116, 116, 246, 245, 245, 240,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReader::new(rb)?;
+        let mut reader = BamReader::new(rb, ())?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -453,7 +530,7 @@ mod tests {
             223, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10,
         ];
         let rb = ReadBuffer::from_slice(&data);
-        let mut reader = BamReader::new(rb)?;
+        let mut reader = BamReader::new(rb, ())?;
         assert!(reader.next().is_err());
 
         Ok(())
