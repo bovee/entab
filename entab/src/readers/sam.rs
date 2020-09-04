@@ -5,10 +5,9 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use crate::buffer::ReadBuffer;
-use crate::impl_reader;
 use crate::parsers::{Endian, FromBuffer, NewLine};
-use crate::record::Record;
 use crate::EtError;
+use crate::{impl_reader, impl_record};
 
 pub struct BamState {
     references: Vec<(String, usize)>,
@@ -149,38 +148,21 @@ fn extract_bam_record<'r, 's>(
 }
 
 pub struct BamRecord<'r> {
-    query_name: &'r str,
-    flag: u16,
-    ref_name: &'r str,
-    pos: Option<u64>,
-    mapq: Option<u8>,
-    cigar: Cow<'r, [u8]>,
-    rnext: &'r str,
-    pnext: Option<u32>,
-    tlen: i32,
-    seq: Cow<'r, [u8]>,
-    qual: Cow<'r, [u8]>,
-    extra: Cow<'r, [u8]>,
+    pub query_name: &'r str,
+    pub flag: u16,
+    pub ref_name: &'r str,
+    pub pos: Option<u64>,
+    pub mapq: Option<u8>,
+    pub cigar: Cow<'r, [u8]>,
+    pub rnext: &'r str,
+    pub pnext: Option<u32>,
+    pub tlen: i32,
+    pub seq: Cow<'r, [u8]>,
+    pub qual: Cow<'r, [u8]>,
+    pub extra: Cow<'r, [u8]>,
 }
 
-impl<'r> From<BamRecord<'r>> for Record<'r> {
-    fn from(record: BamRecord<'r>) -> Self {
-        Record::Sam {
-            query_name: record.query_name,
-            flag: record.flag,
-            ref_name: record.ref_name,
-            pos: record.pos,
-            mapq: record.mapq,
-            cigar: record.cigar,
-            rnext: record.rnext,
-            pnext: record.pnext,
-            tlen: record.tlen,
-            seq: record.seq,
-            qual: record.qual,
-            extra: record.extra,
-        }
-    }
-}
+impl_record!(BamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
 impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
     type State = &'r mut BamState;
@@ -232,38 +214,21 @@ impl<'r> FromBuffer<'r> for SamState {
 }
 
 pub struct SamRecord<'r> {
-    query_name: &'r str,
-    flag: u16,
-    ref_name: &'r str,
-    pos: Option<u64>,
-    mapq: Option<u8>,
-    cigar: Cow<'r, [u8]>,
-    rnext: &'r str,
-    pnext: Option<u32>,
-    tlen: i32,
-    seq: Cow<'r, [u8]>,
-    qual: Cow<'r, [u8]>,
-    extra: Cow<'r, [u8]>,
+    pub query_name: &'r str,
+    pub flag: u16,
+    pub ref_name: &'r str,
+    pub pos: Option<u64>,
+    pub mapq: Option<u8>,
+    pub cigar: Cow<'r, [u8]>,
+    pub rnext: &'r str,
+    pub pnext: Option<u32>,
+    pub tlen: i32,
+    pub seq: Cow<'r, [u8]>,
+    pub qual: Cow<'r, [u8]>,
+    pub extra: Cow<'r, [u8]>,
 }
 
-impl<'r> From<SamRecord<'r>> for Record<'r> {
-    fn from(record: SamRecord<'r>) -> Self {
-        Record::Sam {
-            query_name: record.query_name,
-            flag: record.flag,
-            ref_name: record.ref_name,
-            pos: record.pos,
-            mapq: record.mapq,
-            cigar: record.cigar,
-            rnext: record.rnext,
-            pnext: record.pnext,
-            tlen: record.tlen,
-            seq: record.seq,
-            qual: record.qual,
-            extra: record.extra,
-        }
-    }
-}
+impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
 fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<SamRecord<'r>, EtError> {
     if chunks.len() < 11 {
@@ -364,7 +329,6 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::readers::RecordReader;
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[cfg(feature = "std")]
@@ -375,7 +339,7 @@ mod tests {
         let f = File::open("tests/data/test.sam")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = SamReader::new(rb, ())?;
-        if let Some(Record::Sam {
+        if let Some(SamRecord {
             query_name, seq, ..
         }) = reader.next()?
         {
@@ -386,7 +350,7 @@ mod tests {
         };
 
         let mut n_recs = 1;
-        while let Some(Record::Sam { .. }) = reader.next()? {
+        while let Some(_) = reader.next()? {
             n_recs += 1;
         }
         assert_eq!(n_recs, 5);
@@ -417,7 +381,7 @@ mod tests {
         let rb = ReadBuffer::new(stream)?;
         let mut reader = BamReader::new(rb, ())?;
 
-        if let Some(Record::Sam {
+        if let Some(BamRecord {
             query_name, seq, ..
         }) = reader.next()?
         {
@@ -429,7 +393,7 @@ mod tests {
         };
 
         let mut n_recs = 1;
-        while let Some(Record::Sam { .. }) = reader.next()? {
+        while let Some(_) = reader.next()? {
             n_recs += 1;
         }
         assert_eq!(n_recs, 5);

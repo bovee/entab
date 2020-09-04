@@ -1,8 +1,8 @@
 use crate::buffer::ReadBuffer;
-use crate::impl_reader;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
-use crate::record::Record;
+use crate::record::{RecHeader, Value};
 use crate::EtError;
+use crate::{impl_reader, impl_record};
 
 fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'r [u8], EtError> {
     rb.reserve(268)?;
@@ -25,11 +25,11 @@ fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'
 
 #[derive(Debug)]
 pub struct ChemstationMetadata {
-    start_time: f64,
-    end_time: f64,
-    signal_name: String,
-    offset_correction: f64,
-    mult_correction: f64,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub signal_name: String,
+    pub offset_correction: f64,
+    pub mult_correction: f64,
 }
 
 fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
@@ -78,19 +78,11 @@ impl<'r> FromBuffer<'r> for ChemstationFidState {
 }
 
 pub struct ChemstationFidRecord {
-    time: f64,
-    intensity: f64,
+    pub time: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ChemstationFidRecord> for Record<'r> {
-    fn from(record: ChemstationFidRecord) -> Self {
-        Record::Mz {
-            time: record.time,
-            mz: 0.,
-            intensity: record.intensity,
-        }
-    }
-}
+impl_record!(ChemstationFidRecord: time, intensity);
 
 impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
     type State = &'r mut ChemstationFidState;
@@ -152,20 +144,12 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
 }
 
 pub struct ChemstationMsRecord {
-    time: f64,
-    mz: f64,
-    intensity: f64,
+    pub time: f64,
+    pub mz: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ChemstationMsRecord> for Record<'r> {
-    fn from(record: ChemstationMsRecord) -> Self {
-        Record::Mz {
-            time: record.time,
-            mz: record.mz,
-            intensity: record.intensity,
-        }
-    }
-}
+impl_record!(ChemstationMsRecord: time, mz, intensity);
 
 impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
     type State = &'r mut ChemstationMsState;
@@ -235,13 +219,23 @@ impl<'r> FromBuffer<'r> for ChemstationMwdState {
 }
 
 pub struct ChemstationMwdRecord<'r> {
-    signal_name: &'r str,
-    time: f64,
-    intensity: f64,
+    pub signal_name: &'r str,
+    pub time: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ChemstationMwdRecord<'r>> for Record<'r> {
-    fn from(record: ChemstationMwdRecord) -> Self {
+impl<'r> RecHeader for ChemstationMwdRecord<'r> {
+    fn header() -> Vec<String> {
+        vec![
+            "time".to_string(),
+            "mz".to_string(),
+            "intensity".to_string(),
+        ]
+    }
+}
+
+impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value> {
+    fn from(record: ChemstationMwdRecord<'r>) -> Self {
         // signal name is something like "MWD A, Sig=210,5 Ref=360,100"
         let mz = record
             .signal_name
@@ -254,12 +248,7 @@ impl<'r> From<ChemstationMwdRecord<'r>> for Record<'r> {
                     .and_then(|sig_name| sig_name.parse::<f64>().ok())
             })
             .unwrap_or_else(|| 0.);
-
-        Record::Mz {
-            time: record.time,
-            mz,
-            intensity: record.intensity,
-        }
+        vec![record.time.into(), mz.into(), record.intensity.into()]
     }
 }
 
@@ -331,20 +320,12 @@ impl<'r> FromBuffer<'r> for ChemstationUvState {
 
 #[derive(Debug)]
 pub struct ChemstationUvRecord {
-    time: f64,
-    wavelength: f64,
-    intensity: f64,
+    pub time: f64,
+    pub wavelength: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ChemstationUvRecord> for Record<'r> {
-    fn from(record: ChemstationUvRecord) -> Self {
-        Record::Mz {
-            time: record.time,
-            mz: record.wavelength,
-            intensity: record.intensity,
-        }
-    }
-}
+impl_record!(ChemstationUvRecord: time, wavelength, intensity);
 
 impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
     type State = &'r mut ChemstationUvState;
@@ -481,7 +462,6 @@ impl_reader!(
 mod tests {
     use super::*;
     use crate::buffer::ReadBuffer;
-    use crate::readers::RecordReader;
 
     #[cfg(feature = "std")]
     #[test]
@@ -491,19 +471,11 @@ mod tests {
         let f = File::open("tests/data/test_fid.ch")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ChemstationFidReader::new(rb, ())?;
-        if let Record::Mz {
-            time,
-            mz,
-            intensity,
-        } = reader.next()?.unwrap()
-        {
-            // TODO: try to confirm this time is correct
-            assert!((time - 20184.8775).abs() < 0.0001);
-            assert_eq!(mz, 0.);
-            assert!((intensity - 17.500).abs() < 0.001);
-        } else {
-            panic!("Chemstation reader returned non-Mz record");
-        }
+        let ChemstationFidRecord { time, intensity } = reader.next()?.unwrap();
+        // TODO: try to confirm this time is correct
+        assert!((time - 20184.8775).abs() < 0.0001);
+        assert!((intensity - 17.500).abs() < 0.001);
+
         let mut n_mzs = 1;
         while let Some(_) = reader.next()? {
             n_mzs += 1;
@@ -520,30 +492,24 @@ mod tests {
         let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ChemstationMsReader::new(rb, ())?;
-        if let Record::Mz {
+        let ChemstationMsRecord {
             time,
             mz,
             intensity,
-        } = reader.next()?.unwrap()
-        {
-            assert!((time - 0.079166).abs() < 0.000001);
-            assert!((mz - 915.7).abs() < 0.000001);
-            assert_eq!(intensity, 112.);
-        } else {
-            panic!("Chemstation reader returned non-Mz record");
-        }
-        if let Record::Mz {
+        } = reader.next()?.unwrap();
+        assert!((time - 0.079166).abs() < 0.000001);
+        assert!((mz - 915.7).abs() < 0.000001);
+        assert_eq!(intensity, 112.);
+
+        let ChemstationMsRecord {
             time,
             mz,
             intensity,
-        } = reader.next()?.unwrap()
-        {
-            assert!((time - 0.079166).abs() < 0.000001);
-            assert!((mz - 865.4).abs() < 0.000001);
-            assert_eq!(intensity, 184.);
-        } else {
-            panic!("Chemstation reader returned non-Mz record");
-        }
+        } = reader.next()?.unwrap();
+        assert!((time - 0.079166).abs() < 0.000001);
+        assert!((mz - 865.4).abs() < 0.000001);
+        assert_eq!(intensity, 184.);
+
         let mut n_mzs = 2;
         while let Some(_) = reader.next()? {
             n_mzs += 1;
@@ -560,18 +526,15 @@ mod tests {
         let f = File::open("tests/data/chemstation_mwd.d/mwd1A.ch")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ChemstationMwdReader::new(rb, ())?;
-        if let Record::Mz {
+        let ChemstationMwdRecord {
             time,
-            mz,
+            signal_name,
             intensity,
-        } = reader.next()?.unwrap()
-        {
-            assert!((time - -0.039667).abs() < 0.000001);
-            assert_eq!(mz, 210.);
-            assert!((intensity - -36.34977).abs() < 0.00001);
-        } else {
-            panic!("Chemstation reader returned non-Mz record");
-        }
+        } = reader.next()?.unwrap();
+        assert!((time - -0.039667).abs() < 0.000001);
+        assert_eq!(signal_name, "MWD A, Sig=210,5 Ref=360,100");
+        assert!((intensity - -36.34977).abs() < 0.00001);
+
         let mut n_mzs = 1;
         while let Some(_) = reader.next()? {
             n_mzs += 1;
@@ -588,18 +551,15 @@ mod tests {
         let f = File::open("tests/data/carotenoid_extract.d/dad1.uv")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ChemstationUvReader::new(rb, ())?;
-        if let Record::Mz {
+        let ChemstationUvRecord {
             time,
-            mz,
+            wavelength,
             intensity,
-        } = reader.next()?.unwrap()
-        {
-            assert!((time - 0.001333).abs() < 0.000001);
-            assert!((mz - 200.).abs() < 0.000001);
-            assert_eq!(intensity, -15.6675);
-        } else {
-            panic!("Chemstation reader returned non-Mz record");
-        }
+        } = reader.next()?.unwrap();
+        assert!((time - 0.001333).abs() < 0.000001);
+        assert!((wavelength - 200.).abs() < 0.000001);
+        assert_eq!(intensity, -15.6675);
+
         let mut n_mzs = 1;
         while let Some(_) = reader.next()? {
             n_mzs += 1;

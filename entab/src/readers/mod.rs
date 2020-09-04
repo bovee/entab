@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 
 use crate::buffer::ReadBuffer;
-use crate::record::Record;
+use crate::record::Value;
 use crate::utils::error::EtError;
 
 pub mod chemstation;
@@ -42,11 +42,13 @@ pub trait RecordReader {
     ///
     /// Roughly equivalent to Rust's `Iterator.next`, but obeys slightly
     /// looser lifetime requirements to allow zero-copy parsing.
-    fn next(&mut self) -> Result<Option<Record>, EtError>;
+    fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError>;
 
-    // TODO: add a metadata retrieval method that returns a toml::value::Value or
-    // erased_serde::Serialize or something else generic like that
+    /// The header titles that correspond to every item in the record
+    fn headers(&self) -> Vec<String>;
 }
+
+// TODO: we need to return metadata too somehow
 
 #[macro_export]
 macro_rules! impl_reader {
@@ -61,15 +63,24 @@ macro_rules! impl_reader {
                 let state = rb.extract(params)?;
                 Ok($reader { rb, state })
             }
+
+            pub fn next(&mut self) -> Result<Option<$record>, EtError> {
+                self.rb.extract(&mut self.state)
+            }
         }
 
         impl<'r> crate::readers::RecordReader for $reader<'r> {
-            fn next(&mut self) -> Result<Option<Record>, EtError> {
+            fn next_record(&mut self) -> Result<Option<Vec<$crate::record::Value>>, EtError> {
                 if let Some(record) = self.rb.extract::<Option<$record>>(&mut self.state)? {
                     Ok(Some(record.into()))
                 } else {
                     Ok(None)
                 }
+            }
+
+            fn headers(&self) -> Vec<String> {
+                use $crate::record::RecHeader;
+                <$record>::header()
             }
         }
     };

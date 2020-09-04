@@ -1,58 +1,16 @@
-use alloc::borrow::Cow;
-use alloc::string::String;
 use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;
-use crate::readers::fastq::FastqReader;
+use crate::readers::fastq::{FastqReader, FastqRecord};
 use crate::readers::RecordReader;
-use crate::record::Record;
+use crate::record::Value;
 use crate::EtError;
 
-pub struct FastaKmerReader<'r> {
-    rb: ReadBuffer<'r>,
-    id: Option<String>,
-    seq_pos: usize,
-    k: usize,
-}
-
-impl<'r> FastaKmerReader<'r> {
-    pub fn new(rb: ReadBuffer<'r>, k: u8) -> Result<Self, EtError> {
-        // TODO: add a skip N's?
-        // TODO: add a remove newlines? (default true)
-        Ok(FastaKmerReader {
-            rb,
-            id: None,
-            seq_pos: 0,
-            k: k as usize,
-        })
-    }
-}
-
-impl<'r> RecordReader for FastaKmerReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
-        if self.id.is_none() {}
-
-        // if (sequence too short for k?) {
-        // TODO: read the next header/id and save in self.header
-        // } else {
-        // }
-        if self.rb.eof() && self.rb.len() < self.k {
-            return Ok(None);
-        }
-
-        // let (seq_range, rec_end) = loop {
-        //     let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &self.rb[..]) {
-        //         (p, p + 1)
-        //     } else if self.rb.eof() {
-        // }
-
-        Ok(Some(Record::Sequence {
-            id: &self.id.as_ref().unwrap(),
-            sequence: Cow::Borrowed(&self.rb[self.seq_pos..self.seq_pos + self.k]),
-            quality: None,
-        }))
-    }
-}
+// TODO: impl FastaKmerReader; rather than wrapping FastaReader, it should
+// allow parsing e.g. super-large contig genomes without rebuffering (in a
+// constant-sized buffer) by iterating over the underlying file directly
+// TODO: add a skip N's?
+// TODO: add a remove newlines? (default true)
 
 pub struct FastqKmerReader<'r> {
     fastq_reader: FastqReader<'r>,
@@ -77,7 +35,7 @@ impl<'r> FastqKmerReader<'r> {
 }
 
 impl<'r> RecordReader for FastqKmerReader<'r> {
-    fn next(&mut self) -> Result<Option<Record>, EtError> {
+    fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError> {
         if !self.sequence.is_empty() {
             self.sequence = &self.sequence[1..];
             self.kmer_pos += 1;
@@ -85,7 +43,7 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
         if self.sequence.len() < self.k {
             self.id = "";
             self.sequence = b"";
-            while let Some(Record::Sequence { id, sequence, .. }) = self.fastq_reader.next()? {
+            while let Some(FastqRecord { id, sequence, .. }) = self.fastq_reader.next()? {
                 if sequence.len() < self.k {
                     continue;
                 }
@@ -95,7 +53,7 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
                 // compiler doesn't know we're not doing that
                 unsafe {
                     self.id = transmute(id);
-                    self.sequence = transmute(sequence.as_ref());
+                    self.sequence = transmute(sequence);
                 }
                 self.kmer_pos = 0;
                 break;
@@ -106,10 +64,10 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
             }
         }
 
-        Ok(Some(Record::Sequence {
-            id: self.id,
-            sequence: self.sequence[..self.k].into(),
-            quality: None,
-        }))
+        Ok(Some(vec![self.id.into(), self.sequence[..self.k].into()]))
+    }
+
+    fn headers(&self) -> Vec<String> {
+        vec!["id".to_string(), "sequence".to_string()]
     }
 }

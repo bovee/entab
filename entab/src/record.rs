@@ -1,125 +1,167 @@
 use alloc::borrow::Cow;
-use alloc::format;
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 
 use crate::utils::string::replace_tabs;
 use crate::EtError;
 
-/// A single record returned from parsing
-#[derive(Debug, Serialize)]
-pub enum Record<'r> {
-    Mz {
-        time: f64,
-        mz: f64,
-        intensity: f64,
-    },
-    Sam {
-        query_name: &'r str,
-        flag: u16,
-        ref_name: &'r str,
-        pos: Option<u64>,
-        mapq: Option<u8>,
-        cigar: Cow<'r, [u8]>,
-        rnext: &'r str,
-        pnext: Option<u32>,
-        tlen: i32,
-        seq: Cow<'r, [u8]>,
-        qual: Cow<'r, [u8]>,
-        extra: Cow<'r, [u8]>,
-    },
-    Sequence {
-        id: &'r str,
-        sequence: Cow<'r, [u8]>,
-        quality: Option<&'r [u8]>,
-        // TODO: a kmer position or offset?
-    },
-    Tsv(&'r [&'r str], &'r [String]),
+pub trait RecHeader {
+    fn header() -> Vec<String>;
 }
 
-impl<'r> Record<'r> {
-    /// Returns the headers associated with each field in the record
-    pub fn headers(&self) -> Cow<[&str]> {
-        match self {
-            Self::Mz { .. } => Cow::Borrowed(&["time", "mz", "intensity"]),
-            Self::Sequence { .. } => Cow::Borrowed(&["id", "sequence", "quality"]),
-            Self::Sam { .. } => Cow::Borrowed(&[
-                "query_name",
-                "flag",
-                "ref_name",
-                "pos",
-                "mapq",
-                "cigar",
-                "rnext",
-                "pnext",
-                "tlen",
-                "seq",
-                "qual",
-                "extra",
-            ]),
-            Self::Tsv(_, headers) => Cow::Owned(headers.iter().map(|i| i.as_ref()).collect()),
+#[macro_export]
+macro_rules! impl_record {
+    ($type:ty : $($key:ident),* ) => {
+        impl<'r> $crate::record::RecHeader for $type {
+            fn header() -> Vec<String> {
+                let mut header = ::alloc::vec::Vec::new();
+                $(
+                    header.push(stringify!($key).to_string());
+                )*
+                header
+            }
         }
-    }
 
-    /// Returns how many fields are in the record
-    pub fn size(&self) -> usize {
-        match self {
-            Self::Mz { .. } => 3,
-            Self::Sequence { .. } => 3,
-            Self::Sam { .. } => 12,
-            Self::Tsv(rec, _) => rec.len(),
+        impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value> {
+            fn from(record: $type) -> Self {
+                let mut list = ::alloc::vec::Vec::new();
+                $(
+                    list.push(record.$key.into());
+                )*
+                list
+            }
         }
-    }
+    };
+    ($type:ty : $($key:ident)+ ) => { record!($($key),+) };
+}
 
-    /// Writes a single field of the Record out given its index.
-    ///
-    /// Note: W is not the Write trait to keep this no_std compatible.
-    pub fn write_field<W>(&self, index: usize, mut write: W) -> Result<(), EtError>
+#[derive(PartialEq, Clone, Debug)]
+pub enum Value {
+    Null,
+    Boolean(bool),
+    Datetime(String),
+    Float(f64),
+    Integer(i64),
+    List(Vec<Value>),
+    Record(BTreeMap<String, Value>),
+    String(String),
+}
+
+impl Value {
+    pub fn write_for_tsv<W>(&self, mut write: W) -> Result<(), EtError>
     where
         W: FnMut(&[u8]) -> Result<(), EtError>,
     {
-        match (self, index) {
-            (Self::Mz { time, .. }, 0) => write(format!("{:02}", time).as_bytes())?,
-            (Self::Mz { mz, .. }, 1) => write(format!("{:02}", mz).as_bytes())?,
-            (Self::Mz { intensity, .. }, 2) => write(format!("{:02}", intensity).as_bytes())?,
-            (Self::Sam { query_name, .. }, 0) => write(&replace_tabs(query_name.as_bytes(), b'|'))?,
-            // TODO: better display for flags?
-            (Self::Sam { flag, .. }, 1) => write(format!("{:b}", flag).as_bytes())?,
-            (Self::Sam { ref_name, .. }, 2) => write(&replace_tabs(ref_name.as_bytes(), b'|'))?,
-            (Self::Sam { pos, .. }, 3) => {
-                if let Some(p) = pos {
-                    write(p.to_string().as_bytes())?
-                };
-            }
-            (Self::Sam { mapq, .. }, 4) => {
-                if let Some(m) = mapq {
-                    write(m.to_string().as_bytes())?
-                };
-            }
-            (Self::Sam { cigar, .. }, 5) => write(cigar)?,
-            (Self::Sam { rnext, .. }, 6) => write(&replace_tabs(rnext.as_bytes(), b'|'))?,
-            (Self::Sam { pnext, .. }, 7) => {
-                if let Some(p) = pnext {
-                    write(p.to_string().as_bytes())?
-                };
-            }
-            (Self::Sam { tlen, .. }, 8) => write(tlen.to_string().as_bytes())?,
-            (Self::Sam { seq, .. }, 9) => write(seq)?,
-            (Self::Sam { qual, .. }, 10) => write(qual)?,
-            (Self::Sam { extra, .. }, 11) => write(&replace_tabs(extra, b'|'))?,
-            (Self::Sequence { id, .. }, 0) => write(&replace_tabs(id.as_bytes(), b'|'))?,
-            (Self::Sequence { sequence, .. }, 1) => write(sequence)?,
-            (Self::Sequence { quality, .. }, 2) => {
-                if let Some(q) = quality {
-                    write(q)?
-                };
-            }
-            (Self::Tsv(rec, _), i) => write(rec[i].as_bytes())?,
-            _ => panic!("Index out of range"),
+        match self {
+            Value::Null => write(b"null"),
+            Value::Boolean(true) => write(b"true"),
+            Value::Boolean(false) => write(b"false"),
+            Value::Datetime(s) => write(s.as_bytes()),
+            Value::Float(v) => write(format!("{}", v).as_bytes()),
+            Value::Integer(v) => write(format!("{}", v).as_bytes()),
+            Value::List(_) => unimplemented!("No writer for lists yet"),
+            Value::Record(_) => unimplemented!("No writer for records yet"),
+            Value::String(s) => write(&replace_tabs(s.as_bytes(), b'|')),
         }
-        Ok(())
     }
+}
 
-    // fn get(&self, field: &str) -> Option<Value>;
+impl<T: Into<Value>> From<Option<T>> for Value {
+    fn from(x: Option<T>) -> Self {
+        match x {
+            None => Value::Null,
+            Some(s) => s.into(),
+        }
+    }
+}
+
+impl From<bool> for Value {
+    fn from(x: bool) -> Self {
+        Value::Boolean(x)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(x: f64) -> Self {
+        Value::Float(x)
+    }
+}
+
+impl From<u8> for Value {
+    fn from(x: u8) -> Self {
+        Value::Integer(i64::from(x))
+    }
+}
+
+impl From<u16> for Value {
+    fn from(x: u16) -> Self {
+        Value::Integer(i64::from(x))
+    }
+}
+
+impl From<i32> for Value {
+    fn from(x: i32) -> Self {
+        Value::Integer(i64::from(x))
+    }
+}
+
+impl From<u32> for Value {
+    fn from(x: u32) -> Self {
+        Value::Integer(i64::from(x))
+    }
+}
+
+impl From<i64> for Value {
+    fn from(x: i64) -> Self {
+        Value::Integer(x)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(x: u64) -> Self {
+        // there's probably a better solution here
+        Value::Integer(x as i64)
+    }
+}
+
+impl<'a> From<Cow<'a, [u8]>> for Value {
+    fn from(x: Cow<'a, [u8]>) -> Self {
+        Value::String(String::from_utf8_lossy(&x).into_owned())
+    }
+}
+
+impl<'a> From<&'a [u8]> for Value {
+    fn from(x: &'a [u8]) -> Self {
+        Value::String(String::from_utf8_lossy(x).into_owned())
+    }
+}
+
+impl From<&str> for Value {
+    fn from(x: &str) -> Self {
+        Value::String(x.to_string())
+    }
+}
+
+impl From<String> for Value {
+    fn from(x: String) -> Self {
+        Value::String(x)
+    }
+}
+
+impl Serialize for Value {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match *self {
+            Value::Null => serializer.serialize_none(),
+            Value::Boolean(b) => serializer.serialize_bool(b),
+            Value::Datetime(ref s) => s.serialize(serializer),
+            Value::Float(f) => serializer.serialize_f64(f),
+            Value::Integer(i) => serializer.serialize_i64(i),
+            Value::List(ref a) => a.serialize(serializer),
+            Value::Record(ref t) => t.serialize(serializer),
+            Value::String(ref s) => serializer.serialize_str(s),
+        }
+    }
 }

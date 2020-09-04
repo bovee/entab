@@ -6,10 +6,9 @@ use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 
 use crate::buffer::ReadBuffer;
-use crate::impl_reader;
 use crate::parsers::{Endian, FromBuffer};
-use crate::record::Record;
 use crate::EtError;
+use crate::{impl_reader, impl_record};
 
 pub struct CString<'r>(Cow<'r, str>);
 
@@ -87,20 +86,12 @@ impl<'r> FromBuffer<'r> for ThermoDxfState {
 }
 
 pub struct ThermoDxfRecord {
-    time: f64,
-    mz: f64,
-    intensity: f64,
+    pub time: f64,
+    pub mz: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ThermoDxfRecord> for Record<'r> {
-    fn from(record: ThermoDxfRecord) -> Self {
-        Record::Mz {
-            time: record.time,
-            mz: record.mz,
-            intensity: record.intensity,
-        }
-    }
-}
+impl_record!(ThermoDxfRecord: time, mz, intensity);
 
 impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
     type State = &'r mut ThermoDxfState;
@@ -198,20 +189,12 @@ impl<'r> FromBuffer<'r> for ThermoCfState {
 }
 
 pub struct ThermoCfRecord {
-    time: f64,
-    mz: f64,
-    intensity: f64,
+    pub time: f64,
+    pub mz: f64,
+    pub intensity: f64,
 }
 
-impl<'r> From<ThermoCfRecord> for Record<'r> {
-    fn from(record: ThermoCfRecord) -> Self {
-        Record::Mz {
-            time: record.time,
-            mz: record.mz,
-            intensity: record.intensity,
-        }
-    }
-}
+impl_record!(ThermoCfRecord: time, mz, intensity);
 
 impl<'r> FromBuffer<'r> for Option<ThermoCfRecord> {
     type State = &'r mut ThermoCfState;
@@ -292,7 +275,6 @@ mod tests {
     use super::*;
     #[cfg(feature = "std")]
     use crate::buffer::ReadBuffer;
-    use crate::readers::RecordReader;
 
     #[cfg(feature = "std")]
     #[test]
@@ -302,7 +284,7 @@ mod tests {
         let f = File::open("tests/data/b3_alkanes.dxf")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ThermoDxfReader::new(rb, ())?;
-        if let Some(Record::Mz {
+        if let Some(ThermoDxfRecord {
             time,
             mz,
             intensity,
@@ -326,7 +308,7 @@ mod tests {
         let f = File::open("tests/data/test-0000.cf")?;
         let rb = ReadBuffer::new(Box::new(&f))?;
         let mut reader = ThermoCfReader::new(rb, ())?;
-        if let Some(Record::Mz {
+        if let Some(ThermoCfRecord {
             time,
             mz,
             intensity,

@@ -82,7 +82,8 @@ impl FileType {
         if magic.len() > 4 {
             match &magic[..4] {
                 b"BAM\x01" => return FileType::Bam,
-                b"FCS3" => return FileType::Facs,
+                b"FCS3.0  " => return FileType::Facs,
+                b"FCS3.1  " => return FileType::Facs,
                 b"@HD\t" => return FileType::Sam,
                 b"@SQ\t" => return FileType::Sam,
                 b"\x2Escf" => return FileType::Scf,
@@ -161,6 +162,7 @@ impl FileType {
             FileType::AgilentChemstationMwd => "chemstation_mwd",
             FileType::AgilentChemstationUv => "chemstation_uv",
             FileType::Bam => "bam",
+            FileType::Facs => "facs",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",

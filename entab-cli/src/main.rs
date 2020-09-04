@@ -21,19 +21,16 @@ where
 {
     let mut rec_reader = get_reader(filetype.to_parser_name(), buffer)?;
 
-    let mut line_idx = 0;
-    while let Some(n) = rec_reader.next()? {
-        if line_idx == 0 {
-            write(&n.headers().join("\t").as_bytes())?;
-            write(b"\n")?;
-        }
-        n.write_field(0, &mut write)?;
-        for i in 1..n.size() {
+    write(&rec_reader.headers().join("\t").as_bytes())?;
+    write(b"\n")?;
+
+    while let Some(n) = rec_reader.next_record()? {
+        n[0].write_for_tsv(&mut write)?;
+        for i in 1..n.len() {
             write(b"\t")?;
-            n.write_field(i, &mut write)?;
+            n[i].write_for_tsv(&mut write)?;
         }
         write(b"\n")?;
-        line_idx += 1;
     }
     Ok(())
 }

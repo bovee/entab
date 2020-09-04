@@ -30,5 +30,4 @@ fn create_reader() {
     let raw_id = Reflect::get(&value, &JsValue::from_str("id")).expect("value has id");
     assert_eq!(raw_id, JsValue::from_str("test"));
     assert!(Reflect::has(&value, &JsValue::from_str("sequence")).expect("value has sequence"));
-    assert!(Reflect::has(&value, &JsValue::from_str("quality")).expect("value has quality"));
 }

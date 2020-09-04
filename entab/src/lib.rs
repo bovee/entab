@@ -6,15 +6,13 @@
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
-//! use entab::Record;
 //! use entab::buffer::ReadBuffer;
-//! use entab::readers::RecordReader;
-//! use entab::readers::fasta::FastaReader;
+//! use entab::readers::fasta::{FastaReader, FastaRecord};
 //!
 //! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
 //! let buffer = ReadBuffer::new(file)?;
 //! let mut reader = FastaReader::new(buffer, ())?;
-//! while let Some(Record::Sequence { id, .. }) = reader.next()? {
+//! while let Some(FastaRecord { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }
 //! # }
@@ -40,5 +38,4 @@ pub mod record;
 /// Miscellanous utility functions and error handling
 pub mod utils;
 
-pub use record::Record;
 pub use utils::error::EtError;
