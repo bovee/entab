@@ -1,3 +1,6 @@
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use alloc::vec;
 use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;

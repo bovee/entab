@@ -1,4 +1,7 @@
 use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use crate::buffer::ReadBuffer;
 use crate::record::Value;
@@ -70,7 +73,7 @@ macro_rules! impl_reader {
         }
 
         impl<'r> crate::readers::RecordReader for $reader<'r> {
-            fn next_record(&mut self) -> Result<Option<Vec<$crate::record::Value>>, EtError> {
+            fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
                 if let Some(record) = self.rb.extract::<Option<$record>>(&mut self.state)? {
                     Ok(Some(record.into()))
                 } else {
@@ -78,7 +81,7 @@ macro_rules! impl_reader {
                 }
             }
 
-            fn headers(&self) -> Vec<String> {
+            fn headers(&self) -> ::alloc::vec::Vec<::alloc::string::String> {
                 use $crate::record::RecHeader;
                 <$record>::header()
             }

@@ -328,7 +328,9 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "std")]
     use super::*;
+    #[cfg(feature = "std")]
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[cfg(feature = "std")]

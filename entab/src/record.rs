@@ -1,5 +1,6 @@
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -16,7 +17,8 @@ pub trait RecHeader {
 macro_rules! impl_record {
     ($type:ty : $($key:ident),* ) => {
         impl<'r> $crate::record::RecHeader for $type {
-            fn header() -> Vec<String> {
+            fn header() -> ::alloc::vec::Vec<::alloc::string::String> {
+                use ::alloc::string::ToString;
                 let mut header = ::alloc::vec::Vec::new();
                 $(
                     header.push(stringify!($key).to_string());
