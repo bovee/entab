@@ -93,7 +93,7 @@ impl FileType {
                 [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
                 [0x03, 0x31, 0x33, 0x31] => return FileType::AgilentChemstationUv,
                 [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
-                [0xFF, 0xFF, 0x60, 0x00] | [0xFF, 0xFF, 0x50, 0x00] => {
+                [0xFF, 0xFF, 0x06, 0x00] | [0xFF, 0xFF, 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
                         return FileType::ThermoCf;
                     } else {
@@ -167,8 +167,8 @@ impl FileType {
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",
-            FileType::ThermoCf => "cf",
-            FileType::ThermoDxf => "dxf",
+            FileType::ThermoCf => "thermo_cf",
+            FileType::ThermoDxf => "thermo_dxf",
             FileType::Tsv => "tsv",
             _ => "",
         }

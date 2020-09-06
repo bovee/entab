@@ -51,7 +51,10 @@ macro_rules! impl_extract {
             #[inline]
             fn out_of(rb: &'r [u8], state: Self::State) -> Result<Self, EtError> {
                 if rb.len() < core::mem::size_of::<$return>() {
-                    return Err(EtError::new(format!("Could not read {}", core::any::type_name::<$return>())));
+                    return Err(EtError::new(format!(
+                        "Could not read {}",
+                        core::any::type_name::<$return>()
+                    )));
                 }
                 let slice = rb[..core::mem::size_of::<$return>()].try_into().unwrap();
                 Ok(match state {

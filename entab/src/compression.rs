@@ -64,12 +64,14 @@ mod tests {
     }
 }
 
-#[cfg(not(all(feature = "compression", feature = "lzma")))]
-#[allow(dead_code)]
+#[cfg(not(all(feature = "compression", feature = "compression_manylinux")))]
+#[allow(dead_code, unreachable_pub)]
 mod fake_compression {
     use std::io::Read;
+    use std::marker::Copy;
 
-    pub(crate) struct Fake;
+    #[derive(Copy, Clone, Debug)]
+    pub struct Fake;
     impl Fake {
         pub(crate) fn new<'r>(_: Box<dyn Read + 'r>) -> Self {
             Fake
@@ -84,7 +86,8 @@ mod fake_compression {
         }
     }
 
-    pub(crate) struct ZstdDecoder;
+    #[derive(Copy, Clone, Debug)]
+    pub struct ZstdDecoder;
     impl ZstdDecoder {
         pub(crate) fn new<'r>(_: Box<dyn Read + 'r>) -> Result<Self, std::io::Error> {
             Ok(ZstdDecoder)
@@ -99,6 +102,6 @@ mod fake_compression {
         }
     }
 
-    pub(crate) type BzDecoder = Fake;
-    pub(crate) type XzDecoder = Fake;
+    pub type BzDecoder = Fake;
+    pub type XzDecoder = Fake;
 }

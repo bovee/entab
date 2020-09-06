@@ -21,15 +21,15 @@ pub fn get_reader<'r>(
 ) -> Result<Box<dyn RecordReader + 'r>, EtError> {
     Ok(match parser_type {
         "bam" => Box::new(sam::BamReader::new(rb, ())?),
-        "cf" => Box::new(thermo_iso::ThermoCfReader::new(rb, ())?),
         "chemstation_fid" => Box::new(chemstation::ChemstationFidReader::new(rb, ())?),
         "chemstation_ms" => Box::new(chemstation::ChemstationMsReader::new(rb, ())?),
         "chemstation_mwd" => Box::new(chemstation::ChemstationMwdReader::new(rb, ())?),
         "chemstation_uv" => Box::new(chemstation::ChemstationUvReader::new(rb, ())?),
-        "dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),
         "fasta" => Box::new(fasta::FastaReader::new(rb, ())?),
         "fastq" => Box::new(fastq::FastqReader::new(rb, ())?),
         "sam" => Box::new(sam::SamReader::new(rb, ())?),
+        "thermo_cf" => Box::new(thermo_iso::ThermoCfReader::new(rb, ())?),
+        "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),
         "tsv" => Box::new(tsv::TsvReader::new(rb, (b'\t', b'"'))?),
         _ => {
             return Err(EtError::new(format!(
