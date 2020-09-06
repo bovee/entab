@@ -1,3 +1,5 @@
+![Test status](https://github.com/bovee/entab/workflows/Tests/badge.svg)
+
 # entab
 What is everything were a/could be turned into a tsv?
 
