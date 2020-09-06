@@ -1,0 +1,11 @@
+filename, source, license
+b3_alkanes.dxf, collected by Roderick,
+HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs, https://github.com/eyurtsev/fcsparser/blob/master/fcsparser/tests/data/FlowCytometers/HTS_BD_LSR-II/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs, MIT
+carotenoid_extract.d, collected by Roderick,
+chemstation_mwd.d, collected by Roderick,
+sequence.fasta, downloaded from NCBI,
+test-0000.cf, collected by Roderick,
+test.bam, generated from test.sam,
+test.fastq, downloaded from NCBI,
+test_fid.ch, collected by Roderick,
+test.sam, generated from aligning sequence.fasta against test.fastq,

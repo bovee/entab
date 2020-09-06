@@ -1,0 +1,66 @@
+<!--
+  [WIP]
+  Build the JS assets with `wasm-pack build -_-target web`
+  and serve with e.g. `python3 -m http.server 8000`.
+-->
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+    <style>
+      #file-drop { border: 5px dashed blue }
+    </style>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script type="module">
+      import init, { Reader } from "./pkg/entab.js";
+      // there should be a way to do this in Rust, but I can't find it
+      Reader.prototype[Symbol.iterator] = function() { return this; };
+      let loaded = false;
+
+      const app = new Vue({
+        el: "#app",
+        data: {
+          filename: '',
+          parser: 'No file selected',
+        },
+      });
+
+      async function processFile(event) {
+        if (!loaded) {
+          await init();
+          loaded = true;
+        }
+
+        const file = event.target.files[0];
+        Vue.set(app, 'filename', file.name);
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        const reader = new Reader(buffer);
+
+        Vue.set(app, 'parser', reader.parser);
+      }
+
+      function createTsv(file) {
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        const reader = new Reader(buffer);
+        const data = [];
+        for (const i of reader) {
+          data.push();
+        }
+        const blob = new Blob(data, { type: 'text/tsv;charset=utf-8;' });
+        const link = document.createElement('a');
+        elem.href = URL.createObjectURL(blob);
+        elem.download = file.name + '.tsv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      document.querySelector("#file-input").addEventListener('change', processFile);
+    </script>
+    <input id="file-input" type="file" change="processFile(event)" />
+    <div id="app">
+      {{ parser }}
+    </div>
+  </body>
+</html>

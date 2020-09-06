@@ -8,6 +8,7 @@ use entab_base::compression::decompress;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use entab_base::utils::error::EtError;
+use js_sys::Array;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -37,7 +38,9 @@ impl Reader {
     #[wasm_bindgen(constructor)]
     pub fn new(data: Box<[u8]>, parser: Option<String>) -> Result<Reader, JsValue> {
         utils::set_panic_hook();
-
+        if data.is_empty() {
+            return Err(JsValue::from_str("Data is empty or of the wrong type."));
+        }
         let stream: Box<dyn Read> = Box::new(Cursor::new(data));
 
         let (reader, filetype, _) = decompress(stream).map_err(to_js)?;
@@ -53,16 +56,21 @@ impl Reader {
         })
     }
 
+    // TODO: it'd be nice to implement @@iterator somehow in here too
+
     #[wasm_bindgen(getter)]
     pub fn parser(&self) -> String {
         self.parser.clone()
     }
 
-    // FIXME: it'd be nice to implement iterable
-    // #[wasm_bindgen(js_name = "@@iterable")]
-    // pub fn iterable(&self) -> JsValue {
-    //     self
-    // }
+    #[wasm_bindgen(getter)]
+    pub fn headers(&self) -> JsValue {
+        let array = Array::new();
+        for item in &self.headers {
+            array.push(&item.into());
+        }
+        array.into()
+    }
 
     #[wasm_bindgen]
     pub fn next(&mut self) -> Result<JsValue, JsValue> {
@@ -81,7 +89,7 @@ impl Reader {
         } else {
             JsValue::from_serde(&NextRecord {
                 value: None,
-                done: false,
+                done: true,
             })
             .map_err(|_| JsValue::from_str("Error translating record"))
         }
