@@ -2,6 +2,9 @@
 name = "entab-py"
 version = "0.2.0"
 authors = ["Roderick <rbovee@gmail.com>"]
+license = "MIT"
+description = "Record-format file reader"
+repository = "https://github.com/bovee/entab"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

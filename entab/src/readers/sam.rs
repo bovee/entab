@@ -2,13 +2,13 @@ use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
-use core::convert::TryInto;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, FromBuffer, NewLine};
+use crate::parsers::{Endian, FromBuffer, FromSlice, NewLine};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
+#[derive(Debug)]
 pub struct BamState {
     references: Vec<(String, usize)>,
 }
@@ -106,8 +106,7 @@ fn extract_bam_record<'r, 's>(
     }
     let mut cigar: Vec<u8> = Vec::new();
     for _ in 0..n_cigar_op {
-        let cigar_op = u32::from_le_bytes(data[start..start + 4].try_into().unwrap()) as usize;
-        // let cigar_op = LittleEndian::read_u32(&data[start..start + 4]) as usize;
+        let cigar_op = u32::out_of(&data[start..], Endian::Little)? as usize;
         cigar.extend((cigar_op >> 4).to_string().as_bytes());
         cigar.push(b"MIDNSHP=X"[cigar_op & 7]);
         start += 4;
@@ -191,6 +190,7 @@ impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
 
 impl_reader!(BamReader, BamRecord, BamState, ());
 
+#[derive(Debug)]
 pub struct SamState {}
 
 impl<'r> FromBuffer<'r> for SamState {
@@ -494,6 +494,31 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
             223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
             223, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10,
+        ];
+        let rb = ReadBuffer::from_slice(&data);
+        let mut reader = BamReader::new(rb, ())?;
+        assert!(reader.next().is_err());
+
+        let data = [
+            66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 1, 209, 255, 255, 122,
+            255, 255, 255, 255, 138, 138, 138, 138, 138, 138, 0, 0, 138, 138, 138, 138, 138, 138,
+            138, 138, 138, 138, 138, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
+            223, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 10,
+            10, 10, 10, 10, 62, 0, 0, 10, 10, 10, 103, 10, 10, 10, 181, 181, 181, 181, 181, 181,
+            181, 181, 62, 10, 10, 10, 10, 10, 10, 10, 68, 61, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 107, 181, 181, 181, 181, 181, 181, 181, 181, 181,
+            181, 181, 181, 181, 181, 181, 181, 181, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
+            223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 0, 0, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 107, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181,
+            181, 181, 181, 181, 181, 181, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
+            185, 255, 255, 255, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
         ];
         let rb = ReadBuffer::from_slice(&data);
         let mut reader = BamReader::new(rb, ())?;

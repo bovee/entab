@@ -1,6 +1,6 @@
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};

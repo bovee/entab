@@ -63,6 +63,7 @@ fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
     })
 }
 
+#[derive(Debug)]
 pub struct ThermoDxfState {
     first: bool,
     n_scans_left: usize,
@@ -168,6 +169,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
 
 impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfState, ());
 
+#[derive(Debug)]
 pub struct ThermoCfState {
     n_scans_left: usize,
     cur_mz_idx: usize,

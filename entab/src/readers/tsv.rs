@@ -49,6 +49,7 @@ fn split<'a>(
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct TsvReader<'r> {
     rb: ReadBuffer<'r>,
     headers: Vec<String>,

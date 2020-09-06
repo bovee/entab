@@ -40,7 +40,7 @@ pub fn get_reader<'r>(
     })
 }
 
-pub trait RecordReader {
+pub trait RecordReader: ::core::fmt::Debug {
     /// Returns the next record from the file.
     ///
     /// Roughly equivalent to Rust's `Iterator.next`, but obeys slightly
@@ -56,6 +56,7 @@ pub trait RecordReader {
 #[macro_export]
 macro_rules! impl_reader {
     ($reader: ident, $record:ty, $state:ty, $new_params:ty) => {
+        #[derive(Debug)]
         pub struct $reader<'r> {
             rb: ReadBuffer<'r>,
             state: $state,
@@ -73,7 +74,9 @@ macro_rules! impl_reader {
         }
 
         impl<'r> crate::readers::RecordReader for $reader<'r> {
-            fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
+            fn next_record(
+                &mut self,
+            ) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
                 if let Some(record) = self.rb.extract::<Option<$record>>(&mut self.state)? {
                     Ok(Some(record.into()))
                 } else {

@@ -247,6 +247,20 @@ impl<'s> ReadBuffer<'s> {
     }
 }
 
+impl<'r> ::core::fmt::Debug for ReadBuffer<'r> {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+        write!(
+            f,
+            "<ReadBuffer pos={}/{} len={}/{} end={}>",
+            self.record_pos,
+            self.reader_pos,
+            self.consumed,
+            self.len(),
+            self.eof()
+        )
+    }
+}
+
 // It's not really possible to implement Index<(Bound, Bound)> or otherwise
 // make this generic over all forms of Range* so we do a little hacky business
 macro_rules! impl_index {

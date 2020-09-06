@@ -1,6 +1,6 @@
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 use core::mem::transmute;
 
 use crate::buffer::ReadBuffer;
@@ -15,6 +15,7 @@ use crate::EtError;
 // TODO: add a skip N's?
 // TODO: add a remove newlines? (default true)
 
+#[derive(Debug)]
 pub struct FastqKmerReader<'r> {
     fastq_reader: FastqReader<'r>,
     k: usize,

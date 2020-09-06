@@ -9,10 +9,10 @@ use xz2::read::XzDecoder;
 #[cfg(any(feature = "compression", feature = "compression_manylinux"))]
 use zstd::stream::read::Decoder as ZstdDecoder;
 
-#[cfg(not(any(feature = "compression", feature = "compression_manylinux")))]
-pub use fake_compression::{BzDecoder, ZstdDecoder};
 #[cfg(not(feature = "compression"))]
 pub use fake_compression::XzDecoder;
+#[cfg(not(any(feature = "compression", feature = "compression_manylinux")))]
+pub use fake_compression::{BzDecoder, ZstdDecoder};
 
 use crate::filetype::{sniff_reader_filetype, FileType};
 use crate::EtError;
