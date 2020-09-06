@@ -5,6 +5,7 @@ use crate::parsers::FromBuffer;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
+#[derive(Debug)]
 pub struct FastqRecord<'r> {
     pub id: &'r str,
     pub sequence: &'r [u8],
@@ -95,7 +96,7 @@ impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
             );
         };
 
-        let record = rb.consume(rec_end);
+        let record = rb.extract::<&[u8]>(rec_end)?;
 
         Ok(Some(FastqRecord {
             id: alloc::str::from_utf8(&record[header_range])?,

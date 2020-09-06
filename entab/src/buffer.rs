@@ -76,6 +76,10 @@ impl<'s> ReadBuffer<'s> {
         })
     }
 
+    /// Create a new ReadBuffer from `slice`
+    ///
+    /// Buffer will automatically be at "eof" and `refill` will have no
+    /// effect.
     pub fn from_slice(slice: &'s [u8]) -> Self {
         ReadBuffer {
             buffer: Cow::Borrowed(slice),
@@ -166,40 +170,33 @@ impl<'s> ReadBuffer<'s> {
             if let Some(pos) = memchr(pat[0], &self[..]) {
                 if pos + pat.len() > self.len() {
                     if self.eof() {
-                        self.partial_consume(self.len());
+                        let _ = self.consume(self.len());
                         return Ok(false);
                     }
-                    self.partial_consume(pos);
+                    let _ = self.consume(pos);
                     self.refill()?;
                     continue;
                 }
                 if &self[pos..pos + pat.len()] == pat {
-                    self.partial_consume(pos);
+                    let _ = self.consume(pos);
                     break;
                 }
-                self.partial_consume(1);
+                let _ = self.consume(1);
                 continue;
             } else if self.eof() {
-                self.partial_consume(self.len());
+                let _ = self.consume(self.len());
                 return Ok(false);
             }
             // couldn't find the character; load more
             if self.len() > pat.len() - 1 {
-                self.partial_consume(self.len() + 1 - pat.len());
+                let _ = self.consume(self.len() + 1 - pat.len());
             }
             self.refill()?;
         }
         Ok(true)
     }
 
-    /// Mark out the data in the buffer and return a reference to it
-    /// To be called once an entire record has been consumed
     pub fn consume(&mut self, amt: usize) -> &[u8] {
-        self.record_pos += 1;
-        self.partial_consume(amt)
-    }
-
-    pub fn partial_consume(&mut self, amt: usize) -> &[u8] {
         let start = self.consumed;
         self.consumed += amt;
         &self.buffer[start..self.consumed]
@@ -300,7 +297,7 @@ mod test {
         let mut rb = ReadBuffer::new(reader)?;
 
         assert_eq!(&rb[..], b"123456");
-        rb.consume(3);
+        let _ = rb.consume(3);
         assert_eq!(&rb[..], b"456");
         Ok(())
     }

@@ -69,9 +69,9 @@ mod tests {
 mod fake_compression {
     use std::io::Read;
 
-    pub struct Fake;
+    pub(crate) struct Fake;
     impl Fake {
-        pub fn new<'r>(_: Box<dyn Read + 'r>) -> Self {
+        pub(crate) fn new<'r>(_: Box<dyn Read + 'r>) -> Self {
             Fake
         }
     }
@@ -84,9 +84,9 @@ mod fake_compression {
         }
     }
 
-    pub struct ZstdDecoder;
+    pub(crate) struct ZstdDecoder;
     impl ZstdDecoder {
-        pub fn new<'r>(_: Box<dyn Read + 'r>) -> Result<Self, std::io::Error> {
+        pub(crate) fn new<'r>(_: Box<dyn Read + 'r>) -> Result<Self, std::io::Error> {
             Ok(ZstdDecoder)
         }
     }
@@ -99,6 +99,6 @@ mod fake_compression {
         }
     }
 
-    pub type BzDecoder = Fake;
-    pub type XzDecoder = Fake;
+    pub(crate) type BzDecoder = Fake;
+    pub(crate) type XzDecoder = Fake;
 }

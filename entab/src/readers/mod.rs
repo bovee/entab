@@ -69,6 +69,7 @@ macro_rules! impl_reader {
             }
 
             pub fn next(&mut self) -> Result<Option<$record>, EtError> {
+                self.rb.record_pos += 1;
                 self.rb.extract(&mut self.state)
             }
         }

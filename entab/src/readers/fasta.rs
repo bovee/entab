@@ -9,6 +9,7 @@ use crate::{impl_reader, impl_record};
 
 use alloc::borrow::Cow;
 
+#[derive(Debug)]
 pub struct FastaRecord<'r> {
     pub id: &'r str,
     pub sequence: Cow<'r, [u8]>,
@@ -77,7 +78,7 @@ impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
             break (1..header_end, seq_start..seq_end, rec_end);
         };
 
-        let record = rb.consume(rec_end);
+        let record = rb.extract::<&[u8]>(rec_end)?;
 
         let header = &record[header_range];
         let raw_sequence = &record[seq_range];

@@ -1,6 +1,7 @@
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
@@ -23,8 +24,7 @@ fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'
     if header_size < 512 {
         return Err(EtError::new("Header length too short"));
     }
-    rb.reserve(header_size)?;
-    Ok(rb.partial_consume(header_size))
+    rb.extract::<&[u8]>(header_size)
 }
 
 #[derive(Debug)]
@@ -81,6 +81,7 @@ impl<'r> FromBuffer<'r> for ChemstationFidState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ChemstationFidRecord {
     pub time: f64,
     pub intensity: f64,
@@ -105,7 +106,6 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
 
         let intensity: i16 = rb.extract(Endian::Big)?;
         if intensity == 32767 {
-            rb.reserve(6)?;
             state.cur_delta = 0.;
             let high_value: i32 = rb.extract(Endian::Big)?;
             let low_value: u16 = rb.extract(Endian::Big)?;
@@ -114,7 +114,6 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
             state.cur_delta += f64::from(intensity);
             state.cur_intensity += state.cur_delta;
         }
-        rb.consume(0);
 
         Ok(Some(ChemstationFidRecord {
             time,
@@ -124,7 +123,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
@@ -147,6 +146,7 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ChemstationMsRecord {
     pub time: f64,
     pub mz: f64,
@@ -172,7 +172,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
             }
             state.n_mzs_left = usize::from((raw_n_mzs_left - 13) / 2);
             state.cur_time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
-            rb.extract::<&[u8]>(12_usize)?;
+            let _ = rb.extract::<&[u8]>(12_usize)?;
         };
 
         // just read the mz/intensity
@@ -182,9 +182,8 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
             f64::from(raw_intensity & 16383) * 8f64.powi(i32::from(raw_intensity) >> 14);
         if state.n_mzs_left == 1 {
             state.n_scans_left -= 1;
-            // eat the footer and bump the record number
-            rb.extract::<&[u8]>(10_usize)?;
-            rb.consume(0);
+            // eat the footer
+            let _ = rb.extract::<&[u8]>(10_usize)?;
         }
         state.n_mzs_left -= 1;
 
@@ -222,6 +221,7 @@ impl<'r> FromBuffer<'r> for ChemstationMwdState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ChemstationMwdRecord<'r> {
     pub signal_name: &'r str,
     pub time: f64,
@@ -238,7 +238,7 @@ impl<'r> RecHeader for ChemstationMwdRecord<'r> {
     }
 }
 
-impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value> {
+impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
     fn from(record: ChemstationMwdRecord<'r>) -> Self {
         // signal name is something like "MWD A, Sig=210,5 Ref=360,100"
         let mz = record
@@ -282,7 +282,6 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
             state.cur_intensity += f64::from(intensity);
         }
         state.n_wvs_left -= 1;
-        rb.consume(0);
 
         Ok(Some(ChemstationMwdRecord {
             signal_name: &state.metadata.signal_name,
@@ -293,7 +292,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ChemstationUvState {
     n_scans_left: usize,
     n_wvs_left: usize,
@@ -322,7 +321,7 @@ impl<'r> FromBuffer<'r> for ChemstationUvState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ChemstationUvRecord {
     pub time: f64,
     pub wavelength: f64,
@@ -341,7 +340,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
 
         // refill case
         if state.n_wvs_left == 0 {
-            rb.extract::<&[u8]>(4_usize)?;
+            let _ = rb.extract::<&[u8]>(4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
             state.cur_time = (rb.extract::<u32>(Endian::Little)? as f64) / 60000.;
             let wv_start: u16 = rb.extract(Endian::Little)?;
@@ -351,7 +350,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
             state.n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
-            rb.extract::<&[u8]>(8_usize)?;
+            let _ = rb.extract::<&[u8]>(8_usize)?;
         };
 
         let delta = rb.extract::<i16>(Endian::Little)?;
@@ -363,8 +362,6 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
 
         if state.n_wvs_left == 1 {
             state.n_scans_left -= 1;
-            // eat the footer and bump the record number
-            rb.consume(0);
         }
         state.n_wvs_left -= 1;
 

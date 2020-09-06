@@ -105,6 +105,7 @@ impl<'r> TsvReader<'r> {
             .map_err(|e| e.fill_pos(&self.rb))?;
         }
 
+        self.rb.record_pos += 1;
         // we pass along the headers too since they can be variable for tsvs
         Ok(Some(self.cur_line.as_ref()))
     }

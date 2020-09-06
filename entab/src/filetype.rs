@@ -2,6 +2,7 @@
 use alloc::boxed::Box;
 #[cfg(feature = "std")]
 use alloc::vec;
+use core::marker::Copy;
 #[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
@@ -25,7 +26,7 @@ pub fn sniff_reader_filetype<'a>(
 }
 
 /// A file format.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FileType {
     // compression
     Gzip,

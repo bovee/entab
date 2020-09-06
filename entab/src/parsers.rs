@@ -1,4 +1,6 @@
+use alloc::format;
 use core::convert::TryInto;
+use core::marker::Copy;
 
 use memchr::memchr;
 
@@ -11,12 +13,13 @@ pub trait FromBuffer<'r>: Sized {
     fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError>;
 }
 
-pub trait FromSlice<'r>: Sized {
+pub(crate) trait FromSlice<'r>: Sized {
     type State;
 
     fn out_of(rb: &'r [u8], state: Self::State) -> Result<Self, EtError>;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Endian {
     Big,
     Little,
@@ -31,9 +34,10 @@ macro_rules! impl_extract {
             fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
-                    .partial_consume(core::mem::size_of::<$return>())
+                    .consume(core::mem::size_of::<$return>())
                     .try_into()
                     .unwrap();
+
                 Ok(match state {
                     Endian::Big => <$return>::from_be_bytes(slice),
                     Endian::Little => <$return>::from_le_bytes(slice),
@@ -46,6 +50,9 @@ macro_rules! impl_extract {
 
             #[inline]
             fn out_of(rb: &'r [u8], state: Self::State) -> Result<Self, EtError> {
+                if rb.len() < core::mem::size_of::<$return>() {
+                    return Err(EtError::new(format!("Could not read {}", core::any::type_name::<$return>())));
+                }
                 let slice = rb[..core::mem::size_of::<$return>()].try_into().unwrap();
                 Ok(match state {
                     Endian::Big => <$return>::from_be_bytes(slice),
@@ -82,7 +89,7 @@ impl<'r> FromBuffer<'r> for &'r [u8] {
     #[inline]
     fn get(rb: &'r mut ReadBuffer, amt: Self::State) -> Result<Self, EtError> {
         rb.reserve(amt)?;
-        Ok(rb.partial_consume(amt))
+        Ok(rb.consume(amt))
     }
 }
 
@@ -91,6 +98,7 @@ impl<'r> FromBuffer<'r> for &'r [u8] {
 /// Assumes all lines are terminated with a '\n' and an optional '\r'
 /// before so should handle almost all current text file formats, but
 /// may fail on older '\r' only formats.
+#[derive(Clone, Copy, Debug)]
 pub struct NewLine<'r>(pub &'r [u8]);
 
 impl<'r> FromBuffer<'r> for Option<NewLine<'r>> {
@@ -119,7 +127,7 @@ impl<'r> FromBuffer<'r> for Option<NewLine<'r>> {
             rb.refill()?;
         };
 
-        let buffer = rb.consume(to_consume);
+        let buffer = rb.extract::<&[u8]>(to_consume)?;
         Ok(Some(NewLine(&buffer[..end])))
     }
 }

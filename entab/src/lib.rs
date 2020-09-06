@@ -1,4 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_debug_implementations, missing_copy_implementations,
+        trivial_casts, trivial_numeric_casts, unreachable_pub,
+        unused_import_braces, unused_qualifications, unused_results)]
 //! entab is a library to parse different "record-formatted" file formats
 //! into tabular form.
 //!

@@ -18,7 +18,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[derive(Serialize)]
 pub struct NextRecord<'v> {
-    value: Option<BTreeMap<&'v str, Value>>,
+    value: Option<BTreeMap<&'v str, Value<'v>>>,
     done: bool,
 }
 

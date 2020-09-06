@@ -4,15 +4,17 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
+use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
-pub struct CString<'r>(Cow<'r, str>);
+#[derive(Debug)]
+pub struct MfcString<'r>(Cow<'r, str>);
 
-impl<'r> FromBuffer<'r> for CString<'r> {
+impl<'r> FromBuffer<'r> for MfcString<'r> {
     type State = ();
 
     fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
@@ -31,11 +33,8 @@ impl<'r> FromBuffer<'r> for CString<'r> {
         } else {
             return Err("Unknown string header".into());
         };
-        if rb.len() < end {
-            rb.reserve(end)?;
-        }
 
-        let data = &rb.partial_consume(end)[start..];
+        let data = &rb.extract::<&[u8]>(end)?[start..];
         let string = if utf16 {
             let iter = (0..end - start)
                 .step_by(2)
@@ -47,7 +46,7 @@ impl<'r> FromBuffer<'r> for CString<'r> {
         } else {
             alloc::str::from_utf8(data)?.into()
         };
-        Ok(CString(string))
+        Ok(MfcString(string))
     }
 }
 
@@ -86,6 +85,7 @@ impl<'r> FromBuffer<'r> for ThermoDxfState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ThermoDxfRecord {
     pub time: f64,
     pub mz: f64,
@@ -107,8 +107,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
                 }
                 state.first = false;
                 // str plus a u32 (value 3) and a `2F00`
-                rb.reserve(14)?;
-                rb.partial_consume(14);
+                let _ = rb.extract::<&[u8]>(14)?;
             } else {
                 // `8282` is the replacement for CRawData, but we pad it out a
                 // little in our search to help with specificity
@@ -119,10 +118,10 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
                 }
                 // only consume up the to the `FFFEFF` part b/c that's part of the
                 // gas name CString
-                rb.partial_consume(16);
+                let _ = rb.extract::<&[u8]>(16)?;
             }
 
-            let gas_name = rb.extract::<CString>(())?.0;
+            let gas_name = rb.extract::<MfcString>(())?.0;
             if gas_name == "" {
                 return Ok(None);
             }
@@ -130,17 +129,14 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
             state.mzs = mzs_from_gas(&gas_name)?;
 
             // `FFFEFF00` and then three u32s (values 0, 1, 1)
-            rb.reserve(16)?;
-            rb.partial_consume(16);
+            let _ = rb.extract::<&[u8]>(16)?;
 
             if rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CEvalGasData header and the u32 (value 1)
-                rb.reserve(20)?;
-                rb.partial_consume(20);
+                let _ = rb.extract::<&[u8]>(20)?;
             } else {
                 // replacement sentinel (`8482`) and the u32 (value 1)
-                rb.reserve(6)?;
-                rb.partial_consume(6);
+                let _ = rb.extract::<&[u8]>(6)?;
             }
 
             let bytes_data = rb.extract::<u32>(Endian::Little)? as usize;
@@ -149,10 +145,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
         }
         state.n_scans_left -= 1;
         if state.cur_mz_idx == 0 {
-            rb.reserve(12)?;
             state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
-        } else {
-            rb.reserve(8)?;
         }
 
         let intensity = rb.extract::<f64>(Endian::Little)?;
@@ -190,6 +183,7 @@ impl<'r> FromBuffer<'r> for ThermoCfState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ThermoCfRecord {
     pub time: f64,
     pub mz: f64,
@@ -209,26 +203,22 @@ impl<'r> FromBuffer<'r> for Option<ThermoCfRecord> {
                 return Ok(None);
             }
             // pattern and then 3 u32's (values 0, 2, 2)
-            rb.reserve(36)?;
-            rb.partial_consume(36);
+            let _ = rb.extract::<&[u8]>(36)?;
             // read the title and an additional `030000002C00`
             if rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CRawDataScanStorage title
-                rb.reserve(34)?;
-                rb.partial_consume(34);
+                let _ = rb.extract::<&[u8]>(34)?;
             } else {
                 // the title was elided (there's a 3E86 sentinel?)
-                rb.reserve(10)?;
-                rb.partial_consume(10);
+                let _ = rb.extract::<&[u8]>(10)?;
             }
             // Now there's a CString with the type of the gas
             // remove "Trace Data" from the front of the string
-            let gas_type = rb.extract::<CString>(())?.0[11..].to_owned();
+            let gas_type = rb.extract::<MfcString>(())?.0[11..].to_owned();
             state.mzs = mzs_from_gas(&gas_type)?;
 
             // then 4 u32's (0, 2, 0, 4) and a FEF0 block
-            rb.reserve(20)?;
-            rb.partial_consume(20);
+            let _ = rb.extract::<&[u8]>(20)?;
             state.n_scans_left = rb.extract::<u32>(Endian::Little)? as usize;
             // sanity check our guess for the masses
             let n_mzs = rb.extract::<u32>(Endian::Little)? as usize;
@@ -241,20 +231,15 @@ impl<'r> FromBuffer<'r> for Option<ThermoCfRecord> {
             // of bytes of data that follow (value = n_scans * (4 + 8 * n_mzs))
             if rb.extract::<u8>(Endian::Little)? == 0xFF {
                 // CBinary title
-                rb.reserve(28)?;
-                rb.partial_consume(28);
+                let _ = rb.extract::<&[u8]>(28)?;
             } else {
                 // the title was elided (there's a 4086 sentinel?)
-                rb.reserve(18)?;
-                rb.partial_consume(18);
+                let _ = rb.extract::<&[u8]>(18)?;
             }
         }
         state.n_scans_left -= 1;
         if state.cur_mz_idx == 0 {
-            rb.reserve(12)?;
             state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
-        } else {
-            rb.reserve(8)?;
         }
 
         let intensity = rb.extract::<f64>(Endian::Little)?;

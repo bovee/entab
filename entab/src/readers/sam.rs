@@ -2,6 +2,7 @@ use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice, NewLine};
@@ -22,10 +23,9 @@ impl<'r> FromBuffer<'r> for BamState {
             return Err("Not a valid BAM file".into());
         }
         let header_len = rb.extract::<u32>(Endian::Little)? as usize;
-        rb.reserve(header_len + 8)?;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        let _ = rb.partial_consume(header_len);
+        let _ = rb.extract::<&[u8]>(header_len);
 
         // read the reference sequence data
         let mut n_references = rb.extract::<u32>(Endian::Little)? as usize;
@@ -76,7 +76,7 @@ fn extract_bam_record<'r, 's>(
         Some(raw_mapq)
     };
     // don't care about the BAI index bin - &data[10..12]
-    reader.extract::<&[u8]>(2_usize)?;
+    let _ = reader.extract::<&[u8]>(2_usize)?;
     let n_cigar_op = usize::from(reader.extract::<u16>(Endian::Little)?);
     let flag: u16 = reader.extract(Endian::Little)?;
     let seq_len = reader.extract::<u32>(Endian::Little)? as usize;
@@ -146,6 +146,7 @@ fn extract_bam_record<'r, 's>(
     })
 }
 
+#[derive(Debug)]
 pub struct BamRecord<'r> {
     pub query_name: &'r str,
     pub flag: u16,
@@ -190,7 +191,7 @@ impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
 
 impl_reader!(BamReader, BamRecord, BamState, ());
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct SamState {}
 
 impl<'r> FromBuffer<'r> for SamState {
@@ -201,18 +202,18 @@ impl<'r> FromBuffer<'r> for SamState {
         // to the Reader as metadata once we support that
         rb.reserve(1)?;
         while !rb.is_empty() && rb[0] == b'@' {
-            // TODO: need to `reserve` in here probably?
             if !rb.seek_pattern(b"\n")? {
                 break;
             }
             // read the newline too
-            rb.partial_consume(1);
+            let _ = rb.extract::<u8>(Endian::Little)?;
         }
 
         Ok(SamState {})
     }
 }
 
+#[derive(Debug)]
 pub struct SamRecord<'r> {
     pub query_name: &'r str,
     pub flag: u16,

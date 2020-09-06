@@ -1,7 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use serde::{Serialize, Serializer};
@@ -27,7 +27,7 @@ macro_rules! impl_record {
             }
         }
 
-        impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value> {
+        impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value<'r>> {
             fn from(record: $type) -> Self {
                 let mut list = ::alloc::vec::Vec::new();
                 $(
@@ -41,18 +41,18 @@ macro_rules! impl_record {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum Value {
+pub enum Value<'a> {
     Null,
     Boolean(bool),
     Datetime(String),
     Float(f64),
     Integer(i64),
-    List(Vec<Value>),
-    Record(BTreeMap<String, Value>),
-    String(String),
+    List(Vec<Value<'a>>),
+    Record(BTreeMap<String, Value<'a>>),
+    String(Cow<'a, str>),
 }
 
-impl Value {
+impl<'a> Value<'a> {
     pub fn write_for_tsv<W>(&self, mut write: W) -> Result<(), EtError>
     where
         W: FnMut(&[u8]) -> Result<(), EtError>,
@@ -71,7 +71,7 @@ impl Value {
     }
 }
 
-impl<T: Into<Value>> From<Option<T>> for Value {
+impl<'a, T: Into<Value<'a>>> From<Option<T>> for Value<'a> {
     fn from(x: Option<T>) -> Self {
         match x {
             None => Value::Null,
@@ -80,80 +80,83 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
-impl From<bool> for Value {
+impl<'a> From<bool> for Value<'a> {
     fn from(x: bool) -> Self {
         Value::Boolean(x)
     }
 }
 
-impl From<f64> for Value {
+impl<'a> From<f64> for Value<'a> {
     fn from(x: f64) -> Self {
         Value::Float(x)
     }
 }
 
-impl From<u8> for Value {
+impl<'a> From<u8> for Value<'a> {
     fn from(x: u8) -> Self {
         Value::Integer(i64::from(x))
     }
 }
 
-impl From<u16> for Value {
+impl<'a> From<u16> for Value<'a> {
     fn from(x: u16) -> Self {
         Value::Integer(i64::from(x))
     }
 }
 
-impl From<i32> for Value {
+impl<'a> From<i32> for Value<'a> {
     fn from(x: i32) -> Self {
         Value::Integer(i64::from(x))
     }
 }
 
-impl From<u32> for Value {
+impl<'a> From<u32> for Value<'a> {
     fn from(x: u32) -> Self {
         Value::Integer(i64::from(x))
     }
 }
 
-impl From<i64> for Value {
+impl<'a> From<i64> for Value<'a> {
     fn from(x: i64) -> Self {
         Value::Integer(x)
     }
 }
 
-impl From<u64> for Value {
+impl<'a> From<u64> for Value<'a> {
     fn from(x: u64) -> Self {
         // there's probably a better solution here
         Value::Integer(x as i64)
     }
 }
 
-impl<'a> From<Cow<'a, [u8]>> for Value {
+impl<'a> From<Cow<'a, [u8]>> for Value<'a> {
     fn from(x: Cow<'a, [u8]>) -> Self {
-        Value::String(String::from_utf8_lossy(&x).into_owned())
+        Value::String(match x {
+            Cow::Borrowed(b) => String::from_utf8_lossy(b),
+            Cow::Owned(o) => Cow::Owned(String::from_utf8_lossy(&o).into_owned()),
+        })
     }
 }
 
-impl<'a> From<&'a [u8]> for Value {
+impl<'a> From<&'a [u8]> for Value<'a> {
     fn from(x: &'a [u8]) -> Self {
-        Value::String(String::from_utf8_lossy(x).into_owned())
+        Value::String(String::from_utf8_lossy(x))
     }
 }
 
-impl From<&str> for Value {
-    fn from(x: &str) -> Self {
-        Value::String(x.to_string())
+impl<'a> From<&'a str> for Value<'a> {
+    fn from(x: &'a str) -> Self {
+        Value::String(x.into())
     }
 }
 
-impl From<String> for Value {
+impl<'a> From<String> for Value<'a> {
     fn from(x: String) -> Self {
-        Value::String(x)
+        Value::String(x.into())
     }
 }
 
-impl Serialize for Value {
+impl<'a> Serialize for Value<'a> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match *self {
             Value::Null => serializer.serialize_none(),

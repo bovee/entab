@@ -57,7 +57,10 @@ impl Error for EtError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.orig_err
             .as_ref()
-            .map(|c| &**c as &(dyn Error + 'static))
+            .map(|c| {
+                let b: &(dyn Error + 'static) = &**c;
+                b
+            })
     }
 }
 
