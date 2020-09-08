@@ -196,6 +196,9 @@ impl<'s> ReadBuffer<'s> {
         Ok(true)
     }
 
+    /// Returns the byte slice of size requested and marks that data as used
+    /// so the next time `refill`/`reserve`/`extract` are called, this memory
+    /// can be freed.
     pub fn consume(&mut self, amt: usize) -> &[u8] {
         let start = self.consumed;
         self.consumed += amt;

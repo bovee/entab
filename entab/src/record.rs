@@ -9,14 +9,23 @@ use serde::{Serialize, Serializer};
 use crate::utils::string::replace_tabs;
 use crate::EtError;
 
-pub trait RecHeader {
+/// For a given "raw" record struct, the header fields in that struct.
+///
+/// Primarily used to generate the corresponding header list for the
+/// `Vec<Value>`s generated in the `RecordReader` trait.
+pub trait RecordHeader {
+    /// The header for the associated struct
     fn header() -> Vec<String>;
 }
 
+/// Autogenerates the conversion from a struct into the matching `Vec` of
+/// headers and the corresponding `Vec` of `Value`s to allow decomposing
+/// these raw structs into a common Record system that allows abstracting
+/// over different file formats.
 #[macro_export]
 macro_rules! impl_record {
     ($type:ty : $($key:ident),* ) => {
-        impl<'r> $crate::record::RecHeader for $type {
+        impl<'r> $crate::record::RecordHeader for $type {
             fn header() -> ::alloc::vec::Vec<::alloc::string::String> {
                 use ::alloc::string::ToString;
                 let mut header = ::alloc::vec::Vec::new();
@@ -40,19 +49,33 @@ macro_rules! impl_record {
     ($type:ty : $($key:ident)+ ) => { record!($($key),+) };
 }
 
+/// An arbitrary serializable value
+///
+/// Similar to the value types in `toml-rs` and `serde-json`, but in addition
+/// we need to derive other methods for e.g. converting into something
+/// displayable in a TSV so we couldn't use those.
 #[derive(PartialEq, Clone, Debug)]
 pub enum Value<'a> {
+    /// A null value; all other types are considered implicitly nullable
     Null,
+    /// A true/false value
     Boolean(bool),
+    /// A date with associated time
     Datetime(String),
+    /// A floating point number
     Float(f64),
+    /// An integer
     Integer(i64),
-    List(Vec<Value<'a>>),
-    Record(BTreeMap<String, Value<'a>>),
+    /// A string/textual data
     String(Cow<'a, str>),
+    /// A list of `Value`s (not well supported yet)
+    List(Vec<Value<'a>>),
+    /// A record mapping keys to `Value`s
+    Record(BTreeMap<String, Value<'a>>),
 }
 
 impl<'a> Value<'a> {
+    /// Write a `Value` out to a TSV stream
     pub fn write_for_tsv<W>(&self, mut write: W) -> Result<(), EtError>
     where
         W: FnMut(&[u8]) -> Result<(), EtError>,

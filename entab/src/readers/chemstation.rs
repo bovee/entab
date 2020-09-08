@@ -5,7 +5,7 @@ use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
-use crate::record::{RecHeader, Value};
+use crate::record::{RecordHeader, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
@@ -28,11 +28,17 @@ fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'
 }
 
 #[derive(Debug)]
+/// Metadata consistly found in Chemstation file formats
 pub struct ChemstationMetadata {
+    /// Time the run started (minutes)
     pub start_time: f64,
+    /// Time the ended started (minutes)
     pub end_time: f64,
+    /// Name of the signal record (specifically used for e.g. MWD traces)
     pub signal_name: String,
+    /// Absolute correction to be applied to all data points
     pub offset_correction: f64,
+    /// Scaling correction to be applied to all data points
     pub mult_correction: f64,
 }
 
@@ -56,6 +62,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
 }
 
 #[derive(Debug)]
+/// Internal state for the ChemstationFid parser
 pub struct ChemstationFidState {
     cur_time: f64,
     cur_delta: f64,
@@ -82,8 +89,11 @@ impl<'r> FromBuffer<'r> for ChemstationFidState {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// A point in a FID trace
 pub struct ChemstationFidRecord {
+    /// The time recorded at
     pub time: f64,
+    /// The intensity recorded
     pub intensity: f64,
 }
 
@@ -124,6 +134,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// Internal state for the ChemstationMs parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
@@ -147,9 +158,13 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// A single time/mz record from a ChemstationMs file
 pub struct ChemstationMsRecord {
+    /// The time recorded at
     pub time: f64,
+    /// The m/z recorded at
     pub mz: f64,
+    /// The intensity recorded
     pub intensity: f64,
 }
 
@@ -196,6 +211,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
 }
 
 #[derive(Debug)]
+/// Internal state for the ChemstationMwd parser
 pub struct ChemstationMwdState {
     n_wvs_left: usize,
     cur_time: f64,
@@ -222,13 +238,17 @@ impl<'r> FromBuffer<'r> for ChemstationMwdState {
 }
 
 #[derive(Clone, Debug)]
+/// A single point from an e.g. moving wavelength detector trace
 pub struct ChemstationMwdRecord<'r> {
+    /// The name of the signal that's being tracked
     pub signal_name: &'r str,
+    /// The time recorded at
     pub time: f64,
+    /// The intensity recorded
     pub intensity: f64,
 }
 
-impl<'r> RecHeader for ChemstationMwdRecord<'r> {
+impl<'r> RecordHeader for ChemstationMwdRecord<'r> {
     fn header() -> Vec<String> {
         vec![
             "time".to_string(),
@@ -293,6 +313,7 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// Internal state for the ChemstationUv parser
 pub struct ChemstationUvState {
     n_scans_left: usize,
     n_wvs_left: usize,
@@ -322,9 +343,13 @@ impl<'r> FromBuffer<'r> for ChemstationUvState {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// A record from a ChemstationUv file
 pub struct ChemstationUvRecord {
+    /// The time recorded at
     pub time: f64,
+    /// The wavelength recorded at
     pub wavelength: f64,
+    /// The intensity record
     pub intensity: f64,
 }
 
@@ -374,24 +399,31 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
 }
 
 impl_reader!(
+    /// A reader for a Chemstation FID file
     ChemstationFidReader,
     ChemstationFidRecord,
     ChemstationFidState,
     ()
 );
+
 impl_reader!(
+    /// A reader for a Chemstation MS file
     ChemstationMsReader,
     ChemstationMsRecord,
     ChemstationMsState,
     ()
 );
+
 impl_reader!(
+    /// A reader for a Chemstation MWD file
     ChemstationMwdReader,
     ChemstationMwdRecord,
     ChemstationMwdState,
     ()
 );
+
 impl_reader!(
+    /// A reader for a Chemstation UV file
     ChemstationUvReader,
     ChemstationUvRecord,
     ChemstationUvState,

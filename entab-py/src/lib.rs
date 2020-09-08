@@ -1,6 +1,7 @@
+mod raw_io_wrapper;
+
 use std::fs::File;
-use std::io::{Cursor, Error, ErrorKind, Read};
-use std::ptr::copy_nonoverlapping;
+use std::io::{Cursor, Read};
 
 use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
@@ -12,56 +13,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use pyo3::{create_exception, exceptions};
 
+use crate::raw_io_wrapper::RawIoWrapper;
+
 create_exception!(entab, EntabError, exceptions::Exception);
-
-struct RawIoWrapper {
-    reader: PyObject,
-}
-
-impl RawIoWrapper {
-    pub fn new(obj: &PyAny) -> Self {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let reader = obj.to_object(py);
-        RawIoWrapper { reader }
-    }
-}
-
-impl Read for RawIoWrapper {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        // TODO: it would be pass the buf itself into `readinto` so we're not
-        // creating so many copies in here, but I can't figure out how to wrap
-        // that into a python object that implements PyBufferProtocol properly
-        let py_data = self
-            .reader
-            .call_method1(py, "read", (buf.len(),))
-            .map_err(|_| {
-                // TODO: get the error message from the python error?
-                Error::new(ErrorKind::Other, "`read` failed")
-            })?;
-
-        let amt_read = if let Ok(bytes) = py_data.extract::<Vec<u8>>(py) {
-            unsafe {
-                copy_nonoverlapping::<u8>(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
-            }
-            bytes.len()
-        } else if let Ok(string) = py_data.extract::<String>(py) {
-            let bytes = string.as_bytes();
-            unsafe {
-                copy_nonoverlapping::<u8>(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
-            }
-            bytes.len()
-        } else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "`read` returned an unknown object",
-            ));
-        };
-        Ok(amt_read)
-    }
-}
 
 fn to_py(err: EtError) -> PyErr {
     EntabError::py_err(err.to_string())
@@ -158,6 +112,16 @@ impl Reader {
             record_class,
             reader,
         })
+    }
+
+    #[getter]
+    pub fn get_headers(&self) -> PyResult<Vec<String>> {
+        Ok(self.reader.headers())
+    }
+
+    #[getter]
+    pub fn get_parser(&self) -> PyResult<String> {
+        Ok(self.parser.clone())
     }
 }
 

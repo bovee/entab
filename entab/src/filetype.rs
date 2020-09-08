@@ -11,6 +11,8 @@ use crate::buffer::BUFFER_SIZE;
 #[cfg(feature = "std")]
 use crate::EtError;
 
+/// Given a `Read` stream, guess what kind of file it is and return the
+/// original stream reset to the beginning.
 #[cfg(feature = "std")]
 pub fn sniff_reader_filetype<'a>(
     mut reader: Box<dyn Read + 'a>,
@@ -29,39 +31,69 @@ pub fn sniff_reader_filetype<'a>(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FileType {
     // compression
+    /// Gz/Gzip compression container
     Gzip,
+    /// Bz/Bzip compression container
     Bzip,
+    /// Xz/Lzma compression container
     Lzma,
+    /// Zstd compression container
     Zstd,
     // bioinformatics
+    /// "Binary alignment map" data. Compressed version of SAM.
     Bam,
+    /// FASTA sequence data
     Fasta,
+    /// FASTQ sequence data
     Fastq,
+    /// Flow-cytometry data
     Facs,
+    /// "Sequence alignment map" data.
     Sam,
+    /// DNA sequencing trace format
     Scf, // http://staden.sourceforge.net/manual/formats_unix_2.html
+    /// DNA sequencing chromatogram trace format
     Ztr, // http://staden.sourceforge.net/manual/formats_unix_12.html
     // chemoinformatics
+    /// Agilent format used for MS-MS trace data
     AgilentMsMsScan, // bin   0x01, 0x01
+    /// Agilent format used for flame ionization trace data
     AgilentChemstationFid,
+    /// Agilent format used for mass spectrometry trace data
     AgilentChemstationMs,
+    /// Agilent format used for moving wavelength detector trace data
     AgilentChemstationMwd,
+    /// Agilent format used for UV-visible detector trace data
     AgilentChemstationUv,
+    /// Agilent format used for diode array detector trace data
     AgilentDad, // sd
+    /// Bruker format
     BrukerBaf,
+    /// Bruker format
     BrukerMsms,
+    /// Inficon mass spectrometry format
     InficonHapsite,
+    /// Thermo/Bruker mass spectrometry format
     MsRaw,
+    /// Thermo isotope mass spectrometry format
     ThermoCf,
+    /// Thermo isotope mass spectrometry format
     ThermoDxf,
+    /// Waters isotope mass spectrometry format
     WatersAutospec,
+    /// Vendor-independent MS file format based on HDF
     NetCdf,
+    /// Vendor-independent MS file format based on XML
     MzXml,
     // geology
+    /// "Log ASCII Standard" format for well log information
     Las,
     // catch all
+    /// Generic scientific data format
     Hdf5,
+    /// Tab-seperated value format
     Tsv,
+    /// Unknown file type
     Unknown,
 }
 

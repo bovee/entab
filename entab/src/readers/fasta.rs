@@ -10,8 +10,11 @@ use crate::{impl_reader, impl_record};
 use alloc::borrow::Cow;
 
 #[derive(Debug)]
+/// A single sequence from a FASTA file
 pub struct FastaRecord<'r> {
+    /// The ID/header line
     pub id: &'r str,
+    /// The sequence itself
     pub sequence: Cow<'r, [u8]>,
 }
 

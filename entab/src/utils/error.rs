@@ -12,15 +12,24 @@ use std::io::Error as IoError;
 use crate::buffer::ReadBuffer;
 
 #[derive(Debug)]
+/// The Error struct for entab
 pub struct EtError {
+    /// A succinct message describing the error
     pub msg: String,
+    /// At what byte in a the file (if any), the error occured
     pub byte: Option<u64>,
+    /// At what record in a the file (if any), the error occured.
+    ///
+    /// Note, this may not be the same as the index of the iterator
+    /// if the underlying file type groups e.g. record information by
+    /// time slice.
     pub record: Option<u64>,
     #[cfg(feature = "std")]
     orig_err: Option<Box<dyn Error>>,
 }
 
 impl EtError {
+    /// Create a new EtError with a display message of `msg`
     pub fn new<T>(msg: T) -> Self
     where
         T: Into<String>,
@@ -34,6 +43,9 @@ impl EtError {
         }
     }
 
+    /// Fill the positional error information from a ReadBuffer
+    ///
+    /// Used to display e.g. where a parsing error in a file occured.
     pub fn fill_pos(mut self, reader: &ReadBuffer) -> Self {
         let (record_pos, byte_pos) = reader.get_pos();
         self.record = Some(record_pos);

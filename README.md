@@ -1,7 +1,10 @@
-![Test status](https://github.com/bovee/entab/workflows/Tests/badge.svg)
-
 # entab
 What is everything were a/could be turned into a tsv?
+
+![Test status](https://github.com/bovee/entab/workflows/Tests/badge.svg)
+[![Package on Crates.io](https://img.shields.io/crates/v/entab.svg)](https://crates.io/crates/entab)
+[![Package on NPM](https://img.shields.io/npm/v/entab.svg)](https://www.npmjs.com/package/entab)
+[![Package on PyPI](https://img.shields.io/pypi/v/entab.svg)](https://pypi.org/project/entab/)
 
 ## Formats
 

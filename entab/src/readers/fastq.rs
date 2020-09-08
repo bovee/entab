@@ -6,9 +6,13 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 #[derive(Debug)]
+/// A single sequence with quality data from a FASTQ file
 pub struct FastqRecord<'r> {
+    /// The ID/header line
     pub id: &'r str,
+    /// The sequence itself
     pub sequence: &'r [u8],
+    /// The matching quality scores for bases in the sequence
     pub quality: &'r [u8],
 }
 
