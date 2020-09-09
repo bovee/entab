@@ -258,18 +258,12 @@ impl_reader!(ThermoCfReader, ThermoCfRecord, ThermoCfState, ());
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "std")]
     use super::*;
-    #[cfg(feature = "std")]
     use crate::buffer::ReadBuffer;
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_thermo_dxf_reader() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/b3_alkanes.dxf")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/b3_alkanes.dxf"));
         let mut reader = ThermoDxfReader::new(rb, ())?;
         if let Some(ThermoDxfRecord {
             time,
@@ -287,13 +281,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_thermo_cf_reader() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/test-0000.cf")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test-0000.cf"));
         let mut reader = ThermoCfReader::new(rb, ())?;
         if let Some(ThermoCfRecord {
             time,

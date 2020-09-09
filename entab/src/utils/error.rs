@@ -47,9 +47,8 @@ impl EtError {
     ///
     /// Used to display e.g. where a parsing error in a file occured.
     pub fn fill_pos(mut self, reader: &ReadBuffer) -> Self {
-        let (record_pos, byte_pos) = reader.get_pos();
-        self.record = Some(record_pos);
-        self.byte = Some(byte_pos);
+        self.record = Some(reader.record_pos);
+        self.byte = Some(reader.get_byte_pos());
         self
     }
 }

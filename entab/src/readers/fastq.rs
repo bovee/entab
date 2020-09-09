@@ -204,13 +204,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_fastq_from_file() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/test.fastq")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test.fastq"));
         let mut reader = FastqReader::new(rb, ())?;
         while let Some(_) = reader.next()? {}
         Ok(())

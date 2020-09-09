@@ -220,9 +220,9 @@ impl<'s> ReadBuffer<'s> {
         self.buffer.len() - self.consumed
     }
 
-    /// The record and byte position that the reader is on
-    pub fn get_pos(&self) -> (u64, u64) {
-        (self.record_pos, self.reader_pos + self.consumed as u64)
+    /// The byte position that the reader is on
+    pub fn get_byte_pos(&self) -> u64 {
+        self.reader_pos + self.consumed as u64
     }
 
     /// Get a record of type `T` from this ReadBuffer, taking a `state`
@@ -238,7 +238,8 @@ impl<'s> ReadBuffer<'s> {
     where
         T: FromBuffer<'r>,
     {
-        let (record_pos, byte_pos) = self.get_pos();
+        let record_pos = self.record_pos;
+        let byte_pos = self.get_byte_pos();
         T::get(self, state).map_err(|mut e| {
             e.record = Some(record_pos);
             e.byte = Some(byte_pos);

@@ -1,5 +1,8 @@
 # entab
-What is everything were a/could be turned into a tsv?
+What is everything were a/could be turned into a table?
+
+entab is a parsing framework to turn a variety of record-based scientific file
+formats into usable tabular data across a variety of programming languages.
 
 ![Test status](https://github.com/bovee/entab/workflows/Tests/badge.svg)
 [![Package on Crates.io](https://img.shields.io/crates/v/entab.svg)](https://crates.io/crates/entab)
@@ -11,6 +14,12 @@ What is everything were a/could be turned into a tsv?
 entab supports reading a variety of bioinformatics, chemoinformatics, and
 other formats.
 
+ - Agilent Chemstation CH, FID, MS, MWD, and UV formats
+ - FASTA and FASTQ sequence formats
+ - Thermo continuous flow isotope mass spectrometry formats
+ - SAM and BAM alignment formats
+ - TSV
+
 ## CLI
 
 entab has a CLI that allows piping in arbitrary files and outputs TSVs.
@@ -19,7 +28,7 @@ Install with:
 cargo install entab-cli
 ```
 
-Use like:
+Example usage to see how many records are in a file:
 ```bash
 cat test.fa | entab | sed '1d' | wc -l
 ```

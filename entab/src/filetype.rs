@@ -103,6 +103,8 @@ impl FileType {
     pub fn from_magic(magic: &[u8]) -> FileType {
         if magic.len() > 8 {
             match &magic[..8] {
+                b"FCS3.0  " => return FileType::Facs,
+                b"FCS3.1  " => return FileType::Facs,
                 b"~VERSION" => return FileType::Las,
                 b"~Version" => return FileType::Las,
                 b"\x89HDF\r\n\x1A\n" => return FileType::Hdf5,
@@ -115,8 +117,6 @@ impl FileType {
         if magic.len() > 4 {
             match &magic[..4] {
                 b"BAM\x01" => return FileType::Bam,
-                b"FCS3.0  " => return FileType::Facs,
-                b"FCS3.1  " => return FileType::Facs,
                 b"@HD\t" => return FileType::Sam,
                 b"@SQ\t" => return FileType::Sam,
                 b"\x2Escf" => return FileType::Scf,

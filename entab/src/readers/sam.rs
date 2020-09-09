@@ -329,18 +329,13 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "std")]
+    use core::include_bytes;
     use super::*;
-    #[cfg(feature = "std")]
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_sam_reader() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/test.sam")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test.sam"));
         let mut reader = SamReader::new(rb, ())?;
         if let Some(SamRecord {
             query_name, seq, ..
@@ -360,7 +355,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_sam_no_data() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(b"@HD\ttest\n");

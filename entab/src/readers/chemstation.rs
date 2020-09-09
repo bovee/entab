@@ -496,13 +496,9 @@ mod tests {
     use super::*;
     use crate::buffer::ReadBuffer;
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_chemstation_reader_fid() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/test_fid.ch")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test_fid.ch"));
         let mut reader = ChemstationFidReader::new(rb, ())?;
         let ChemstationFidRecord { time, intensity } = reader.next()?.unwrap();
         // TODO: try to confirm this time is correct
@@ -517,13 +513,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_chemstation_reader_ms() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/carotenoid_extract.d/MSD1.MS"));
         let mut reader = ChemstationMsReader::new(rb, ())?;
         let ChemstationMsRecord {
             time,
@@ -551,13 +543,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_chemstation_reader_mwd() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/chemstation_mwd.d/mwd1A.ch")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/chemstation_mwd.d/mwd1A.ch"));
         let mut reader = ChemstationMwdReader::new(rb, ())?;
         let ChemstationMwdRecord {
             time,
@@ -576,13 +564,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
-        use std::fs::File;
-
-        let f = File::open("tests/data/carotenoid_extract.d/dad1.uv")?;
-        let rb = ReadBuffer::new(Box::new(&f))?;
+        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/carotenoid_extract.d/dad1.uv"));
         let mut reader = ChemstationUvReader::new(rb, ())?;
         let ChemstationUvRecord {
             time,
