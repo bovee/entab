@@ -109,6 +109,12 @@ impl<'a> From<bool> for Value<'a> {
     }
 }
 
+impl<'a> From<f32> for Value<'a> {
+    fn from(x: f32) -> Self {
+        Value::Float(f64::from(x))
+    }
+}
+
 impl<'a> From<f64> for Value<'a> {
     fn from(x: f64) -> Self {
         Value::Float(x)

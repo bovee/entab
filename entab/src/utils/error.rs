@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use alloc::str::Utf8Error;
 use alloc::string::{FromUtf8Error, String, ToString};
 use core::fmt;
-use core::num::ParseIntError;
+use core::num::{ParseFloatError, ParseIntError};
 #[cfg(feature = "std")]
 use std::error::Error;
 #[cfg(feature = "std")]
@@ -124,6 +124,18 @@ impl From<IoError> for EtError {
 
 impl From<Utf8Error> for EtError {
     fn from(error: Utf8Error) -> Self {
+        EtError {
+            msg: error.to_string(),
+            byte: None,
+            record: None,
+            #[cfg(feature = "std")]
+            orig_err: Some(Box::new(error)),
+        }
+    }
+}
+
+impl From<ParseFloatError> for EtError {
+    fn from(error: ParseFloatError) -> Self {
         EtError {
             msg: error.to_string(),
             byte: None,

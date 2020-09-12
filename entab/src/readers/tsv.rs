@@ -86,6 +86,7 @@ impl<'r> TsvReader<'r> {
         })
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
         let line = if let Some(NewLine(l)) = self.rb.extract(())? {
             l

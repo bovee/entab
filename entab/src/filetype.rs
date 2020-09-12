@@ -103,6 +103,7 @@ impl FileType {
     pub fn from_magic(magic: &[u8]) -> FileType {
         if magic.len() > 8 {
             match &magic[..8] {
+                b"FCS2.0  " => return FileType::Facs,
                 b"FCS3.0  " => return FileType::Facs,
                 b"FCS3.1  " => return FileType::Facs,
                 b"~VERSION" => return FileType::Las,

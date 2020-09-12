@@ -9,6 +9,7 @@ use crate::parsers::{Endian, FromBuffer, FromSlice, NewLine};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
+/// The internal state of the BamReader.
 #[derive(Debug)]
 pub struct BamState {
     references: Vec<(String, usize)>,
@@ -146,19 +147,40 @@ fn extract_bam_record<'r, 's>(
     })
 }
 
+/// A single record from a BAM file.
 #[derive(Debug)]
 pub struct BamRecord<'r> {
+    /// The name of the mapped sequence.
     pub query_name: &'r str,
+    /// Bitvector of flags with information about the mapping.
     pub flag: u16,
+    /// The name of the reference mapped to.
     pub ref_name: &'r str,
+    /// The position of the mapping, if present.
     pub pos: Option<u64>,
+    /// The quality of the mapping, if present.
     pub mapq: Option<u8>,
+    /// A abbreviated format indicating how the query maps to the reference.
+    ///
+    /// `I` - Insertion
+    /// `D` - Deletion
+    /// `H` - Hard-clipped
+    /// `S` - Soft-clipped,
+    /// `M` - Match (may be either a `=` or an `X`),
+    /// `=` - Identical match
+    /// `X` - Near-match (e.g. a SNP)
     pub cigar: Cow<'r, [u8]>,
+    /// Next read's name
     pub rnext: &'r str,
+    /// Position of the next read's alignment
     pub pnext: Option<u32>,
+    /// Template length
     pub tlen: i32,
+    /// The sequence of the query, if present.
     pub seq: Cow<'r, [u8]>,
+    /// The quality scores of the query, if present.
     pub qual: Cow<'r, [u8]>,
+    /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
 
@@ -191,6 +213,7 @@ impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
 
 impl_reader!(BamReader, BamRecord, BamState, ());
 
+/// The internal state of the SamReader.
 #[derive(Clone, Copy, Debug)]
 pub struct SamState {}
 
@@ -213,19 +236,40 @@ impl<'r> FromBuffer<'r> for SamState {
     }
 }
 
+/// A single record from a SAM file.
 #[derive(Debug)]
 pub struct SamRecord<'r> {
+    /// The name of the mapped sequence.
     pub query_name: &'r str,
+    /// Bitvector of flags with information about the mapping.
     pub flag: u16,
+    /// The name of the reference mapped to.
     pub ref_name: &'r str,
+    /// The position of the mapping, if present.
     pub pos: Option<u64>,
+    /// The quality of the mapping, if present.
     pub mapq: Option<u8>,
+    /// A abbreviated format indicating how the query maps to the reference.
+    ///
+    /// `I` - Insertion
+    /// `D` - Deletion
+    /// `H` - Hard-clipped
+    /// `S` - Soft-clipped,
+    /// `M` - Match (may be either a `=` or an `X`),
+    /// `=` - Identical match
+    /// `X` - Near-match (e.g. a SNP)
     pub cigar: Cow<'r, [u8]>,
+    /// Next read's name
     pub rnext: &'r str,
+    /// Position of the next read's alignment
     pub pnext: Option<u32>,
+    /// Template length
     pub tlen: i32,
+    /// The sequence of the query, if present.
     pub seq: Cow<'r, [u8]>,
+    /// The quality scores of the query, if present.
     pub qual: Cow<'r, [u8]>,
+    /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
 
@@ -329,8 +373,8 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 
 #[cfg(test)]
 mod tests {
-    use core::include_bytes;
     use super::*;
+    use core::include_bytes;
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[test]

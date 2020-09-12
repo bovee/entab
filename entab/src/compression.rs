@@ -18,6 +18,7 @@ use crate::filetype::{sniff_reader_filetype, FileType};
 use crate::EtError;
 
 /// Decompress a `Read` stream and returns the inferred file type.
+#[allow(clippy::type_complexity)]
 pub fn decompress<'a>(
     reader: Box<dyn Read + 'a>,
 ) -> Result<(Box<dyn Read + 'a>, FileType, Option<FileType>), EtError> {

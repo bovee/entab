@@ -13,6 +13,8 @@ pub mod chemstation;
 pub mod fasta;
 /// Reader for FASTQ bioinformatics format
 pub mod fastq;
+/// Reader for flow data
+pub mod flow;
 /// Reader for FASTA/FASTQ formats that parse into "kmers"
 pub mod kmers;
 /// Reader for BAM/SAM bioinformatics formats
@@ -91,6 +93,7 @@ macro_rules! impl_reader {
             ///
             /// To get the "generic" version, please use the `next_record`
             /// method from the `RecordReader` trait.
+            #[allow(clippy::should_implement_trait)]
             pub fn next(&mut self) -> Result<Option<$record>, EtError> {
                 self.rb.record_pos += 1;
                 self.rb.extract(&mut self.state)
