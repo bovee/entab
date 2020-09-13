@@ -18,6 +18,19 @@ pub trait RecordHeader {
     fn header() -> Vec<String>;
 }
 
+/// For a given state struct, the metadata associated with that struct.
+///
+/// Primarily used to generate the corresponding metadata in the
+/// `RecordReader` trait.
+pub trait StateMetadata<'r> {
+    /// The header for the associated struct
+    fn metadata(&'r self) -> BTreeMap<String, Value<'r>> {
+        BTreeMap::new()
+    }
+}
+
+impl<'r> StateMetadata<'r> for () {}
+
 /// Autogenerates the conversion from a struct into the matching `Vec` of
 /// headers and the corresponding `Vec` of `Value`s to allow decomposing
 /// these raw structs into a common Record system that allows abstracting

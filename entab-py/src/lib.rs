@@ -10,7 +10,7 @@ use entab_base::record::Value;
 use entab_base::utils::error::EtError;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
+use pyo3::types::{PyDict, PyTuple};
 use pyo3::{create_exception, exceptions};
 
 use crate::raw_io_wrapper::RawIoWrapper;
@@ -19,6 +19,24 @@ create_exception!(entab, EntabError, exceptions::Exception);
 
 fn to_py(err: EtError) -> PyErr {
     EntabError::py_err(err.to_string())
+    // TODO: somehow bind err.byte and err.record in here too?
+}
+
+/// Map a Value into a PyObject
+fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
+    Ok(match value {
+        Value::Null => py.None().as_ref(py).into(),
+        Value::Boolean(b) => b.to_object(py),
+        Value::Datetime(d) => d.to_object(py),
+        Value::Float(v) => v.to_object(py),
+        Value::Integer(v) => v.to_object(py),
+        Value::String(s) => s.to_object(py),
+        _ => {
+            return Err(EntabError::py_err(
+                "record and list subelements unimplemented",
+            ));
+        }
+    })
 }
 
 // TODO: remove the unsendable; by wrapping reader in an Arc?
@@ -46,19 +64,7 @@ impl PyIterProtocol for Reader {
         let rec = if let Some(val) = slf.reader.next_record().map_err(to_py)? {
             let mut data = Vec::with_capacity(val.len());
             for field in val {
-                data.push(match field {
-                    Value::Null => py.None().as_ref(py).into(),
-                    Value::Boolean(b) => b.to_object(py),
-                    Value::Datetime(d) => d.to_object(py),
-                    Value::Float(v) => v.to_object(py),
-                    Value::Integer(v) => v.to_object(py),
-                    Value::String(s) => s.to_object(py),
-                    _ => {
-                        return Err(EntabError::py_err(
-                            "record and list subelements unimplemented",
-                        ))
-                    }
-                })
+                data.push(py_from_value(field, py)?);
             }
             let tup = PyTuple::new(py, data);
             slf.record_class.as_ref(py).call1(tup)?
@@ -103,7 +109,11 @@ impl Reader {
         let gil = Python::acquire_gil();
         let py = gil.python();
 
-        let headers: Vec<String> = reader.headers();
+        let headers: Vec<String> = reader
+            .headers()
+            .iter()
+            .map(|h| h.replace(" ", "_").replace("-", "_"))
+            .collect();
         let collections = PyModule::import(py, "collections")?;
         let record_class = collections.call1("namedtuple", ("Record", headers))?.into();
 
@@ -117,6 +127,18 @@ impl Reader {
     #[getter]
     pub fn get_headers(&self) -> PyResult<Vec<String>> {
         Ok(self.reader.headers())
+    }
+
+    #[getter]
+    pub fn get_metadata(&self) -> PyResult<PyObject> {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+
+        let dict = PyDict::new(py);
+        for (key, value) in self.reader.metadata() {
+            dict.set_item(key, py_from_value(value, py)?)?;
+        }
+        Ok(dict.into())
     }
 
     #[getter]

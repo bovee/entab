@@ -72,6 +72,12 @@ impl Reader {
         array.into()
     }
 
+    #[wasm_bindgen(getter)]
+    pub fn metadata(&self) -> Result<JsValue, JsValue> {
+        JsValue::from_serde(&self.reader.metadata())
+            .map_err(|_| JsValue::from_str("Error translating metadata"))
+    }
+
     #[wasm_bindgen]
     pub fn next(&mut self) -> Result<JsValue, JsValue> {
         if let Some(value) = self.reader.next_record().map_err(to_js)? {

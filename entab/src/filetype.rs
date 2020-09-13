@@ -196,7 +196,7 @@ impl FileType {
             FileType::AgilentChemstationMwd => "chemstation_mwd",
             FileType::AgilentChemstationUv => "chemstation_uv",
             FileType::Bam => "bam",
-            FileType::Facs => "facs",
+            FileType::Facs => "fcs",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::Sam => "sam",

@@ -1,3 +1,5 @@
+use alloc::collections::BTreeMap;
+use alloc::str;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -5,7 +7,7 @@ use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
-use crate::record::{RecordHeader, Value};
+use crate::record::{RecordHeader, StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
@@ -40,6 +42,57 @@ pub struct ChemstationMetadata {
     pub offset_correction: f64,
     /// Scaling correction to be applied to all data points
     pub mult_correction: f64,
+    /// In what order this run was performed
+    pub sequence: u16,
+    /// The vial number this run was performed from
+    pub vial: u16,
+    /// The replicate number of this run
+    pub replicate: u16,
+    /// The name of the sample
+    pub sample: String,
+    /// The description of the sample
+    pub description: String,
+    /// The name of the operator
+    pub operator: String,
+    /// The date the sample was run
+    pub run_date: String,
+    /// The instrument the sample was run on
+    pub instrument: String,
+    /// The method the instrument ran
+    pub method: String,
+}
+
+impl<'r> From<&ChemstationMetadata> for BTreeMap<String, Value<'r>> {
+    fn from(metadata: &ChemstationMetadata) -> Self {
+        let mut map = BTreeMap::new();
+        let _ = map.insert("start_time".to_string(), metadata.start_time.into());
+        let _ = map.insert("end_time".to_string(), metadata.end_time.into());
+        let _ = map.insert(
+            "signal_name".to_string(),
+            metadata.signal_name.clone().into(),
+        );
+        let _ = map.insert(
+            "offset_correction".to_string(),
+            metadata.offset_correction.into(),
+        );
+        let _ = map.insert(
+            "mult_correction".to_string(),
+            metadata.mult_correction.into(),
+        );
+        let _ = map.insert("sequence".to_string(), metadata.sequence.into());
+        let _ = map.insert("vial".to_string(), metadata.vial.into());
+        let _ = map.insert("replicate".to_string(), metadata.replicate.into());
+        let _ = map.insert("sample".to_string(), metadata.sample.clone().into());
+        let _ = map.insert(
+            "description".to_string(),
+            metadata.description.clone().into(),
+        );
+        let _ = map.insert("operator".to_string(), metadata.operator.clone().into());
+        let _ = map.insert("run_date".to_string(), metadata.run_date.clone().into());
+        let _ = map.insert("instrument".to_string(), metadata.instrument.clone().into());
+        let _ = map.insert("method".to_string(), metadata.method.clone().into());
+        map
+    }
 }
 
 fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
@@ -50,7 +103,39 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
     let mult_correction = f64::out_of(&header[644..], Endian::Big)?;
 
     let signal_name_len = usize::from(header[596]);
-    let signal_name = String::from_utf8((&header[597..597 + signal_name_len]).to_vec())?;
+    let signal_name = str::from_utf8(&header[597..597 + signal_name_len])?
+        .trim()
+        .to_string();
+
+    let sample_len = usize::from(header[24]);
+    let sample = str::from_utf8(&header[25..25 + sample_len])?
+        .trim()
+        .to_string();
+    let description_len = usize::from(header[86]);
+    let description = str::from_utf8(&header[87..87 + description_len])?
+        .trim()
+        .to_string();
+    let operator_len = usize::from(header[148]);
+    let operator = str::from_utf8(&header[149..149 + operator_len])?
+        .trim()
+        .to_string();
+    let run_date_len = usize::from(header[178]);
+    let run_date = str::from_utf8(&header[179..179 + run_date_len])?
+        .trim()
+        .to_string();
+    let instrument_len = usize::from(header[208]);
+    let instrument = str::from_utf8(&header[209..209 + instrument_len])?
+        .trim()
+        .to_string();
+    let method_len = usize::from(header[228]);
+    let method = str::from_utf8(&header[229..229 + method_len])?
+        .trim()
+        .to_string();
+
+    // not sure how robust the following are
+    let sequence = u16::out_of(&header[252..], Endian::Big)?;
+    let vial = u16::out_of(&header[254..], Endian::Big)?;
+    let replicate = u16::out_of(&header[256..], Endian::Big)?;
 
     Ok(ChemstationMetadata {
         start_time,
@@ -58,6 +143,15 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
         signal_name,
         offset_correction,
         mult_correction,
+        sequence,
+        vial,
+        replicate,
+        sample,
+        description,
+        operator,
+        run_date,
+        instrument,
+        method,
     })
 }
 
@@ -69,6 +163,12 @@ pub struct ChemstationFidState {
     cur_intensity: f64,
     time_step: f64,
     metadata: ChemstationMetadata,
+}
+
+impl<'r> StateMetadata<'r> for ChemstationFidState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
 }
 
 impl<'r> FromBuffer<'r> for ChemstationFidState {
@@ -133,12 +233,19 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 /// Internal state for the ChemstationMs parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
     cur_time: f64,
+    metadata: ChemstationMetadata,
+}
+
+impl<'r> StateMetadata<'r> for ChemstationMsState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
 }
 
 impl<'r> FromBuffer<'r> for ChemstationMsState {
@@ -146,13 +253,14 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
 
     fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
         let header = read_agilent_header(&mut rb, true)?;
+        let metadata = get_metadata(&header)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
-        // TODO: get other metadata
         Ok(ChemstationMsState {
             n_scans_left: n_scans,
             n_mzs_left: 0,
             cur_time: 0.,
+            metadata,
         })
     }
 }
@@ -218,6 +326,12 @@ pub struct ChemstationMwdState {
     cur_intensity: f64,
     time_step: f64,
     metadata: ChemstationMetadata,
+}
+
+impl<'r> StateMetadata<'r> for ChemstationMwdState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
 }
 
 impl<'r> FromBuffer<'r> for ChemstationMwdState {
@@ -322,6 +436,8 @@ pub struct ChemstationUvState {
     cur_wv: f64,
     wv_step: f64,
 }
+
+impl<'r> StateMetadata<'r> for ChemstationUvState {}
 
 impl<'r> FromBuffer<'r> for ChemstationUvState {
     type State = ();
@@ -434,6 +550,7 @@ impl_reader!(
 
 // FID - 02 38 31 00 ("81") (missing 01 38 00 00)
 // MWD - 02 33 30 00 ("30")
+// MS - 01 32 00 00 ("2") (missing 02 32 30?)
 // (possibly also 03 31 37 39 and 03 31 38 31 ?)
 //  - 5 - "GC / MS Data File" or other?
 //  - 24 - Sample Name
@@ -443,41 +560,28 @@ impl_reader!(
 //  - 208 - Instrument Name
 //  - 218 - LC or GC
 //  - 228 - Method Name
-//  * 264 - 512 byte header chunks // 2 + 1
-//  * 282 - Start Time (i32)
-//  * 286 - End Time (i32)
-//  M 322 - Collection software?
-//  M 355 - Software Version?
-//  M 405 - Another Version?
-//  - 530 - lower end of mz/wv range?
-//  - 532 - upper end of mz/wv range?
-//  - 580 - Units
-//  M 596 - Channel Info (str)
-//  - 644 - (f32/64?)
-
-// MS - 01 32 00 00 ("2") (missing 02 32 30?)
-//  - 5 - "GC / MS Data File" or other?
-//  ^ 24 - Sample Name
-//  ^ 86 - Sample Description?
-//  ^ 148 - Operator Name
-//  ^ 178 - Run Date
-//  ^ 208 - Instrument Name
-//  ^ 218 - LC or GC
-//  ^ 228 - Method Name
 //  - 252 - Sequence? (u16)
 //  - 254 - Vial? (u16)
 //  - 256 - Replicate? (u16)
 //  - 260 - TIC Offset? (i32)
-//  - 264 - total header bytes // 2 + 1
+//  * 264 - FID/MWD - 512 byte header chunks // 2 + 1
+//  - 264 - MS - total header bytes // 2 + 1
 //  - 272 - Normalization offset? (i32)
-//  ^ 282 - Start Time (i32)
-//  ^ 286 - End Time (i32)
-//  - 322 - Number of records
+//  * 282 - Start Time (i32)
+//  * 286 - End Time (i32)
+//  M 322 - Collection software?
+//  M 355 - Software Version?
 //  - 368 - "GC / MS Data File" as utf16
-//  - 448 - Instrument name as utf16
-//  - 576 - "GC"
-//  - 616 - Method directory
-//  5768 - data start (GC)
+//  M 405 - Another Version?
+//  - 448 - MS - Instrument name as utf16
+//  - 530 - lower end of mz/wv range?
+//  - 532 - upper end of mz/wv range?
+//  - 576 - MS - "GC"
+//  - 580 - Units
+//  M 596 - Channel Info (str)
+//  - 616 - MS - Method directory
+//  - 644 - (f32/64?)
+//  - 5768 - MS - data start (GC)
 
 // LC - 03 31 33 31 ("131")
 //  * 264 - 512 byte header chunks // 2 + 1

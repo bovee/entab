@@ -1,3 +1,4 @@
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -69,6 +70,10 @@ impl<'r> RecordReader for FastqKmerReader<'r> {
         }
 
         Ok(Some(vec![self.id.into(), self.sequence[..self.k].into()]))
+    }
+
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        BTreeMap::new()
     }
 
     fn headers(&self) -> Vec<String> {

@@ -1,3 +1,5 @@
+use alloc::borrow::Cow;
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, str};
@@ -11,15 +13,18 @@ use crate::EtError;
 
 /// A single key-value pair from the text segment of an FCS file.
 #[derive(Clone, Debug, PartialEq)]
-struct FcsHeaderKeyValue<'a>(String, &'a str);
+struct FcsHeaderKeyValue<'a>(String, Cow<'a, str>);
 
-impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
-    type State = u8;
+impl<'r> FromBuffer<'r> for Option<FcsHeaderKeyValue<'r>> {
+    type State = (u8, u64);
 
-    fn get(rb: &'r mut ReadBuffer, delim: Self::State) -> Result<Self, EtError> {
+    fn get(rb: &'r mut ReadBuffer, (delim, text_end): Self::State) -> Result<Self, EtError> {
         let mut i = 0;
         let mut temp = None;
         let (key_end, value_end) = loop {
+            if rb.get_byte_pos() + i as u64 >= text_end {
+                return Ok(None);
+            }
             if i + 2 >= rb.len() {
                 if !rb.eof() {
                     rb.refill()?;
@@ -29,12 +34,20 @@ impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
                     return Err(EtError::new("FCS header ended abruptly"));
                 }
             }
-            if rb[i] == delim {
+            if rb[i] == delim && temp != None {
                 if rb[i + 1] == delim {
                     // skip consectutive delimiters
                     i += 1;
-                } else if temp != None {
+                } else {
                     break (temp.unwrap(), i);
+                }
+            } else if rb[i] == delim {
+                if rb[i + 1] == delim {
+                    // The spec says this should be parsed as an escaped
+                    // delimiter in the key, but I've never seen that so
+                    // we parse it as an empty value (which I have seen
+                    // in Applied Biosystems files).
+                    break (i, i + 1);
                 } else {
                     temp = Some(i);
                 }
@@ -43,8 +56,8 @@ impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
         };
         let temp = rb.consume(value_end + 1);
         let key = str::from_utf8(&temp[..key_end])?.to_ascii_uppercase();
-        let value = str::from_utf8(&temp[key_end + 1..value_end])?;
-        Ok(FcsHeaderKeyValue(key, value))
+        let value = String::from_utf8_lossy(&temp[key_end + 1..value_end]);
+        Ok(Some(FcsHeaderKeyValue(key, value)))
     }
 }
 
@@ -70,6 +83,7 @@ pub struct FcsState {
     data_type: char,
     next_data: Option<usize>,
     n_events_left: usize,
+    metadata: BTreeMap<String, Value<'static>>,
 }
 
 impl<'r> FromBuffer<'r> for FcsState {
@@ -88,6 +102,7 @@ impl<'r> FromBuffer<'r> for FcsState {
         if &magic[..3] != b"FCS" {
             return Err(EtError::new("FCS file has invalid header"));
         }
+        let mut metadata = BTreeMap::new();
 
         // get the offsets to the different data
         let text_start = str_to_int(rb.extract::<&[u8]>(8)?)?;
@@ -97,21 +112,22 @@ impl<'r> FromBuffer<'r> for FcsState {
         let _ = rb.extract::<&[u8]>(16)?;
         // let analysis_start = rb.extract::<AsciiInt>(8)?.0 as usize;
         // let analysis_end = rb.extract::<AsciiInt>(8)?.0 as usize;
-
+        if text_start < 58 {
+            return Err(EtError::new("Bad FCS text start offset"));
+        }
         let _ = rb.extract::<&[u8]>(text_start as usize - 58 - start_pos)?;
         let delim: u8 = rb.extract(Endian::Little)?;
-        while rb.get_byte_pos() < text_end {
-            let FcsHeaderKeyValue(key, value) = rb.extract(delim)?;
-            match (key.as_ref(), value) {
+        while let Some(FcsHeaderKeyValue(key, value)) = rb.extract((delim, text_end))? {
+            match (key.as_ref(), value.as_ref()) {
                 ("$BEGINDATA", v) => {
                     let data_start_value = v.trim().parse::<u64>()?;
-                    if data_start_value > 0 {
+                    if data_start_value > 0 && data_start == 0 {
                         data_start = data_start_value;
                     }
                 }
                 ("$ENDDATA", v) => {
                     let data_end_value = v.trim().parse::<u64>()?;
-                    if data_end_value > 0 {
+                    if data_end_value > 0 && data_end == 0 {
                         data_end = data_end_value;
                     }
                 }
@@ -136,6 +152,30 @@ impl<'r> FromBuffer<'r> for FcsState {
                 }
                 ("$MODE", v) => return Err(EtError::new(format!("Unknown FCS $MODE {}", v))),
                 ("$TOT", v) => n_events_left = v.trim().parse()?,
+                ("$BTIM", v) => {
+                    let _ = metadata.insert("start_time".into(), v.to_string().into());
+                }
+                ("$CELLS", v) => {
+                    let _ = metadata.insert("specimen".into(), v.to_string().into());
+                }
+                ("$DATE", v) => {
+                    let _ = metadata.insert("date".into(), v.to_string().into());
+                }
+                ("$INST", v) => {
+                    let _ = metadata.insert("instrument".into(), v.to_string().into());
+                }
+                ("$OP", v) => {
+                    let _ = metadata.insert("operator".into(), v.to_string().into());
+                }
+                ("$PROJ", v) => {
+                    let _ = metadata.insert("project".into(), v.to_string().into());
+                }
+                ("$SMNO", v) => {
+                    let _ = metadata.insert("specimen_number".into(), v.to_string().into());
+                }
+                ("$SRC", v) => {
+                    let _ = metadata.insert("specimen_source".into(), v.to_string().into());
+                }
                 ("$PAR", v) => {
                     let n_params = v.trim().parse()?;
                     if n_params < params.len() {
@@ -147,7 +187,7 @@ impl<'r> FromBuffer<'r> for FcsState {
                     let mut i: usize = k[2..k.len() - 1].parse()?;
                     i -= 1; // params are numbered from 1
                     if i >= params.len() {
-                        params.resize_with(i, FcsParam::default)
+                        params.resize_with(i + 1, FcsParam::default)
                     }
                     if k.ends_with('B') {
                         if v == "*" {
@@ -159,11 +199,11 @@ impl<'r> FromBuffer<'r> for FcsState {
                     } else if k.ends_with('N') {
                         params[i].short_name = v.to_string();
                     } else if k.ends_with('R') {
-                        let range: u64 = v.trim().parse()?;
-                        if range.count_ones() != 1 {
-                            return Err(EtError::new("Range values must be a power of 2"));
-                        }
-                        params[i].range = range;
+                        // some yahoos put ranges for $DATATYPE=F in their
+                        // files as the floats so we have to parse as float
+                        // here and convert into
+                        let range = v.trim().parse::<f64>()?;
+                        params[i].range = range.ceil() as u64;
                     } else if k.ends_with('S') {
                         params[i].long_name = v.to_string();
                     }
@@ -172,12 +212,27 @@ impl<'r> FromBuffer<'r> for FcsState {
             }
         }
         // get anything between the end of the text segment and the start of the data segment
-        let _ = rb.extract::<&[u8]>((data_start - text_end) as usize)?;
+        let _ = rb.extract::<&[u8]>((data_start - rb.get_byte_pos()) as usize)?;
 
         if data_end < data_start {
             return Err(EtError::new("Invalid end from data segment"));
         }
-        // TODO: check that the datatypes and Bs match up
+        // check that the datatypes and params match up
+        for p in &params {
+            match data_type {
+                'D' => {
+                    if p.size != 64 {
+                        return Err(EtError::new("Param size must be 64 for $DATATYPE=D"));
+                    }
+                }
+                'F' => {
+                    if p.size != 32 {
+                        return Err(EtError::new("Param size must be 32 for $DATATYPE=F"));
+                    }
+                }
+                _ => {}
+            }
+        }
 
         Ok(FcsState {
             params,
@@ -185,6 +240,7 @@ impl<'r> FromBuffer<'r> for FcsState {
             data_type,
             next_data,
             n_events_left,
+            metadata,
         })
     }
 }
@@ -218,6 +274,10 @@ impl<'r> RecordReader for FcsReader<'r> {
             headers.push(param.short_name.clone());
         }
         headers
+    }
+
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        self.state.metadata.clone()
     }
 
     fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError> {
@@ -254,13 +314,21 @@ impl<'r> RecordReader for FcsReader<'r> {
                         64 => self.rb.extract::<u64>(self.state.endian)?,
                         x => return Err(EtError::new(format!("Unknown param size {}", x))),
                     };
-                    let range_mask = param.range - 1;
-                    (value & range_mask).into()
+                    if value > param.range && param.range > 0 {
+                        if param.range.count_ones() != 1 {
+                            return Err(EtError::new("Only ranges of power 2 can mask values"));
+                        }
+                        let range_mask = param.range - 1;
+                        (value & range_mask).into()
+                    } else {
+                        value.into()
+                    }
                 }
                 _ => panic!("Data type is in an unknown state"),
             })
         }
         self.state.n_events_left -= 1;
+        self.rb.record_pos += 1;
         Ok(Some(record))
     }
 }
@@ -272,23 +340,37 @@ mod tests {
     #[test]
     fn test_fcs_header_kv_parser() -> Result<(), EtError> {
         let mut rb = ReadBuffer::from_slice(b"test/key/");
-        let test_parse: FcsHeaderKeyValue = rb.extract(b'/')?;
-        assert_eq!(test_parse, FcsHeaderKeyValue("TEST".to_string(), "key"));
+        let test_parse = rb
+            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))?
+            .unwrap();
+        assert_eq!(
+            test_parse,
+            FcsHeaderKeyValue("TEST".to_string(), "key".into())
+        );
 
         let mut rb = ReadBuffer::from_slice(b"test/key");
-        assert!(rb.extract::<FcsHeaderKeyValue>(b'/').is_err());
+        assert!(rb
+            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
+            .is_err());
 
         let mut rb = ReadBuffer::from_slice(b" ");
-        assert!(rb.extract::<FcsHeaderKeyValue>(b'/').is_err());
+        assert!(rb
+            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
+            .is_err());
 
         let mut rb = ReadBuffer::from_slice(b"//");
-        assert!(rb.extract::<FcsHeaderKeyValue>(b'/').is_err());
+        assert!(rb
+            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
+            .is_err());
 
         // super pathological case that should probably never occur? (since it
         // would imply the previous ending delim was before this start delim)
         let mut rb = ReadBuffer::from_slice(b"/ /");
-        let test_parse: FcsHeaderKeyValue = rb.extract(b'/')?;
-        assert_eq!(test_parse, FcsHeaderKeyValue("".to_string(), " "));
+        let test_parse = rb
+            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))?
+            .unwrap();
+        assert_eq!(test_parse, FcsHeaderKeyValue("".to_string(), " ".into()));
+
         Ok(())
     }
 
@@ -309,6 +391,13 @@ mod tests {
             n_recs += 1;
         }
         assert_eq!(n_recs, 14945);
+        Ok(())
+    }
+
+    #[test]
+    fn test_fcs_bad_fuzzes() -> Result<(), EtError> {
+        let rb = ReadBuffer::from_slice(b"FCS3.1  \n\n\n0\n\n\n\n\n\n0\n\n\n\n\n\n\n \n\n\n0\n\n\n\n \n\n\n0\n\nCS3.1  \n\n\n0\n\n\n\n\n;");
+        assert!(FcsReader::new(rb, ()).is_err());
         Ok(())
     }
 }

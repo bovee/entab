@@ -6,6 +6,7 @@ use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice, NewLine};
+use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
@@ -14,6 +15,8 @@ use crate::{impl_reader, impl_record};
 pub struct BamState {
     references: Vec<(String, usize)>,
 }
+
+impl<'r> StateMetadata<'r> for BamState {}
 
 impl<'r> FromBuffer<'r> for BamState {
     type State = ();
@@ -216,6 +219,8 @@ impl_reader!(BamReader, BamRecord, BamState, ());
 /// The internal state of the SamReader.
 #[derive(Clone, Copy, Debug)]
 pub struct SamState {}
+
+impl<'r> StateMetadata<'r> for SamState {}
 
 impl<'r> FromBuffer<'r> for SamState {
     type State = ();

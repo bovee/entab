@@ -2,6 +2,7 @@ use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::FromBuffer;
+use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 

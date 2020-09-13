@@ -8,6 +8,7 @@ use core::marker::Copy;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer};
+use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
@@ -70,6 +71,8 @@ pub struct ThermoDxfState {
     mzs: Vec<f64>,
     cur_time: f64,
 }
+
+impl<'r> StateMetadata<'r> for ThermoDxfState {}
 
 impl<'r> FromBuffer<'r> for ThermoDxfState {
     type State = ();
@@ -169,6 +172,8 @@ pub struct ThermoCfState {
     mzs: Vec<f64>,
     cur_time: f64,
 }
+
+impl<'r> StateMetadata<'r> for ThermoCfState {}
 
 impl<'r> FromBuffer<'r> for ThermoCfState {
     type State = ();

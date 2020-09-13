@@ -252,10 +252,9 @@ impl<'r> ::core::fmt::Debug for ReadBuffer<'r> {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         write!(
             f,
-            "<ReadBuffer pos={}/{} len={}/{} end={}>",
+            "<ReadBuffer pos={}:{} cur_len={} end={}>",
             self.record_pos,
-            self.reader_pos,
-            self.consumed,
+            self.reader_pos + self.consumed as u64,
             self.len(),
             self.eof()
         )

@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -37,6 +38,7 @@ pub fn get_reader<'r>(
         "chemstation_uv" => Box::new(chemstation::ChemstationUvReader::new(rb, ())?),
         "fasta" => Box::new(fasta::FastaReader::new(rb, ())?),
         "fastq" => Box::new(fastq::FastqReader::new(rb, ())?),
+        "fcs" => Box::new(flow::FcsReader::new(rb, ())?),
         "sam" => Box::new(sam::SamReader::new(rb, ())?),
         "thermo_cf" => Box::new(thermo_iso::ThermoCfReader::new(rb, ())?),
         "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),
@@ -65,9 +67,10 @@ pub trait RecordReader: ::core::fmt::Debug {
 
     /// The header titles that correspond to every item in the record
     fn headers(&self) -> Vec<String>;
-}
 
-// TODO: we need to return metadata too somehow
+    /// Extra metadata about the file or data in the file
+    fn metadata(&self) -> BTreeMap<String, Value>;
+}
 
 /// Generates a `...Reader` struct for the associated state-based file parsers
 /// along with the matching `RecordReader` for that struct.
@@ -100,7 +103,7 @@ macro_rules! impl_reader {
             }
         }
 
-        impl<'r> crate::readers::RecordReader for $reader<'r> {
+        impl<'r> $crate::readers::RecordReader for $reader<'r> {
             /// The next record, expressed as a `Vec` of `Value`s.
             fn next_record(
                 &mut self,
@@ -116,6 +119,11 @@ macro_rules! impl_reader {
             fn headers(&self) -> ::alloc::vec::Vec<::alloc::string::String> {
                 use $crate::record::RecordHeader;
                 <$record>::header()
+            }
+
+            /// The metadata for this Reader.
+            fn metadata(&self) -> ::alloc::collections::BTreeMap<::alloc::string::String, $crate::record::Value> {
+                self.state.metadata()
             }
         }
     };

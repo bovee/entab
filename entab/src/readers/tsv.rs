@@ -1,3 +1,4 @@
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -123,6 +124,10 @@ impl<'r> RecordReader for TsvReader<'r> {
 
     fn headers(&self) -> Vec<String> {
         self.headers.clone()
+    }
+
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        BTreeMap::new()
     }
 }
 
