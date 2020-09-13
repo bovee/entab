@@ -16,6 +16,8 @@ pub mod fasta;
 pub mod fastq;
 /// Reader for flow data
 pub mod flow;
+/// Reader for Inficon Hapsite MS formats
+pub mod inficon;
 /// Reader for FASTA/FASTQ formats that parse into "kmers"
 pub mod kmers;
 /// Reader for BAM/SAM bioinformatics formats
@@ -39,6 +41,7 @@ pub fn get_reader<'r>(
         "fasta" => Box::new(fasta::FastaReader::new(rb, ())?),
         "fastq" => Box::new(fastq::FastqReader::new(rb, ())?),
         "fcs" => Box::new(flow::FcsReader::new(rb, ())?),
+        "inficon" => Box::new(inficon::InficonReader::new(rb, ())?),
         "sam" => Box::new(sam::SamReader::new(rb, ())?),
         "thermo_cf" => Box::new(thermo_iso::ThermoCfReader::new(rb, ())?),
         "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),

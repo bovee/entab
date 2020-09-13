@@ -17,8 +17,9 @@ other formats.
  - Agilent Chemstation CH, FID, MS, MWD, and UV formats
  - FASTA and FASTQ sequence formats
  - FCS flow cytometry format
- - Thermo continuous flow isotope mass spectrometry formats
+ - Inficon Hapsite mass specotrometry format
  - SAM and BAM alignment formats
+ - Thermo continuous flow isotope mass spectrometry formats
  - TSV
 
 ## CLI

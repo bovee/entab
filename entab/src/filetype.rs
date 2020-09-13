@@ -199,6 +199,7 @@ impl FileType {
             FileType::Facs => "fcs",
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
+            FileType::InficonHapsite => "inficon",
             FileType::Sam => "sam",
             FileType::ThermoCf => "thermo_cf",
             FileType::ThermoDxf => "thermo_dxf",
