@@ -12,6 +12,7 @@ use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
+/// A string serialized out by the MFC framework.
 #[derive(Debug)]
 pub struct MfcString<'r>(Cow<'r, str>);
 
@@ -63,6 +64,7 @@ fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
     })
 }
 
+/// The current state of the ThermoDxfReader
 #[derive(Debug)]
 pub struct ThermoDxfState {
     first: bool,
@@ -88,10 +90,14 @@ impl<'r> FromBuffer<'r> for ThermoDxfState {
     }
 }
 
+/// A single data point from a Thermo DXF file
 #[derive(Clone, Copy, Debug)]
 pub struct ThermoDxfRecord {
+    /// The time the reading was taken at
     pub time: f64,
+    /// The mz value of the reading
     pub mz: f64,
+    /// The intensity recorded
     pub intensity: f64,
 }
 
@@ -165,6 +171,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
 
 impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfState, ());
 
+/// The current state of the ThermoCfReader
 #[derive(Debug)]
 pub struct ThermoCfState {
     n_scans_left: usize,
@@ -188,10 +195,14 @@ impl<'r> FromBuffer<'r> for ThermoCfState {
     }
 }
 
+/// A single data point from a Thermo CF file
 #[derive(Clone, Copy, Debug)]
 pub struct ThermoCfRecord {
+    /// The time the reading was taken at
     pub time: f64,
+    /// The mz value of the reading
     pub mz: f64,
+    /// The intensity recorded
     pub intensity: f64,
 }
 

@@ -6,7 +6,8 @@ Parse record-based file formats into a stream of records.
 
 ```javascript
 import { Reader } from 'entab';
-// patch Reader to be an iterator too
+// patch Reader to be an iterator too; this is a temporary hack until we can
+// figure out how to do this on the Rust side
 Reader.prototype[Symbol.iterator] = function() { return this; };
 
 // now parse the file

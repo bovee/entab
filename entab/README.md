@@ -5,15 +5,16 @@ decompression, file type inference, and parsers for different file types.
 ## Usage
 
 ```rust
-use std::fs::File;
-use entab::{ReadBuffer, Record};
-use entab::readers::fasta::FastaReaderBuilder;
-
-let buffer = ReadBuffer::new(File::open("./tests/data/test.fasta"))?;
-let reader = FastaReaderBuilder::to_reader(buffer)?;
-while let Some(Record::Fasta { id, .. }) = reader.next()? {
-    println!("{}", id);
-}
+//! use std::fs::File;
+//! use entab::buffer::ReadBuffer;
+//! use entab::readers::fasta::{FastaReader, FastaRecord};
+//!
+//! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
+//! let buffer = ReadBuffer::new(file)?;
+//! let mut reader = FastaReader::new(buffer, ())?;
+//! while let Some(FastaRecord { id, .. }) = reader.next()? {
+//!     println!("{}", id);
+//! }
 ```
 
 ## Other Parsers

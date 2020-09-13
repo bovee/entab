@@ -16,6 +16,8 @@ use crate::EtError;
 // TODO: add a skip N's?
 // TODO: add a remove newlines? (default true)
 
+/// An experimental reader that returns all of the kmers from the associated
+/// FASTQ file.
 #[derive(Debug)]
 pub struct FastqKmerReader<'r> {
     fastq_reader: FastqReader<'r>,
@@ -26,6 +28,7 @@ pub struct FastqKmerReader<'r> {
 }
 
 impl<'r> FastqKmerReader<'r> {
+    /// Create a new FastqKmerReader
     pub fn new(rb: ReadBuffer<'r>, k: u8) -> Result<Self, EtError> {
         // TODO: add a quality mask?
         let fastq_reader = FastqReader::new(rb, ())?;

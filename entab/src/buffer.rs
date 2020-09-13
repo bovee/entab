@@ -144,6 +144,8 @@ impl<'s> ReadBuffer<'s> {
         Ok(())
     }
 
+    /// Refill the buffer; since `no_std` doesn't support the Read trait, this
+    /// is a noop.
     #[cfg(not(feature = "std"))]
     pub fn refill(&mut self) -> Result<(), EtError> {
         // no_std doesn't support Readers so this is always just an

@@ -50,6 +50,7 @@ fn split<'a>(
     Ok(())
 }
 
+/// A reader for TSV and other delimited tabular text formats
 #[derive(Debug)]
 pub struct TsvReader<'r> {
     rb: ReadBuffer<'r>,
@@ -61,6 +62,7 @@ pub struct TsvReader<'r> {
 }
 
 impl<'r> TsvReader<'r> {
+    /// Create a new TsvReader
     pub fn new(mut rb: ReadBuffer<'r>, params: (u8, u8)) -> Result<Self, EtError> {
         let (delim_char, quote_char) = params;
         let header = if let Some(NewLine(h)) = rb.extract(())? {
@@ -87,6 +89,7 @@ impl<'r> TsvReader<'r> {
         })
     }
 
+    /// Return the next record from the TSV file
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
         let line = if let Some(NewLine(l)) = self.rb.extract(())? {
