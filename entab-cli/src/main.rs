@@ -1,5 +1,8 @@
+mod tsv_params;
+
 use std::fs::File;
 use std::io;
+use std::str;
 
 use clap::{crate_authors, crate_version, App, Arg};
 #[cfg(feature = "mmap")]
@@ -7,33 +10,10 @@ use memmap::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::filetype::FileType;
 use entab::readers::get_reader;
 use entab::EtError;
 
-pub fn write_reader_to_tsv<W>(
-    buffer: ReadBuffer,
-    filetype: FileType,
-    mut write: W,
-) -> Result<(), EtError>
-where
-    W: FnMut(&[u8]) -> Result<(), EtError>,
-{
-    let mut rec_reader = get_reader(filetype.to_parser_name(), buffer)?;
-
-    write(&rec_reader.headers().join("\t").as_bytes())?;
-    write(b"\n")?;
-
-    while let Some(n) = rec_reader.next_record()? {
-        n[0].write_for_tsv(&mut write)?;
-        for i in 1..n.len() {
-            write(b"\t")?;
-            n[i].write_for_tsv(&mut write)?;
-        }
-        write(b"\n")?;
-    }
-    Ok(())
-}
+use crate::tsv_params::TsvParams;
 
 pub fn main() -> Result<(), EtError> {
     let matches = App::new("entab")
@@ -61,14 +41,15 @@ pub fn main() -> Result<(), EtError> {
         .arg(
             Arg::with_name("metadata")
                 .short('m')
-                .about("Reports metadata about the file"),
+                .about("Reports metadata about the file instead of the data itself"),
         )
         .get_matches();
 
     // TODO: map/reduce/filter options?
     // every column should either have a reduction set or it'll be dropped from
     // the result? reductions can be e.g. sum,average,count or group or column
-    // (where column is the same as a pivot)
+    // (where column is the same as a pivot); this might be more useful as
+    // another tool?
 
     // stdin needs to be out here for lifetime purposes
     let stdin = io::stdin();
@@ -97,22 +78,49 @@ pub fn main() -> Result<(), EtError> {
         let (reader, filetype, compression) = decompress(Box::new(locked_stdin))?;
         (ReadBuffer::new(reader)?, filetype, compression)
     };
+    let parser = matches
+        .value_of("parser")
+        .unwrap_or_else(|| filetype.to_parser_name());
+    let mut rec_reader = get_reader(parser, rb)?;
+    // TODO: allow user to set these
+    let params = TsvParams::default();
 
     let mut writer: Box<dyn io::Write> = if let Some(i) = matches.value_of("output") {
         Box::new(File::open(i)?)
     } else {
         Box::new(stdout.lock())
     };
-    let write = |buf: &[u8]| -> Result<(), EtError> { Ok(writer.write_all(buf)?) };
 
     if matches.is_present("metadata") {
-        // TODO: get the compression from above too
-        // TODO: print metadata
+        writer.write_all(b"key")?;
+        writer.write_all(&[params.main_delimiter])?;
+        writer.write_all(b"value")?;
+        writer.write_all(&params.line_delimiter)?;
+        for (key, value) in rec_reader.metadata() {
+            params.write_str(key.as_bytes(), &mut writer)?;
+            writer.write_all(&[params.main_delimiter])?;
+            params.write_value(&value, &mut writer)?;
+            writer.write_all(&params.line_delimiter)?;
+        }
         return Ok(());
     } else {
-        write_reader_to_tsv(rb, filetype, write)?;
-    }
+        writer.write_all(
+            &rec_reader
+                .headers()
+                .join(str::from_utf8(&[params.main_delimiter])?)
+                .as_bytes(),
+        )?;
+        writer.write_all(&params.line_delimiter)?;
 
+        while let Some(fields) = rec_reader.next_record()? {
+            params.write_value(&fields[0], &mut writer)?;
+            for field in fields {
+                writer.write_all(&[params.main_delimiter])?;
+                params.write_value(&field, &mut writer)?;
+            }
+            writer.write_all(&params.line_delimiter)?;
+        }
+    }
     writer.flush()?;
 
     Ok(())

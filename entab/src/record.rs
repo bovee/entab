@@ -1,13 +1,9 @@
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use serde::{Serialize, Serializer};
-
-use crate::utils::string::replace_tabs;
-use crate::EtError;
 
 /// For a given "raw" record struct, the header fields in that struct.
 ///
@@ -85,26 +81,6 @@ pub enum Value<'a> {
     List(Vec<Value<'a>>),
     /// A record mapping keys to `Value`s
     Record(BTreeMap<String, Value<'a>>),
-}
-
-impl<'a> Value<'a> {
-    /// Write a `Value` out to a TSV stream
-    pub fn write_for_tsv<W>(&self, mut write: W) -> Result<(), EtError>
-    where
-        W: FnMut(&[u8]) -> Result<(), EtError>,
-    {
-        match self {
-            Value::Null => write(b"null"),
-            Value::Boolean(true) => write(b"true"),
-            Value::Boolean(false) => write(b"false"),
-            Value::Datetime(s) => write(s.as_bytes()),
-            Value::Float(v) => write(format!("{}", v).as_bytes()),
-            Value::Integer(v) => write(format!("{}", v).as_bytes()),
-            Value::List(_) => unimplemented!("No writer for lists yet"),
-            Value::Record(_) => unimplemented!("No writer for records yet"),
-            Value::String(s) => write(&replace_tabs(s.as_bytes(), b'|')),
-        }
-    }
 }
 
 impl<'a, T: Into<Value<'a>>> From<Option<T>> for Value<'a> {

@@ -71,6 +71,7 @@ mod fake_compression {
     use std::io::Read;
     use std::marker::Copy;
 
+    /// Fake decompressor for when the compression feature is disabled
     #[derive(Copy, Clone, Debug)]
     pub struct Fake;
     impl Fake {
@@ -87,6 +88,7 @@ mod fake_compression {
         }
     }
 
+    /// Fake ZstdDecoder for when the compression feature is disabled
     #[derive(Copy, Clone, Debug)]
     pub struct ZstdDecoder;
     impl ZstdDecoder {
@@ -103,6 +105,8 @@ mod fake_compression {
         }
     }
 
+    /// Fake BzDecoder for when the compression feature is disabled
     pub type BzDecoder = Fake;
+    /// Fake XzDecoder for when the compression feature is disabled
     pub type XzDecoder = Fake;
 }

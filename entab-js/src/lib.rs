@@ -5,9 +5,9 @@ use std::io::{Cursor, Read};
 
 use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
+use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use entab_base::utils::error::EtError;
 use js_sys::Array;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;

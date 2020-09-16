@@ -12,6 +12,7 @@ categories = ["command-line-utilities", "parsing", "science"]
 [dependencies]
 clap = "3.0.0-beta"
 entab = { path = "../entab", version = "0.2.1" }
+memchr = "2.3"
 memmap = { version = "0.7", optional = true }
 
 [features]

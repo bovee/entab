@@ -5,12 +5,12 @@ use std::io::{Cursor, Read};
 
 use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
+use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use entab_base::utils::error::EtError;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, PyList, PyTuple};
 use pyo3::{create_exception, exceptions};
 
 use crate::raw_io_wrapper::RawIoWrapper;
@@ -31,9 +31,16 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
         Value::Float(v) => v.to_object(py),
         Value::Integer(v) => v.to_object(py),
         Value::String(s) => s.to_object(py),
+        Value::List(l) => {
+            let list = PyList::empty(py);
+            for item in l {
+                list.append(py_from_value(item, py)?)?;
+            }
+            list.to_object(py)
+        },
         _ => {
             return Err(EntabError::py_err(
-                "record and list subelements unimplemented",
+                "record subelements unimplemented",
             ));
         }
     })

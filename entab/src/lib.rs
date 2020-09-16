@@ -38,6 +38,8 @@ pub mod buffer;
 /// Generic file decompression
 #[cfg(feature = "std")]
 pub mod compression;
+/// Miscellanous utility functions and error handling
+pub mod error;
 /// File format inference
 pub mod filetype;
 /// Lightweight parsers to read records out of buffers
@@ -46,7 +48,5 @@ mod parsers;
 pub mod readers;
 /// Record and abstract record reading
 pub mod record;
-/// Miscellanous utility functions and error handling
-pub mod utils;
 
-pub use utils::error::EtError;
+pub use error::EtError;
