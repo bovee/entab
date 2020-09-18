@@ -3,7 +3,10 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Serialize, Serializer};
+
+use crate::error::EtError;
 
 /// For a given "raw" record struct, the header fields in that struct.
 ///
@@ -70,7 +73,7 @@ pub enum Value<'a> {
     /// A true/false value
     Boolean(bool),
     /// A date with associated time
-    Datetime(String),
+    Datetime(NaiveDateTime),
     /// A floating point number
     Float(f64),
     /// An integer
@@ -81,6 +84,15 @@ pub enum Value<'a> {
     List(Vec<Value<'a>>),
     /// A record mapping keys to `Value`s
     Record(BTreeMap<String, Value<'a>>),
+}
+
+impl<'a> Value<'a> {
+    /// Converts an ISO-8601 formated date into a Value::Datetime
+    pub fn from_iso_date(string: &str) -> Result<Self, EtError> {
+        let datetime =
+            NaiveDateTime::parse_from_str(string, "%+").map_err(|e| EtError::new(e.to_string()))?;
+        Ok(Self::Datetime(datetime))
+    }
 }
 
 impl<'a, T: Into<Value<'a>>> From<Option<T>> for Value<'a> {
@@ -171,6 +183,18 @@ impl<'a> From<&'a str> for Value<'a> {
 impl<'a> From<String> for Value<'a> {
     fn from(x: String) -> Self {
         Value::String(x.into())
+    }
+}
+
+impl<'a> From<NaiveDateTime> for Value<'a> {
+    fn from(d: NaiveDateTime) -> Self {
+        Value::Datetime(d)
+    }
+}
+
+impl<'a> From<NaiveDate> for Value<'a> {
+    fn from(d: NaiveDate) -> Self {
+        Value::Datetime(d.and_hms(0, 0, 0))
     }
 }
 

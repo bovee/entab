@@ -52,9 +52,7 @@ impl TsvParams {
         if let TsvEscapeStyle::Quote(quote_char) = self.escape_style {
             writer.write_all(&[quote_char])?;
             writer.write_all(string)?;
-            return writer
-                .write_all(&[quote_char])
-                .map_err(|e| e.into());
+            return writer.write_all(&[quote_char]).map_err(|e| e.into());
         };
         writer.write_all(&string[..first])?;
         if let TsvEscapeStyle::Escape(escape_char) = self.escape_style {
@@ -87,7 +85,7 @@ impl TsvParams {
             Value::Null => writer.write_all(&self.null_value)?,
             Value::Boolean(true) => writer.write_all(&self.true_value)?,
             Value::Boolean(false) => writer.write_all(&self.false_value)?,
-            Value::Datetime(s) => writer.write_all(s.as_bytes())?,
+            Value::Datetime(s) => writer.write_all(format!("{:+?}", s).as_bytes())?,
             Value::Float(v) => writer.write_all(format!("{}", v).as_bytes())?,
             Value::Integer(v) => writer.write_all(format!("{}", v).as_bytes())?,
             Value::List(l) => {
@@ -108,47 +106,64 @@ impl TsvParams {
     }
 }
 
-#[test]
-fn test_replace_chars() {
+#[cfg(test)]
+mod tests {
+    use super::*;
     use std::io::Cursor;
 
-    let mut params = TsvParams::default();
-    params.escape_style = TsvEscapeStyle::Replace(b'|');
+    #[test]
+    fn test_replace_chars() {
+        let mut params = TsvParams::default();
+        params.escape_style = TsvEscapeStyle::Replace(b'|');
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"test", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"test");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"test", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"test");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\ttest", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|test");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\ttest", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|test");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\ttest\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|test|");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\ttest\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|test|");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\ttest\tt\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|test|t|");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\ttest\tt\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|test|t|");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\t\t\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|||");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\t\t\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|||");
 
-    params.escape_style = TsvEscapeStyle::Escape(b'|');
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|\t");
+        params.escape_style = TsvEscapeStyle::Escape(b'|');
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|\t");
 
-    let mut buffer = Cursor::new(Vec::new());
-    let _ = params.write_str(b"\ttest\t", &mut buffer);
-    assert_eq!(buffer.get_ref(), b"|\ttest|\t");
+        let mut buffer = Cursor::new(Vec::new());
+        let _ = params.write_str(b"\ttest\t", &mut buffer);
+        assert_eq!(buffer.get_ref(), b"|\ttest|\t");
+    }
+
+    #[test]
+    fn test_write_value_date() -> Result<(), EtError> {
+        const DATE: &str = "2001-02-03T04:05:06.000Z";
+        const OUT_DATE: &[u8] = b"2001-02-03T04:05:06";
+
+        let p = TsvParams::default();
+        let mut buffer = Cursor::new(Vec::new());
+        let datetime = Value::from_iso_date(DATE)?;
+        let _ = p.write_value(&datetime, &mut buffer);
+        assert_eq!(buffer.get_ref(), &OUT_DATE);
+        Ok(())
+    }
 }

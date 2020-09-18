@@ -5,6 +5,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::marker::Copy;
 
+use chrono::NaiveDateTime;
+
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
 use crate::record::{RecordHeader, StateMetadata, Value};
@@ -55,7 +57,7 @@ pub struct ChemstationMetadata {
     /// The name of the operator
     pub operator: String,
     /// The date the sample was run
-    pub run_date: String,
+    pub run_date: Option<NaiveDateTime>,
     /// The instrument the sample was run on
     pub instrument: String,
     /// The method the instrument ran
@@ -120,9 +122,27 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
         .trim()
         .to_string();
     let run_date_len = usize::from(header[178]);
-    let run_date = str::from_utf8(&header[179..179 + run_date_len])?
-        .trim()
-        .to_string();
+    // We need to detect the date format before we can convert into a
+    // NaiveDateTime; not sure the format even maps to the file type
+    // (it may be computer-dependent?)
+    let raw_run_date = str::from_utf8(&header[179..179 + run_date_len])?
+        .trim();
+    let run_date = if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d-%b-%y, %H:%M:%S") {
+        // format in MWD
+        Some(d)
+    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d %b %y %l:%M %P") {
+        // format in MS
+        Some(d)
+    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d %b %y %l:%M %P %z") {
+        // format in MS with timezone
+        Some(d)
+    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%m/%d/%y %I:%M:%S %p") {
+        // format in FID
+        Some(d)
+    } else {
+        None
+    };
+
     let instrument_len = usize::from(header[208]);
     let instrument = str::from_utf8(&header[209..209 + instrument_len])?
         .trim()

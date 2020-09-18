@@ -41,6 +41,7 @@ pub fn main() -> Result<(), EtError> {
         .arg(
             Arg::with_name("metadata")
                 .short('m')
+                .long("metadata")
                 .about("Reports metadata about the file instead of the data itself"),
         )
         .get_matches();

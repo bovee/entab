@@ -78,6 +78,7 @@ impl Reader {
             .map_err(|_| JsValue::from_str("Error translating metadata"))
     }
 
+    #[allow(clippy::should_implement_trait)]
     #[wasm_bindgen]
     pub fn next(&mut self) -> Result<JsValue, JsValue> {
         if let Some(value) = self.reader.next_record().map_err(to_js)? {

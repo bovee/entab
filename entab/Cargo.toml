@@ -11,8 +11,9 @@ categories = ["parsing", "science"]
 
 [dependencies]
 # parsing
+chrono = { version = "0.4", default-features=false, features = ["alloc", "serde"] }
 memchr = "2.3"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", default-features=false, features = ["derive"] }
 # compression
 flate2 = { version = "1.0" }
 bzip2 = { version = "0.3", optional = true }
@@ -26,7 +27,7 @@ criterion = "0.3"
 default = ["compression", "std"]
 compression = ["bzip2", "xz2", "zstd"]
 compression_manylinux = ["bzip2", "zstd"]
-std = []
+std = ["chrono/std", "serde/std"]
 
 [[bench]]
 name = "benchmarks"

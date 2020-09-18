@@ -5,6 +5,8 @@ use alloc::vec::Vec;
 use alloc::{format, str};
 use core::default::Default;
 
+use chrono::{NaiveDate, NaiveTime};
+
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer};
 use crate::readers::RecordReader;
@@ -22,7 +24,7 @@ impl<'r> FromBuffer<'r> for Option<FcsHeaderKeyValue<'r>> {
         let mut i = 0;
         let mut temp = None;
         let (key_end, value_end) = loop {
-            if rb.get_byte_pos() + i as u64 >= text_end {
+            if rb.get_byte_pos() + i as u64 > text_end {
                 return Ok(None);
             }
             if i + 2 >= rb.len() {
@@ -117,6 +119,8 @@ impl<'r> FromBuffer<'r> for FcsState {
         }
         let _ = rb.extract::<&[u8]>(text_start as usize - 58 - start_pos)?;
         let delim: u8 = rb.extract(Endian::Little)?;
+        let mut date = NaiveDate::from_yo(2000, 1);
+        let mut time = NaiveTime::from_num_seconds_from_midnight(0, 0);
         while let Some(FcsHeaderKeyValue(key, value)) = rb.extract((delim, text_end))? {
             match (key.as_ref(), value.as_ref()) {
                 ("$BEGINDATA", v) => {
@@ -153,13 +157,38 @@ impl<'r> FromBuffer<'r> for FcsState {
                 ("$MODE", v) => return Err(EtError::new(format!("Unknown FCS $MODE {}", v))),
                 ("$TOT", v) => n_events_left = v.trim().parse()?,
                 ("$BTIM", v) => {
-                    let _ = metadata.insert("start_time".into(), v.to_string().into());
+                    // TODO: sometimes there's a fractional (/60) part after the last colon
+                    // that we should include in the time too
+                    let hms = v
+                        .trim()
+                        .split(':')
+                        .take(3)
+                        .map(|i| i.to_owned())
+                        .collect::<Vec<String>>()
+                        .join(":");
+                    if let Ok(t) = NaiveTime::parse_from_str(&hms, "%H:%M:%S") {
+                        time = t;
+                    }
                 }
                 ("$CELLS", v) => {
                     let _ = metadata.insert("specimen".into(), v.to_string().into());
                 }
                 ("$DATE", v) => {
-                    let _ = metadata.insert("date".into(), v.to_string().into());
+                    // "DD-MM-YYYY"
+                    // "YYYY-mmm-DD"
+                    if let Ok(d) = NaiveDate::parse_from_str(v.trim(), "%d-%b-%y") {
+                        // FCS2.0 only had a two-digit year, e.g. 01-JAN-20).
+                        date = d;
+                    } else if let Ok(d) = NaiveDate::parse_from_str(v.trim(), "%d-%b-%Y") {
+                        // FCS3.0 and 3.1 are supposed to be e.g. 01-JAN-2020.
+                        date = d;
+                    } else if let Ok(d) = NaiveDate::parse_from_str(v.trim(), "%Y-%b-%d") {
+                        // non-standard FCS3.0?
+                        date = d;
+                    } else if let Ok(d) = NaiveDate::parse_from_str(v.trim(), "%d-%m-%Y") {
+                        // one weird Partec FCS2.0 file had this
+                        date = d;
+                    }
                 }
                 ("$INST", v) => {
                     let _ = metadata.insert("instrument".into(), v.to_string().into());
@@ -211,6 +240,7 @@ impl<'r> FromBuffer<'r> for FcsState {
                 _ => {}
             }
         }
+        let _ = metadata.insert("date".into(), date.and_time(time).into());
         // get anything between the end of the text segment and the start of the data segment
         let _ = rb.extract::<&[u8]>((data_start - rb.get_byte_pos()) as usize)?;
 
@@ -391,6 +421,21 @@ mod tests {
             n_recs += 1;
         }
         assert_eq!(n_recs, 14945);
+        Ok(())
+    }
+
+    #[test]
+    fn test_fcs_reader_metadata() -> Result<(), EtError> {
+        let rb = ReadBuffer::from_slice(include_bytes!(
+            "../../tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs"
+        ));
+        let reader = FcsReader::new(rb, ())?;
+        let metadata = reader.metadata();
+        assert_eq!(metadata["specimen_source"], "Specimen_001".into());
+        assert_eq!(
+            metadata["date"],
+            NaiveDate::from_ymd(2012, 10, 26).and_hms(18, 08, 10).into()
+        );
         Ok(())
     }
 
