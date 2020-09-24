@@ -1,4 +1,5 @@
 filename, source, license
+bmp_24.png, https://people.sc.fsu.edu/~jburkardt/data/png/png.html, LGPL
 b3_alkanes.dxf, collected by Roderick,
 HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs, https://github.com/eyurtsev/fcsparser/blob/master/fcsparser/tests/data/FlowCytometers/HTS_BD_LSR-II/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs, MIT
 carotenoid_extract.d, collected by Roderick,

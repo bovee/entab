@@ -21,25 +21,25 @@ pub fn main() -> Result<(), EtError> {
         .author(crate_authors!())
         .version(crate_version!())
         .arg(
-            Arg::with_name("input")
+            Arg::new("input")
                 .short('i')
                 .about("Path to read; if not provided stdin will be used")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .short('o')
                 .about("Path to write to; if not provided stdout will be used")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("parser")
+            Arg::new("parser")
                 .short('p')
                 .about("Parser to use [if not specified, file type will be auto-detected]")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("metadata")
+            Arg::new("metadata")
                 .short('m')
                 .long("metadata")
                 .about("Reports metadata about the file instead of the data itself"),

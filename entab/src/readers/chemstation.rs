@@ -125,9 +125,9 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
     // We need to detect the date format before we can convert into a
     // NaiveDateTime; not sure the format even maps to the file type
     // (it may be computer-dependent?)
-    let raw_run_date = str::from_utf8(&header[179..179 + run_date_len])?
-        .trim();
-    let run_date = if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d-%b-%y, %H:%M:%S") {
+    let raw_run_date = str::from_utf8(&header[179..179 + run_date_len])?.trim();
+    let run_date = if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d-%b-%y, %H:%M:%S")
+    {
         // format in MWD
         Some(d)
     } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d %b %y %l:%M %P") {

@@ -20,6 +20,9 @@ pub mod flow;
 pub mod inficon;
 /// Reader for FASTA/FASTQ formats that parse into "kmers"
 pub mod kmers;
+/// Reader for PNG image format
+#[cfg(feature = "std")]
+pub mod png;
 /// Reader for BAM/SAM bioinformatics formats
 pub mod sam;
 /// Readers for Thermo mass spectral isotopic formats
@@ -42,6 +45,8 @@ pub fn get_reader<'r>(
         "fastq" => Box::new(fastq::FastqReader::new(rb, ())?),
         "fcs" => Box::new(flow::FcsReader::new(rb, ())?),
         "inficon" => Box::new(inficon::InficonReader::new(rb, ())?),
+        #[cfg(feature = "std")]
+        "png" => Box::new(png::PngReader::new(rb, ())?),
         "sam" => Box::new(sam::SamReader::new(rb, ())?),
         "thermo_cf" => Box::new(thermo_iso::ThermoCfReader::new(rb, ())?),
         "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),

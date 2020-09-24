@@ -18,6 +18,7 @@ other formats.
  - FASTA and FASTQ sequence formats
  - FCS flow cytometry format
  - Inficon Hapsite mass specotrometry format
+ - PNG image format
  - SAM and BAM alignment formats
  - Thermo continuous flow isotope mass spectrometry formats
  - TSV

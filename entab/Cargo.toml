@@ -1,6 +1,6 @@
 [package]
 name = "entab"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 description = "Record-format file reader"

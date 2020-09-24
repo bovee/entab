@@ -1,4 +1,4 @@
-use alloc::borrow::Cow;
+use alloc::borrow::{Cow, ToOwned};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

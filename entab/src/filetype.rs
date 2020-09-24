@@ -89,6 +89,8 @@ pub enum FileType {
     /// "Log ASCII Standard" format for well log information
     Las,
     // catch all
+    /// Portable Network Graphics image format
+    Png,
     /// Generic scientific data format
     Hdf5,
     /// Tab-seperated value format
@@ -108,6 +110,7 @@ impl FileType {
                 b"FCS3.1  " => return FileType::Facs,
                 b"~VERSION" => return FileType::Las,
                 b"~Version" => return FileType::Las,
+                b"\x89PNG\r\n\x1A\n" => return FileType::Png,
                 b"\x89HDF\r\n\x1A\n" => return FileType::Hdf5,
                 b"\x04\x03\x02\x01SPAH" => return FileType::InficonHapsite,
                 b"\xAEZTR\x0D\x0A\x1A\x0A" => return FileType::Ztr,
@@ -177,6 +180,7 @@ impl FileType {
             FileType::MsRaw => &["raw"],
             FileType::MzXml => &["mzxml"],
             FileType::NetCdf => &["cdf"],
+            FileType::Png => &["png"],
             FileType::InficonHapsite => &["hps"],
             FileType::Sam => &["sam"],
             FileType::Scf => &["scf"],
@@ -200,6 +204,7 @@ impl FileType {
             FileType::Fasta => "fasta",
             FileType::Fastq => "fastq",
             FileType::InficonHapsite => "inficon",
+            FileType::Png => "png",
             FileType::Sam => "sam",
             FileType::ThermoCf => "thermo_cf",
             FileType::ThermoDxf => "thermo_dxf",
