@@ -1,0 +1,16 @@
+Package: entab
+Type: Package
+Title: Entab
+Version: 0.2.2
+Author: Roderick
+Maintainer: Roderick <rbovee@gmail.com>
+Description: Entab is a record-format file reader.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    methods
+Suggests:
+    devtools,
+    roxygen2
+LazyData: true
+RoxygenNote: 7.1.1
