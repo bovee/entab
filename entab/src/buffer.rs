@@ -373,4 +373,15 @@ mod test {
         assert_eq!(&rb[..], b"123\nEND");
         Ok(())
     }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_expansion() -> Result<(), EtError> {
+        let reader = Box::new(Cursor::new(b"1234567890"));
+        let mut rb = ReadBuffer::with_capacity(2, reader)?;
+        assert!(rb.len() == 2);
+        let _ = rb.refill();
+        assert!(rb.len() >= 4);
+        Ok(())
+    }
 }

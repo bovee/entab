@@ -410,6 +410,7 @@ mod tests {
             "../../tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs"
         ));
         let mut reader = FcsReader::new(rb, ())?;
+        assert_eq!(reader.headers(), ["FSC-A", "FSC-H", "FSC-W", "SSC-A", "SSC-H", "SSC-W", "FITC-A", "PerCP-Cy5-5-A", "AmCyan-A", "PE-TxRed YG-A", "Time"]);
 
         let record = reader
             .next_record()?

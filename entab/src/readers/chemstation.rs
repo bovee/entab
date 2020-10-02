@@ -386,7 +386,7 @@ impl<'r> RecordHeader for ChemstationMwdRecord<'r> {
     fn header() -> Vec<String> {
         vec![
             "time".to_string(),
-            "mz".to_string(),
+            "signal".to_string(),
             "intensity".to_string(),
         ]
     }
@@ -395,7 +395,7 @@ impl<'r> RecordHeader for ChemstationMwdRecord<'r> {
 impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
     fn from(record: ChemstationMwdRecord<'r>) -> Self {
         // signal name is something like "MWD A, Sig=210,5 Ref=360,100"
-        let mz = record
+        let signal = record
             .signal_name
             .splitn(2, "Sig=")
             .nth(1)
@@ -406,7 +406,7 @@ impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
                     .and_then(|sig_name| sig_name.parse::<f64>().ok())
             })
             .unwrap_or_else(|| 0.);
-        vec![record.time.into(), mz.into(), record.intensity.into()]
+        vec![record.time.into(), signal.into(), record.intensity.into()]
     }
 }
 
@@ -619,11 +619,14 @@ impl_reader!(
 mod tests {
     use super::*;
     use crate::buffer::ReadBuffer;
+    use crate::readers::RecordReader;
 
     #[test]
     fn test_chemstation_reader_fid() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test_fid.ch"));
         let mut reader = ChemstationFidReader::new(rb, ())?;
+        let _ = reader.metadata();
+        assert_eq!(reader.headers(), ["time", "intensity"]);
         let ChemstationFidRecord { time, intensity } = reader.next()?.unwrap();
         // TODO: try to confirm this time is correct
         assert!((time - 20184.8775).abs() < 0.0001);
@@ -634,6 +637,7 @@ mod tests {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 2699);
+
         Ok(())
     }
 
@@ -643,6 +647,8 @@ mod tests {
             "../../tests/data/carotenoid_extract.d/MSD1.MS"
         ));
         let mut reader = ChemstationMsReader::new(rb, ())?;
+        let _ = reader.metadata();
+        assert_eq!(reader.headers(), ["time", "mz", "intensity"]);
         let ChemstationMsRecord {
             time,
             mz,
@@ -675,6 +681,8 @@ mod tests {
             "../../tests/data/chemstation_mwd.d/mwd1A.ch"
         ));
         let mut reader = ChemstationMwdReader::new(rb, ())?;
+        assert_eq!(reader.headers(), ["time", "signal", "intensity"]);
+        let _ = reader.metadata();
         let ChemstationMwdRecord {
             time,
             signal_name,
@@ -698,6 +706,8 @@ mod tests {
             "../../tests/data/carotenoid_extract.d/dad1.uv"
         ));
         let mut reader = ChemstationUvReader::new(rb, ())?;
+        let _ = reader.metadata();
+        assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
         let ChemstationUvRecord {
             time,
             wavelength,

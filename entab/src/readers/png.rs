@@ -320,11 +320,13 @@ impl_reader!(PngReader, PngRecord, PngState, ());
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readers::RecordReader;
 
     #[test]
     fn test_png_reader() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/bmp_24.png"));
         let mut reader = PngReader::new(rb, ())?;
+        let _ = reader.metadata();
 
         let mut n_recs = 0;
         while let Some(_) = reader.next()? {
@@ -348,6 +350,7 @@ mod tests {
 
         let rb = ReadBuffer::from_slice(TEST_IMAGE);
         let mut reader = PngReader::new(rb, ())?;
+        let _ = reader.metadata();
         let pixel = reader.next()?.expect("first pixel exists");
         assert_eq!(pixel.x, 0);
         assert_eq!(pixel.y, 0);

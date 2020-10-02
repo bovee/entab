@@ -383,12 +383,14 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 mod tests {
     use super::*;
     use core::include_bytes;
+    use crate::readers::RecordReader;
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[test]
     fn test_sam_reader() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test.sam"));
         let mut reader = SamReader::new(rb, ())?;
+        let _ = reader.metadata();
         if let Some(SamRecord {
             query_name, seq, ..
         }) = reader.next()?
@@ -429,6 +431,7 @@ mod tests {
         assert_eq!(compress, Some(FileType::Gzip));
         let rb = ReadBuffer::new(stream)?;
         let mut reader = BamReader::new(rb, ())?;
+        let _ = reader.metadata();
 
         if let Some(BamRecord {
             query_name, seq, ..
