@@ -198,6 +198,17 @@ impl<'a> From<NaiveDate> for Value<'a> {
     }
 }
 
+impl<'a> From<&'a [String]> for Value<'a> {
+    fn from(value: &'a [String]) -> Self {
+        let mut rec = Vec::with_capacity(value.len());
+        for v in value {
+            let bv: &str = v.as_ref();
+            rec.push(bv.into());
+        }
+        Value::List(rec)
+    }
+}
+
 impl<'a> Serialize for Value<'a> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match *self {

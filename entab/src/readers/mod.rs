@@ -29,6 +29,8 @@ pub mod sam;
 pub mod thermo_iso;
 /// Readers for tab-seperated text format
 pub mod tsv;
+/// Reader for generic XML
+pub mod xml;
 
 /// Turn `rb` into a Reader of type `parser_type`
 pub fn get_reader<'r>(
