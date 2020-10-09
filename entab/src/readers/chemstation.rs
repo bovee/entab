@@ -194,7 +194,11 @@ impl<'r> StateMetadata<'r> for ChemstationFidState {
 impl<'r> FromBuffer<'r> for ChemstationFidState {
     type State = ();
 
-    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        mut rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
@@ -245,8 +249,8 @@ impl<'r> FromBuffer<'r> for ChemstationFidRecord {
         }
 
         self.time = time;
-        self.intensity = state.cur_intensity * state.metadata.mult_correction
-                + state.metadata.offset_correction;
+        self.intensity =
+            state.cur_intensity * state.metadata.mult_correction + state.metadata.offset_correction;
         Ok(true)
     }
 }
@@ -269,7 +273,11 @@ impl<'r> StateMetadata<'r> for ChemstationMsState {
 impl<'r> FromBuffer<'r> for ChemstationMsState {
     type State = ();
 
-    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        mut rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, true)?;
         let metadata = get_metadata(&header)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
@@ -353,7 +361,11 @@ impl<'r> StateMetadata<'r> for ChemstationMwdState {
 impl<'r> FromBuffer<'r> for ChemstationMwdState {
     type State = ();
 
-    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        mut rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
@@ -434,8 +446,8 @@ impl<'r> FromBuffer<'r> for ChemstationMwdRecord<'r> {
 
         self.signal_name = &state.metadata.signal_name;
         self.time = time;
-        self.intensity = state.cur_intensity * state.metadata.mult_correction
-                + state.metadata.offset_correction;
+        self.intensity =
+            state.cur_intensity * state.metadata.mult_correction + state.metadata.offset_correction;
         Ok(true)
     }
 }
@@ -456,7 +468,11 @@ impl<'r> StateMetadata<'r> for ChemstationUvState {}
 impl<'r> FromBuffer<'r> for ChemstationUvState {
     type State = ();
 
-    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        mut rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 

@@ -24,7 +24,11 @@ impl_record!(FastaRecord<'r>: id, sequence);
 impl<'r> FromBuffer<'r> for FastaRecord<'r> {
     type State = &'r mut ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         if rb.is_empty() {
             return Ok(false);
         }

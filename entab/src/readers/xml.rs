@@ -1,7 +1,7 @@
 use core::marker::Copy;
 // use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::borrow::ToOwned;
+use alloc::format;
 use alloc::str::from_utf8;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -22,7 +22,7 @@ pub enum XmlTagType {
     /// An closing tag, e.g. </a>
     Close,
     /// A self-closing tag, e.g. <br />
-    SelfClose
+    SelfClose,
 }
 // TODO: maybe CDATA, DOCTYPE, comments too?
 
@@ -36,13 +36,17 @@ impl Default for XmlTagType {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct XmlTag<'r> {
     tag_type: XmlTagType,
-    id: &'r str
+    id: &'r str,
 }
 
 impl<'r> FromBuffer<'r> for XmlTag<'r> {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let mut cur_quote = b' ';
         let mut start = 0;
         let end = 'read: loop {
@@ -55,13 +59,16 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
                     (b'\'', b' ') => cur_quote = b'\'',
                     (b'"', b' ') => cur_quote = b'"',
                     // if we're in quotes and see a quote, stop "quoting"
-                (b'\'', b'\'') => cur_quote = b' ',
-                (b'"', b'"') => cur_quote = b' ',
-                _ => {}
+                    (b'\'', b'\'') => cur_quote = b' ',
+                    (b'"', b'"') => cur_quote = b' ',
+                    _ => {}
                 }
             }
             if rb.len() > 1024 {
-                return Err(EtError::new(format!("Tags larger than {} not supported", 1024)));
+                return Err(EtError::new(format!(
+                    "Tags larger than {} not supported",
+                    1024
+                )));
             }
             if rb.eof() {
                 return Err(EtError::new("Tag was never closed"));
@@ -95,7 +102,11 @@ pub struct XmlText<'r>(&'r str);
 impl<'r> FromBuffer<'r> for XmlText<'r> {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let mut start = 0;
         let end = loop {
             // we're parsing a text element
@@ -103,7 +114,10 @@ impl<'r> FromBuffer<'r> for XmlText<'r> {
                 break e;
             }
             if rb.len() > 65536 {
-                return Err(EtError::new(format!("XML text larger than {} not supported", 65536)));
+                return Err(EtError::new(format!(
+                    "XML text larger than {} not supported",
+                    65536
+                )));
             }
             if rb.eof() {
                 // TODO: add test for this case
@@ -129,7 +143,11 @@ impl<'r> StateMetadata<'r> for XmlState {}
 impl<'r> FromBuffer<'r> for XmlState {
     type State = ();
 
-    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        _rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         // self.token_counts = Vec::new();
         self.stack = Vec::new();
         Ok(true)
@@ -151,7 +169,10 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
     fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             if !state.stack.is_empty() {
-                return Err(EtError::new(format!("Closing tag for {} not present?", state.stack.pop().unwrap())));
+                return Err(EtError::new(format!(
+                    "Closing tag for {} not present?",
+                    state.stack.pop().unwrap()
+                )));
             } else {
                 return Ok(false);
             }
@@ -162,18 +183,24 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
             match tag.tag_type {
                 XmlTagType::Open => {
                     state.stack.push(tag.id.to_owned());
-                },
+                }
                 XmlTagType::Close => {
                     if let Some(open_tag) = state.stack.pop() {
                         if open_tag != tag.id {
-                            return Err(EtError::new(format!("Closing tag {} found, but {} was open.", tag.id, open_tag)));
+                            return Err(EtError::new(format!(
+                                "Closing tag {} found, but {} was open.",
+                                tag.id, open_tag
+                            )));
                         }
                     } else {
-                        return Err(EtError::new(format!("Closing tag {} found, but no tags opened before it.", tag.id)));
+                        return Err(EtError::new(format!(
+                            "Closing tag {} found, but no tags opened before it.",
+                            tag.id
+                        )));
                     }
-                },
+                }
                 // TODO: we need to return the tag stack with this tag on it
-                XmlTagType::SelfClose => {},
+                XmlTagType::SelfClose => {}
             }
             ""
         } else {

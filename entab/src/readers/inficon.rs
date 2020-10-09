@@ -23,7 +23,11 @@ impl<'r> StateMetadata<'r> for InficonState {}
 impl<'r> FromBuffer<'r> for InficonState {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         // probably not super robust, but it works? this appears at the end of
         // the "instrument collection steps" section and it appears to be
         // a constant distance before the "list of mzs" section

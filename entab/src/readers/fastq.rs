@@ -22,7 +22,11 @@ impl_record!(FastqRecord<'r>: id, sequence, quality);
 impl<'r> FromBuffer<'r> for FastqRecord<'r> {
     type State = &'r mut ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         if rb.is_empty() {
             if rb.eof() {
                 return Ok(false);

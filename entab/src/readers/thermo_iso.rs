@@ -19,7 +19,11 @@ pub struct MfcString<'r>(Cow<'r, str>);
 impl<'r> FromBuffer<'r> for MfcString<'r> {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         if rb.is_empty() {
             rb.reserve(1)?;
         }
@@ -80,7 +84,11 @@ impl<'r> StateMetadata<'r> for ThermoDxfState {}
 impl<'r> FromBuffer<'r> for ThermoDxfState {
     type State = ();
 
-    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        _rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         self.first = true;
         self.n_scans_left = 0;
         self.cur_mz_idx = 0;
@@ -184,7 +192,11 @@ impl<'r> StateMetadata<'r> for ThermoCfState {}
 impl<'r> FromBuffer<'r> for ThermoCfState {
     type State = ();
 
-    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        _rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         self.n_scans_left = 0;
         self.cur_mz_idx = 0;
         self.mzs = Vec::new();

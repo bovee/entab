@@ -146,7 +146,11 @@ impl<'r> StateMetadata<'r> for PngState {
 impl<'r> FromBuffer<'r> for PngState {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         if rb.extract::<&[u8]>(8)? != b"\x89PNG\r\n\x1A\n" {
             return Err(EtError::new("Invalid PNG magic"));
         }
@@ -181,12 +185,16 @@ impl<'r> FromBuffer<'r> for PngState {
             let chunk_size = u32::out_of(&chunk_header[..4], Endian::Big)? as usize;
             match &chunk_header[4..] {
                 b"PLTE" => {
-                    let mut raw_palette  = Vec::new();
+                    let mut raw_palette = Vec::new();
                     for _ in 0..chunk_size / 3 {
                         let r: u8 = rb.extract(Endian::Big)?;
                         let g: u8 = rb.extract(Endian::Big)?;
                         let b: u8 = rb.extract(Endian::Big)?;
-                        raw_palette.push((257 * u16::from(r), 257 * u16::from(g), 257 * u16::from(b)));
+                        raw_palette.push((
+                            257 * u16::from(r),
+                            257 * u16::from(g),
+                            257 * u16::from(b),
+                        ));
                     }
                     self.palette = Some(raw_palette);
                 }
@@ -247,7 +255,11 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
 impl<'r> FromBuffer<'r> for PngRecord {
     type State = &'r mut PngState;
 
-    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        _rb: &'r mut ReadBuffer,
+        state: Self::State,
+    ) -> Result<bool, EtError> {
         if state.cur_y >= state.height {
             return Ok(false);
         }

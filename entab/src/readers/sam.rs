@@ -21,7 +21,11 @@ impl<'r> StateMetadata<'r> for BamState {}
 impl<'r> FromBuffer<'r> for BamState {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         // read the magic & header length, and then the header
         if rb.extract::<&[u8]>(4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
@@ -222,7 +226,11 @@ impl<'r> StateMetadata<'r> for SamState {}
 impl<'r> FromBuffer<'r> for SamState {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         // eventually we should read the headers and pass them along
         // to the Reader as metadata once we support that
         rb.reserve(1)?;
@@ -353,7 +361,11 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]], mut record: &mut SamRecord<'r>) -> Resul
 impl<'r> FromBuffer<'r> for SamRecord<'r> {
     type State = &'r mut SamState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         Ok(if let Some(NewLine(line)) = NewLine::get(rb, ())? {
             let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
             strs_to_sam(&chunks, self)?;
@@ -369,8 +381,8 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::include_bytes;
     use crate::readers::RecordReader;
+    use core::include_bytes;
     static KNOWN_SEQ: &[u8] = b"GGGTTTTCCTGAAAAAGGGATTCAAGAAAGAAAACTTACATGAGGTGATTGTTTAATGTTGCTACCAAAGAAGAGAGAGTTACCTGCCCATTCACTCAGG";
 
     #[test]

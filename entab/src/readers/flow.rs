@@ -20,7 +20,11 @@ struct FcsHeaderKeyValue<'a>(String, Cow<'a, str>);
 impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
     type State = (u8, u64);
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, (delim, text_end): Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        (delim, text_end): Self::State,
+    ) -> Result<bool, EtError> {
         let mut i = 0;
         let mut temp = None;
         let (key_end, value_end) = loop {
@@ -91,7 +95,11 @@ pub struct FcsState {
 impl<'r> FromBuffer<'r> for FcsState {
     type State = ();
 
-    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        mut rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         let mut params = Vec::new();
         let mut endian = Endian::Little;
         let mut data_type = 'F';
@@ -121,7 +129,9 @@ impl<'r> FromBuffer<'r> for FcsState {
         let delim: u8 = rb.extract(Endian::Little)?;
         let mut date = NaiveDate::from_yo(2000, 1);
         let mut time = NaiveTime::from_num_seconds_from_midnight(0, 0);
-        while let Some(FcsHeaderKeyValue(key, value)) = FcsHeaderKeyValue::get(&mut rb, (delim, text_end))? {
+        while let Some(FcsHeaderKeyValue(key, value)) =
+            FcsHeaderKeyValue::get(&mut rb, (delim, text_end))?
+        {
             match (key.as_ref(), value.as_ref()) {
                 ("$BEGINDATA", v) => {
                     let data_start_value = v.trim().parse::<u64>()?;
@@ -402,7 +412,22 @@ mod tests {
             "../../tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs"
         ));
         let mut reader = FcsReader::new(rb, ())?;
-        assert_eq!(reader.headers(), ["FSC-A", "FSC-H", "FSC-W", "SSC-A", "SSC-H", "SSC-W", "FITC-A", "PerCP-Cy5-5-A", "AmCyan-A", "PE-TxRed YG-A", "Time"]);
+        assert_eq!(
+            reader.headers(),
+            [
+                "FSC-A",
+                "FSC-H",
+                "FSC-W",
+                "SSC-A",
+                "SSC-H",
+                "SSC-W",
+                "FITC-A",
+                "PerCP-Cy5-5-A",
+                "AmCyan-A",
+                "PE-TxRed YG-A",
+                "Time"
+            ]
+        );
 
         let record = reader
             .next_record()?

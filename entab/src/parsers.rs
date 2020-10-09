@@ -12,16 +12,24 @@ pub trait FromBuffer<'r>: Sized {
 
     fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError>;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Option<Self>, EtError> where Self: Default {
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Option<Self>, EtError>
+    where
+        Self: Default,
+    {
         let mut record = Self::default();
+        // this is really annoying. it would be nice to be able to capture
+        // the record and byte directly in the closure so we don't have to
+        // calculate them every time, but the immutable/mutable borrows of
+        // rb prevent that
         let record_pos = rb.record_pos;
         let byte_pos = rb.get_byte_pos();
-
-        if !record.from_buffer(rb, state).map_err(|mut e| {
+        let update_err = |mut e: EtError| {
             e.record = Some(record_pos);
             e.byte = Some(byte_pos);
             e
-        })? {
+        };
+
+        if !record.from_buffer(rb, state).map_err(update_err)? {
             return Ok(None);
         }
         Ok(Some(record))
@@ -52,7 +60,11 @@ macro_rules! impl_extract {
             type State = Endian;
 
             #[inline]
-            fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+            fn from_buffer(
+                &mut self,
+                rb: &'r mut ReadBuffer,
+                state: Self::State,
+            ) -> Result<bool, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
                     .consume(core::mem::size_of::<$return>())
@@ -131,7 +143,11 @@ impl<'r> FromBuffer<'r> for NewLine<'r> {
     type State = ();
 
     #[inline]
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn from_buffer(
+        &mut self,
+        rb: &'r mut ReadBuffer,
+        _state: Self::State,
+    ) -> Result<bool, EtError> {
         if rb.is_empty() {
             return Ok(false);
         }

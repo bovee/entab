@@ -6,8 +6,8 @@ use entab::buffer::ReadBuffer;
 use entab::readers::chemstation::ChemstationMsReader;
 use entab::readers::fasta::FastaReader;
 use entab::readers::fastq::FastqReader;
-use entab::readers::png::PngReader;
 use entab::readers::get_reader;
+use entab::readers::png::PngReader;
 
 fn benchmark_raw_readers(c: &mut Criterion) {
     let mut raw_readers = c.benchmark_group("raw readers");
