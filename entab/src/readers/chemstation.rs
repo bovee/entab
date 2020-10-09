@@ -31,7 +31,7 @@ fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'
     rb.extract::<&[u8]>(header_size)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// Metadata consistly found in Chemstation file formats
 pub struct ChemstationMetadata {
     /// Time the run started (minutes)
@@ -175,7 +175,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// Internal state for the ChemstationFid parser
 pub struct ChemstationFidState {
     cur_time: f64,
@@ -194,21 +194,20 @@ impl<'r> StateMetadata<'r> for ChemstationFidState {
 impl<'r> FromBuffer<'r> for ChemstationFidState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
-        Ok(ChemstationFidState {
-            cur_time: metadata.start_time,
-            cur_intensity: 0.,
-            cur_delta: 0.,
-            time_step: 0.2,
-            metadata,
-        })
+        self.cur_time = metadata.start_time;
+        self.cur_intensity = 0.;
+        self.cur_delta = 0.;
+        self.time_step = 0.2;
+        self.metadata = metadata;
+        Ok(true)
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 /// A point in a FID trace
 pub struct ChemstationFidRecord {
     /// The time recorded at
@@ -219,15 +218,15 @@ pub struct ChemstationFidRecord {
 
 impl_record!(ChemstationFidRecord: time, intensity);
 
-impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
+impl<'r> FromBuffer<'r> for ChemstationFidRecord {
     type State = &'r mut ChemstationFidState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.len() < 2 {
             rb.refill()?;
         }
         if rb.is_empty() && rb.eof() {
-            return Ok(None);
+            return Ok(false);
         } else if rb.len() == 1 && rb.eof() {
             return Err(EtError::new("FID record was incomplete"));
         }
@@ -245,15 +244,14 @@ impl<'r> FromBuffer<'r> for Option<ChemstationFidRecord> {
             state.cur_intensity += state.cur_delta;
         }
 
-        Ok(Some(ChemstationFidRecord {
-            time,
-            intensity: state.cur_intensity * state.metadata.mult_correction
-                + state.metadata.offset_correction,
-        }))
+        self.time = time;
+        self.intensity = state.cur_intensity * state.metadata.mult_correction
+                + state.metadata.offset_correction;
+        Ok(true)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// Internal state for the ChemstationMs parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
@@ -271,21 +269,20 @@ impl<'r> StateMetadata<'r> for ChemstationMsState {
 impl<'r> FromBuffer<'r> for ChemstationMsState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, true)?;
         let metadata = get_metadata(&header)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
-        Ok(ChemstationMsState {
-            n_scans_left: n_scans,
-            n_mzs_left: 0,
-            cur_time: 0.,
-            metadata,
-        })
+        self.n_scans_left = n_scans;
+        self.n_mzs_left = 0;
+        self.cur_time = 0.;
+        self.metadata = metadata;
+        Ok(true)
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 /// A single time/mz record from a ChemstationMs file
 pub struct ChemstationMsRecord {
     /// The time recorded at
@@ -298,12 +295,12 @@ pub struct ChemstationMsRecord {
 
 impl_record!(ChemstationMsRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
+impl<'r> FromBuffer<'r> for ChemstationMsRecord {
     type State = &'r mut ChemstationMsState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.n_scans_left == 0 {
-            return Ok(None);
+            return Ok(false);
         }
 
         // refill case
@@ -330,15 +327,14 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMsRecord> {
         }
         state.n_mzs_left -= 1;
 
-        Ok(Some(ChemstationMsRecord {
-            time: state.cur_time,
-            mz,
-            intensity,
-        }))
+        self.time = state.cur_time;
+        self.mz = mz;
+        self.intensity = intensity;
+        Ok(true)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// Internal state for the ChemstationMwd parser
 pub struct ChemstationMwdState {
     n_wvs_left: usize,
@@ -357,21 +353,20 @@ impl<'r> StateMetadata<'r> for ChemstationMwdState {
 impl<'r> FromBuffer<'r> for ChemstationMwdState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let metadata = get_metadata(&header)?;
 
-        Ok(ChemstationMwdState {
-            n_wvs_left: 0,
-            cur_time: metadata.start_time,
-            cur_intensity: 0.,
-            time_step: 0.2,
-            metadata,
-        })
+        self.n_wvs_left = 0;
+        self.cur_time = metadata.start_time;
+        self.cur_intensity = 0.;
+        self.time_step = 0.2;
+        self.metadata = metadata;
+        Ok(true)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 /// A single point from an e.g. moving wavelength detector trace
 pub struct ChemstationMwdRecord<'r> {
     /// The name of the signal that's being tracked
@@ -410,19 +405,19 @@ impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
     }
 }
 
-impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
+impl<'r> FromBuffer<'r> for ChemstationMwdRecord<'r> {
     type State = &'r mut ChemstationMwdState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() && rb.eof() {
-            return Ok(None);
+            return Ok(false);
         }
         if state.n_wvs_left == 0 {
             // mask out the top nibble because it's always 0b0001 (i hope?)
             state.n_wvs_left = usize::from(rb.extract::<u16>(Endian::Big)?) & 0b111111111111;
             if state.n_wvs_left == 0 {
                 // TODO: consume the rest of the file so this can't accidentally repeat?
-                return Ok(None);
+                return Ok(false);
             }
         }
 
@@ -437,16 +432,15 @@ impl<'r> FromBuffer<'r> for Option<ChemstationMwdRecord<'r>> {
         }
         state.n_wvs_left -= 1;
 
-        Ok(Some(ChemstationMwdRecord {
-            signal_name: &state.metadata.signal_name,
-            time,
-            intensity: state.cur_intensity * state.metadata.mult_correction
-                + state.metadata.offset_correction,
-        }))
+        self.signal_name = &state.metadata.signal_name;
+        self.time = time;
+        self.intensity = state.cur_intensity * state.metadata.mult_correction
+                + state.metadata.offset_correction;
+        Ok(true)
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 /// Internal state for the ChemstationUv parser
 pub struct ChemstationUvState {
     n_scans_left: usize,
@@ -462,23 +456,22 @@ impl<'r> StateMetadata<'r> for ChemstationUvState {}
 impl<'r> FromBuffer<'r> for ChemstationUvState {
     type State = ();
 
-    fn get(mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let header = read_agilent_header(&mut rb, false)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
         // TODO: get other metadata
-        Ok(ChemstationUvState {
-            n_scans_left: n_scans,
-            n_wvs_left: 0,
-            cur_time: 0.,
-            cur_wv: 0.,
-            cur_intensity: 0.,
-            wv_step: 0.,
-        })
+        self.n_scans_left = n_scans;
+        self.n_wvs_left = 0;
+        self.cur_time = 0.;
+        self.cur_wv = 0.;
+        self.cur_intensity = 0.;
+        self.wv_step = 0.;
+        Ok(true)
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 /// A record from a ChemstationUv file
 pub struct ChemstationUvRecord {
     /// The time recorded at
@@ -491,12 +484,12 @@ pub struct ChemstationUvRecord {
 
 impl_record!(ChemstationUvRecord: time, wavelength, intensity);
 
-impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
+impl<'r> FromBuffer<'r> for ChemstationUvRecord {
     type State = &'r mut ChemstationUvState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.n_scans_left == 0 {
-            return Ok(None);
+            return Ok(false);
         }
 
         // refill case
@@ -526,11 +519,10 @@ impl<'r> FromBuffer<'r> for Option<ChemstationUvRecord> {
         }
         state.n_wvs_left -= 1;
 
-        Ok(Some(ChemstationUvRecord {
-            time: state.cur_time,
-            wavelength: state.cur_wv,
-            intensity: state.cur_intensity / 2000.,
-        }))
+        self.time = state.cur_time;
+        self.wavelength = state.cur_wv;
+        self.intensity = state.cur_intensity / 2000.;
+        Ok(true)
     }
 }
 

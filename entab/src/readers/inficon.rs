@@ -9,7 +9,7 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// The current state of the Inficon reader
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct InficonState {
     mz_segments: Vec<Vec<f64>>,
     data_end: u64,
@@ -23,7 +23,7 @@ impl<'r> StateMetadata<'r> for InficonState {}
 impl<'r> FromBuffer<'r> for InficonState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         // probably not super robust, but it works? this appears at the end of
         // the "instrument collection steps" section and it appears to be
         // a constant distance before the "list of mzs" section
@@ -66,6 +66,7 @@ impl<'r> FromBuffer<'r> for InficonState {
                 }
             }
         }
+        self.mz_segments = mz_segments;
         if !rb.seek_pattern(b"\xFF\xFF\xFF\xFFHapsGPIR")? {
             return Err(EtError::new("Could not find start of scan data"));
         }
@@ -78,20 +79,17 @@ impl<'r> FromBuffer<'r> for InficonState {
             return Err(EtError::new("Data header was malformed"));
         }
         let _ = rb.extract::<&[u8]>(56)?;
-        let data_end = rb.get_byte_pos() + data_length;
+        self.data_end = rb.get_byte_pos() + data_length;
 
-        Ok(InficonState {
-            mz_segments,
-            data_end,
-            cur_time: 0.,
-            cur_segment: 0,
-            mzs_left: 0,
-        })
+        self.cur_time = 0.;
+        self.cur_segment = 0;
+        self.mzs_left = 0;
+        Ok(true)
     }
 }
 
 /// A single record from an Inficon Hapsite file.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct InficonRecord {
     time: f64,
     mz: f64,
@@ -100,12 +98,12 @@ pub struct InficonRecord {
 
 impl_record!(InficonRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for Option<InficonRecord> {
+impl<'r> FromBuffer<'r> for InficonRecord {
     type State = &'r mut InficonState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.get_byte_pos() >= state.data_end {
-            return Ok(None);
+            return Ok(false);
         }
         if state.mzs_left == 0 {
             // the first u32 is the number of the record (i.e. from 1 to r_scans)
@@ -141,11 +139,10 @@ impl<'r> FromBuffer<'r> for Option<InficonRecord> {
         if state.mzs_left == 0 {
             rb.record_pos += 1;
         }
-        Ok(Some(InficonRecord {
-            time: state.cur_time,
-            mz,
-            intensity,
-        }))
+        self.time = state.cur_time;
+        self.mz = mz;
+        self.intensity = intensity;
+        Ok(true)
     }
 }
 

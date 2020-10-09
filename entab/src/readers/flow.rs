@@ -14,18 +14,18 @@ use crate::record::Value;
 use crate::EtError;
 
 /// A single key-value pair from the text segment of an FCS file.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct FcsHeaderKeyValue<'a>(String, Cow<'a, str>);
 
-impl<'r> FromBuffer<'r> for Option<FcsHeaderKeyValue<'r>> {
+impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
     type State = (u8, u64);
 
-    fn get(rb: &'r mut ReadBuffer, (delim, text_end): Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, (delim, text_end): Self::State) -> Result<bool, EtError> {
         let mut i = 0;
         let mut temp = None;
         let (key_end, value_end) = loop {
             if rb.get_byte_pos() + i as u64 > text_end {
-                return Ok(None);
+                return Ok(false);
             }
             if i + 2 >= rb.len() {
                 if !rb.eof() {
@@ -57,9 +57,9 @@ impl<'r> FromBuffer<'r> for Option<FcsHeaderKeyValue<'r>> {
             i += 1;
         };
         let temp = rb.consume(value_end + 1);
-        let key = str::from_utf8(&temp[..key_end])?.to_ascii_uppercase();
-        let value = String::from_utf8_lossy(&temp[key_end + 1..value_end]);
-        Ok(Some(FcsHeaderKeyValue(key, value)))
+        self.0 = str::from_utf8(&temp[..key_end])?.to_ascii_uppercase();
+        self.1 = String::from_utf8_lossy(&temp[key_end + 1..value_end]);
+        Ok(true)
     }
 }
 
@@ -78,7 +78,7 @@ struct FcsParam {
 /// State of an FcsReader.
 ///
 /// Note that the state is primarily derived from the TEXT segment of the file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FcsState {
     params: Vec<FcsParam>,
     endian: Endian,
@@ -91,7 +91,7 @@ pub struct FcsState {
 impl<'r> FromBuffer<'r> for FcsState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, mut rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let mut params = Vec::new();
         let mut endian = Endian::Little;
         let mut data_type = 'F';
@@ -121,7 +121,7 @@ impl<'r> FromBuffer<'r> for FcsState {
         let delim: u8 = rb.extract(Endian::Little)?;
         let mut date = NaiveDate::from_yo(2000, 1);
         let mut time = NaiveTime::from_num_seconds_from_midnight(0, 0);
-        while let Some(FcsHeaderKeyValue(key, value)) = rb.extract((delim, text_end))? {
+        while let Some(FcsHeaderKeyValue(key, value)) = FcsHeaderKeyValue::get(&mut rb, (delim, text_end))? {
             match (key.as_ref(), value.as_ref()) {
                 ("$BEGINDATA", v) => {
                     let data_start_value = v.trim().parse::<u64>()?;
@@ -264,14 +264,13 @@ impl<'r> FromBuffer<'r> for FcsState {
             }
         }
 
-        Ok(FcsState {
-            params,
-            endian,
-            data_type,
-            next_data,
-            n_events_left,
-            metadata,
-        })
+        self.params = params;
+        self.endian = endian;
+        self.data_type = data_type;
+        self.next_data = next_data;
+        self.n_events_left = n_events_left;
+        self.metadata = metadata;
+        Ok(true)
     }
 }
 
@@ -292,8 +291,11 @@ pub struct FcsReader<'r> {
 impl<'r> FcsReader<'r> {
     /// Create a new FcsReader from the ReadBuffer provided.
     pub fn new(mut rb: ReadBuffer<'r>, _params: ()) -> Result<Self, EtError> {
-        let state = rb.extract::<FcsState>(())?;
-        Ok(FcsReader { rb, state })
+        if let Some(state) = FcsState::get(&mut rb, ())? {
+            Ok(FcsReader { rb, state })
+        } else {
+            Err(EtError::new("Could not read FCS headers"))
+        }
     }
 }
 
@@ -370,35 +372,25 @@ mod tests {
     #[test]
     fn test_fcs_header_kv_parser() -> Result<(), EtError> {
         let mut rb = ReadBuffer::from_slice(b"test/key/");
-        let test_parse = rb
-            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))?
-            .unwrap();
+        let test_parse = FcsHeaderKeyValue::get(&mut rb, (b'/', 100))?.unwrap();
         assert_eq!(
             test_parse,
             FcsHeaderKeyValue("TEST".to_string(), "key".into())
         );
 
         let mut rb = ReadBuffer::from_slice(b"test/key");
-        assert!(rb
-            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
-            .is_err());
+        assert!(FcsHeaderKeyValue::get(&mut rb, (b'/', 100)).is_err());
 
         let mut rb = ReadBuffer::from_slice(b" ");
-        assert!(rb
-            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
-            .is_err());
+        assert!(FcsHeaderKeyValue::get(&mut rb, (b'/', 100)).is_err());
 
         let mut rb = ReadBuffer::from_slice(b"//");
-        assert!(rb
-            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))
-            .is_err());
+        assert!(FcsHeaderKeyValue::get(&mut rb, (b'/', 100)).is_err());
 
         // super pathological case that should probably never occur? (since it
         // would imply the previous ending delim was before this start delim)
         let mut rb = ReadBuffer::from_slice(b"/ /");
-        let test_parse = rb
-            .extract::<Option<FcsHeaderKeyValue>>((b'/', 100))?
-            .unwrap();
+        let test_parse = FcsHeaderKeyValue::get(&mut rb, (b'/', 100))?.unwrap();
         assert_eq!(test_parse, FcsHeaderKeyValue("".to_string(), " ".into()));
 
         Ok(())

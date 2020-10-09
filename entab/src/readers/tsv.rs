@@ -7,7 +7,7 @@ use core::mem;
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::NewLine;
+use crate::parsers::{FromBuffer, NewLine};
 use crate::readers::RecordReader;
 use crate::record::Value;
 use crate::EtError;
@@ -65,7 +65,7 @@ impl<'r> TsvReader<'r> {
     /// Create a new TsvReader
     pub fn new(mut rb: ReadBuffer<'r>, params: (u8, u8)) -> Result<Self, EtError> {
         let (delim_char, quote_char) = params;
-        let header = if let Some(NewLine(h)) = rb.extract(())? {
+        let header = if let Some(NewLine(h)) = NewLine::get(&mut rb, ())? {
             h
         } else {
             return Err(EtError::new("could not read headers from TSV").fill_pos(&rb));
@@ -92,7 +92,7 @@ impl<'r> TsvReader<'r> {
     /// Return the next record from the TSV file
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
-        let line = if let Some(NewLine(l)) = self.rb.extract(())? {
+        let line = if let Some(NewLine(l)) = NewLine::get(&mut self.rb, ())? {
             l
         } else {
             return Ok(None);

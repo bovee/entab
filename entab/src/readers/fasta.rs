@@ -10,7 +10,7 @@ use crate::{impl_reader, impl_record};
 
 use alloc::borrow::Cow;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// A single sequence from a FASTA file
 pub struct FastaRecord<'r> {
     /// The ID/header line
@@ -21,12 +21,12 @@ pub struct FastaRecord<'r> {
 
 impl_record!(FastaRecord<'r>: id, sequence);
 
-impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
+impl<'r> FromBuffer<'r> for FastaRecord<'r> {
     type State = &'r mut ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
-            return Ok(None);
+            return Ok(false);
         }
         if rb[0] != b'>' {
             return Err(EtError::new("Valid FASTA records start with '>'"));
@@ -84,9 +84,9 @@ impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
 
         let record = rb.extract::<&[u8]>(rec_end)?;
 
-        let header = &record[header_range];
+        self.id = alloc::str::from_utf8(&record[header_range])?;
         let raw_sequence = &record[seq_range];
-        let sequence = if seq_newlines.is_empty() {
+        self.sequence = if seq_newlines.is_empty() {
             raw_sequence.into()
         } else {
             let mut new_buf = Vec::with_capacity(raw_sequence.len() - seq_newlines.len());
@@ -99,10 +99,7 @@ impl<'r> FromBuffer<'r> for Option<FastaRecord<'r>> {
             new_buf.into()
         };
 
-        Ok(Some(FastaRecord {
-            id: alloc::str::from_utf8(header)?,
-            sequence,
-        }))
+        Ok(true)
     }
 }
 

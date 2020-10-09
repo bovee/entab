@@ -4,6 +4,7 @@ use alloc::boxed::Box;
 #[cfg(feature = "std")]
 use alloc::vec::Vec;
 #[cfg(feature = "std")]
+use core::any::type_name;
 use core::mem::swap;
 use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 #[cfg(feature = "std")]
@@ -238,15 +239,18 @@ impl<'s> ReadBuffer<'s> {
     #[inline]
     pub fn extract<'r, T>(&'r mut self, state: T::State) -> Result<T, EtError>
     where
-        T: FromBuffer<'r>,
+        T: FromBuffer<'r> + Default,
     {
         let record_pos = self.record_pos;
         let byte_pos = self.get_byte_pos();
-        T::get(self, state).map_err(|mut e| {
+        if let Some(record) = T::get(self, state)? {
+            Ok(record)
+        } else {
+            let mut e = EtError::new(format!("Could not get {} from stream", type_name::<Self>()));
             e.record = Some(record_pos);
             e.byte = Some(byte_pos);
-            e
-        })
+            Err(e)
+        }
     }
 }
 
@@ -290,7 +294,7 @@ mod test {
     #[cfg(feature = "std")]
     use std::io::Cursor;
 
-    use crate::parsers::NewLine;
+    use crate::parsers::{FromBuffer, NewLine};
     use crate::EtError;
 
     use super::ReadBuffer;
@@ -329,11 +333,11 @@ mod test {
         let mut rb = ReadBuffer::with_capacity(3, reader)?;
 
         let mut ix = 0;
-        while let Some(NewLine(l)) = rb.extract(())? {
+        while let Some(NewLine(line)) = NewLine::get(&mut rb, ())? {
             match ix {
-                0 => assert_eq!(l, b"1"),
-                1 => assert_eq!(l, b"2"),
-                2 => assert_eq!(l, b"3"),
+                0 => assert_eq!(line, b"1"),
+                1 => assert_eq!(line, b"2"),
+                2 => assert_eq!(line, b"3"),
                 _ => panic!("Invalid index; buffer tried to read too far"),
             }
             ix += 1;
@@ -346,11 +350,11 @@ mod test {
     fn test_read_lines_from_slice() -> Result<(), EtError> {
         let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
         let mut ix = 0;
-        while let Some(NewLine(l)) = rb.extract(())? {
+        while let Some(NewLine(line)) = NewLine::get(&mut rb, ())? {
             match ix {
-                0 => assert_eq!(l, b"1"),
-                1 => assert_eq!(l, b"2"),
-                2 => assert_eq!(l, b"3"),
+                0 => assert_eq!(line, b"1"),
+                1 => assert_eq!(line, b"2"),
+                2 => assert_eq!(line, b"3"),
                 _ => panic!("Invalid index; buffer tried to read too far"),
             }
             ix += 1;

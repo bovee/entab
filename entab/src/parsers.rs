@@ -10,7 +10,22 @@ use crate::EtError;
 pub trait FromBuffer<'r>: Sized {
     type State;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError>;
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError>;
+
+    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Option<Self>, EtError> where Self: Default {
+        let mut record = Self::default();
+        let record_pos = rb.record_pos;
+        let byte_pos = rb.get_byte_pos();
+
+        if !record.from_buffer(rb, state).map_err(|mut e| {
+            e.record = Some(record_pos);
+            e.byte = Some(byte_pos);
+            e
+        })? {
+            return Ok(None);
+        }
+        Ok(Some(record))
+    }
 }
 
 pub(crate) trait FromSlice<'r>: Sized {
@@ -25,23 +40,30 @@ pub enum Endian {
     Little,
 }
 
+impl Default for Endian {
+    fn default() -> Self {
+        Endian::Little
+    }
+}
+
 macro_rules! impl_extract {
     ($return:ty) => {
         impl<'r> FromBuffer<'r> for $return {
             type State = Endian;
 
             #[inline]
-            fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+            fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
                 rb.reserve(core::mem::size_of::<$return>())?;
                 let slice = rb
                     .consume(core::mem::size_of::<$return>())
                     .try_into()
                     .unwrap();
 
-                Ok(match state {
+                *self = match state {
                     Endian::Big => <$return>::from_be_bytes(slice),
                     Endian::Little => <$return>::from_le_bytes(slice),
-                })
+                };
+                Ok(true)
             }
         }
 
@@ -81,8 +103,8 @@ impl<'r> FromBuffer<'r> for () {
     type State = ();
 
     #[inline]
-    fn get(_rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<Self, EtError> {
-        Ok(())
+    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _amt: Self::State) -> Result<bool, EtError> {
+        Ok(true)
     }
 }
 
@@ -90,9 +112,10 @@ impl<'r> FromBuffer<'r> for &'r [u8] {
     type State = usize;
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer, amt: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, amt: Self::State) -> Result<bool, EtError> {
         rb.reserve(amt)?;
-        Ok(rb.consume(amt))
+        *self = rb.consume(amt);
+        Ok(true)
     }
 }
 
@@ -101,16 +124,16 @@ impl<'r> FromBuffer<'r> for &'r [u8] {
 /// Assumes all lines are terminated with a '\n' and an optional '\r'
 /// before so should handle almost all current text file formats, but
 /// may fail on older '\r' only formats.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NewLine<'r>(pub &'r [u8]);
 
-impl<'r> FromBuffer<'r> for Option<NewLine<'r>> {
+impl<'r> FromBuffer<'r> for NewLine<'r> {
     type State = ();
 
     #[inline]
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
-            return Ok(None);
+            return Ok(false);
         }
         // find the newline
         let (end, to_consume) = loop {
@@ -131,6 +154,7 @@ impl<'r> FromBuffer<'r> for Option<NewLine<'r>> {
         };
 
         let buffer = rb.extract::<&[u8]>(to_consume)?;
-        Ok(Some(NewLine(&buffer[..end])))
+        self.0 = &buffer[..end];
+        Ok(true)
     }
 }

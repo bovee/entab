@@ -25,6 +25,12 @@ pub enum PngColorType {
     AlphaColor,
 }
 
+impl Default for PngColorType {
+    fn default() -> Self {
+        PngColorType::Indexed
+    }
+}
+
 impl PngColorType {
     fn from_byte(byte: u8) -> Result<Self, EtError> {
         match byte {
@@ -49,7 +55,7 @@ impl PngColorType {
 }
 
 /// The state of the PNG parser
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PngState {
     color_type: PngColorType,
     bit_depth: u8,
@@ -140,17 +146,17 @@ impl<'r> StateMetadata<'r> for PngState {
 impl<'r> FromBuffer<'r> for PngState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         if rb.extract::<&[u8]>(8)? != b"\x89PNG\r\n\x1A\n" {
             return Err(EtError::new("Invalid PNG magic"));
         }
         if rb.extract::<&[u8]>(8)? != b"\x00\x00\x00\x0DIHDR" {
             return Err(EtError::new("Invalid PNG header"));
         }
-        let width = rb.extract::<u32>(Endian::Big)? as usize;
-        let height = rb.extract::<u32>(Endian::Big)? as usize;
-        let bit_depth: u8 = rb.extract(Endian::Big)?;
-        let color_type = PngColorType::from_byte(rb.extract(Endian::Big)?)?;
+        self.width = rb.extract::<u32>(Endian::Big)? as usize;
+        self.height = rb.extract::<u32>(Endian::Big)? as usize;
+        self.bit_depth = rb.extract(Endian::Big)?;
+        self.color_type = PngColorType::from_byte(rb.extract(Endian::Big)?)?;
         // skip the compression, filter, and interlace bytes
         if rb.extract::<u8>(Endian::Big)? != 0 {
             return Err(EtError::new("PNG compression must be type 0"));
@@ -167,7 +173,6 @@ impl<'r> FromBuffer<'r> for PngState {
         // writing the handler a lot easier (although we should maybe do this in a streaming
         // fashion someday).
         let mut compressed_data = Vec::new();
-        let mut palette = None;
         loop {
             // throw away the checksum from the previous chunk
             let _ = rb.extract::<&[u8]>(4)?;
@@ -183,8 +188,7 @@ impl<'r> FromBuffer<'r> for PngState {
                         let b: u8 = rb.extract(Endian::Big)?;
                         raw_palette.push((257 * u16::from(r), 257 * u16::from(g), 257 * u16::from(b)));
                     }
-
-                    palette = Some(raw_palette);
+                    self.palette = Some(raw_palette);
                 }
                 b"IDAT" => {
                     // append all the IDAT chunks together
@@ -201,22 +205,16 @@ impl<'r> FromBuffer<'r> for PngState {
         }
         let mut image_data = Vec::new();
         let _ = ZlibDecoder::new(&compressed_data[..]).read_to_end(&mut image_data)?;
+        self.image_data = image_data;
 
-        Ok(PngState {
-            color_type,
-            width,
-            height,
-            bit_depth,
-            cur_x: 0,
-            cur_y: 0,
-            image_data,
-            palette,
-        })
+        self.cur_x = 0;
+        self.cur_y = 0;
+        Ok(true)
     }
 }
 
 /// A single pixel from a PNG file
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PngRecord {
     x: u32,
     y: u32,
@@ -246,12 +244,12 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
     }
 }
 
-impl<'r> FromBuffer<'r> for Option<PngRecord> {
+impl<'r> FromBuffer<'r> for PngRecord {
     type State = &'r mut PngState;
 
-    fn get(_rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.cur_y >= state.height {
-            return Ok(None);
+            return Ok(false);
         }
         if state.cur_x == 0 {
             state.unfilter_line(state.cur_y)?;
@@ -304,14 +302,13 @@ impl<'r> FromBuffer<'r> for Option<PngRecord> {
             state.cur_x = 0;
             state.cur_y += 1;
         }
-        Ok(Some(PngRecord {
-            x,
-            y,
-            red,
-            green,
-            blue,
-            alpha,
-        }))
+        self.x = x;
+        self.y = y;
+        self.red = red;
+        self.green = green;
+        self.blue = blue;
+        self.alpha = alpha;
+        Ok(true)
     }
 }
 

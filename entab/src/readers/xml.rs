@@ -1,6 +1,10 @@
 use core::marker::Copy;
 // use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::borrow::ToOwned;
 use alloc::str::from_utf8;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use memchr::{memchr, memchr3_iter};
 
@@ -22,8 +26,14 @@ pub enum XmlTagType {
 }
 // TODO: maybe CDATA, DOCTYPE, comments too?
 
+impl Default for XmlTagType {
+    fn default() -> Self {
+        XmlTagType::Open
+    }
+}
+
 /// Convenience struct for tokenizing tags out of XML streams
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct XmlTag<'r> {
     tag_type: XmlTagType,
     id: &'r str
@@ -32,7 +42,7 @@ pub struct XmlTag<'r> {
 impl<'r> FromBuffer<'r> for XmlTag<'r> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let mut cur_quote = b' ';
         let mut start = 0;
         let end = 'read: loop {
@@ -70,24 +80,22 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
             (false, false) => (XmlTagType::Open, &data[1..data.len() - 1]),
         };
         let id_end = memchr(b' ', data).unwrap_or(data.len());
-        let id = from_utf8(&data[..id_end])?;
+        self.tag_type = tag_type;
+        self.id = from_utf8(&data[..id_end])?;
         // TODO: parse attributes
 
-        Ok(XmlTag {
-            tag_type,
-            id,
-        })
+        Ok(true)
     }
 }
 
 /// Convenience struct for tokenizing text out of XML streams
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct XmlText<'r>(&'r str);
 
 impl<'r> FromBuffer<'r> for XmlText<'r> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         let mut start = 0;
         let end = loop {
             // we're parsing a text element
@@ -104,12 +112,13 @@ impl<'r> FromBuffer<'r> for XmlText<'r> {
             start = rb.len() - 1;
             rb.refill()?;
         };
-        Ok(XmlText(from_utf8(rb.consume(end))?))
+        self.0 = from_utf8(rb.consume(end))?;
+        Ok(true)
     }
 }
 
 /// Current state of the XML parser
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct XmlState {
     // token_counts: Vec<BTreeMap<String, usize>>,
     stack: Vec<String>,
@@ -120,16 +129,15 @@ impl<'r> StateMetadata<'r> for XmlState {}
 impl<'r> FromBuffer<'r> for XmlState {
     type State = ();
 
-    fn get(_rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
-        Ok(XmlState {
-            // token_counts: Vec::new(),
-            stack: Vec::new(),
-        })
+    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+        // self.token_counts = Vec::new();
+        self.stack = Vec::new();
+        Ok(true)
     }
 }
 
 /// A single record from an XML stream
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct XmlRecord<'r> {
     tags: &'r [String],
     text: &'r str,
@@ -137,15 +145,15 @@ pub struct XmlRecord<'r> {
     // attributes: BTreeMap<String>
 }
 
-impl<'r> FromBuffer<'r> for Option<XmlRecord<'r>> {
+impl<'r> FromBuffer<'r> for XmlRecord<'r> {
     type State = &'r mut XmlState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             if !state.stack.is_empty() {
                 return Err(EtError::new(format!("Closing tag for {} not present?", state.stack.pop().unwrap())));
             } else {
-                return Ok(None);
+                return Ok(false);
             }
         }
         let text = if rb[0] == b'<' {
@@ -174,10 +182,9 @@ impl<'r> FromBuffer<'r> for Option<XmlRecord<'r>> {
             text.0
         };
 
-        Ok(Some(XmlRecord {
-            tags: &state.stack,
-            text,
-        }))
+        self.tags = &state.stack;
+        self.text = text;
+        Ok(true)
     }
 }
 

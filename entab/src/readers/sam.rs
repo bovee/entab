@@ -11,7 +11,7 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// The internal state of the BamReader.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct BamState {
     references: Vec<(String, usize)>,
 }
@@ -21,7 +21,7 @@ impl<'r> StateMetadata<'r> for BamState {}
 impl<'r> FromBuffer<'r> for BamState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         // read the magic & header length, and then the header
         if rb.extract::<&[u8]>(4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
@@ -46,7 +46,8 @@ impl<'r> FromBuffer<'r> for BamState {
             references.push((ref_name, ref_len));
             n_references -= 1;
         }
-        Ok(BamState { references })
+        self.references = references;
+        Ok(true)
     }
 }
 
@@ -54,7 +55,8 @@ fn extract_bam_record<'r, 's>(
     reader: &'r mut ReadBuffer<'s>,
     record_len: usize,
     references: &'r [(String, usize)],
-) -> Result<BamRecord<'r>, EtError> {
+    record: &mut BamRecord<'r>,
+) -> Result<(), EtError> {
     if record_len < 32 {
         return Err("Record is unexpectedly short".into());
     }
@@ -136,25 +138,24 @@ fn extract_bam_record<'r, 's>(
         Cow::Owned(qual)
     };
 
-    Ok(BamRecord {
-        query_name: alloc::str::from_utf8(query_name)?,
-        flag,
-        ref_name,
-        pos,
-        mapq,
-        cigar: Cow::Owned(cigar),
-        rnext,
-        pnext,
-        tlen,
-        seq: Cow::Owned(seq),
-        qual,
-        // TODO: parse the extra flags some day?
-        extra: Cow::Borrowed(b""),
-    })
+    record.query_name = alloc::str::from_utf8(query_name)?;
+    record.flag = flag;
+    record.ref_name = ref_name;
+    record.pos = pos;
+    record.mapq = mapq;
+    record.cigar = Cow::Owned(cigar);
+    record.rnext = rnext;
+    record.pnext = pnext;
+    record.tlen = tlen;
+    record.seq = Cow::Owned(seq);
+    record.qual = qual;
+    // TODO: parse the extra flags some day?
+    // self.extra = Cow::Borrowed(b"");
+    Ok(())
 }
 
 /// A single record from a BAM file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct BamRecord<'r> {
     /// The name of the mapped sequence.
     pub query_name: &'r str,
@@ -192,35 +193,28 @@ pub struct BamRecord<'r> {
 
 impl_record!(BamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
-impl<'r> FromBuffer<'r> for Option<BamRecord<'r>> {
+impl<'r> FromBuffer<'r> for BamRecord<'r> {
     type State = &'r mut BamState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         // each record in a BAM is a different gzip chunk so we
         // have to do a refill before each record
         rb.refill()?;
         if rb.is_empty() && rb.eof {
-            return Ok(None);
+            return Ok(false);
         }
 
         // now read the record itself
-        let buffer_pos = (rb.reader_pos, rb.record_pos);
         let rec_len = rb.extract::<u32>(Endian::Little)? as usize;
-        let record = extract_bam_record(rb, rec_len, &state.references).map_err(|mut e| {
-            // we can't use `fill_pos` b/c that touchs the buffer
-            // and messes up the lifetimes :/
-            e.byte = Some(buffer_pos.0);
-            e.record = Some(buffer_pos.1 + 1);
-            e
-        })?;
-        Ok(Some(record))
+        extract_bam_record(rb, rec_len, &state.references, self)?;
+        Ok(true)
     }
 }
 
 impl_reader!(BamReader, BamRecord, BamState, ());
 
 /// The internal state of the SamReader.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct SamState {}
 
 impl<'r> StateMetadata<'r> for SamState {}
@@ -228,7 +222,7 @@ impl<'r> StateMetadata<'r> for SamState {}
 impl<'r> FromBuffer<'r> for SamState {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         // eventually we should read the headers and pass them along
         // to the Reader as metadata once we support that
         rb.reserve(1)?;
@@ -240,12 +234,12 @@ impl<'r> FromBuffer<'r> for SamState {
             let _ = rb.extract::<u8>(Endian::Little)?;
         }
 
-        Ok(SamState {})
+        Ok(true)
     }
 }
 
 /// A single record from a SAM file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SamRecord<'r> {
     /// The name of the mapped sequence.
     pub query_name: &'r str,
@@ -283,7 +277,7 @@ pub struct SamRecord<'r> {
 
 impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
-fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<SamRecord<'r>, EtError> {
+fn strs_to_sam<'r>(chunks: &[&'r [u8]], mut record: &mut SamRecord<'r>) -> Result<(), EtError> {
     if chunks.len() < 11 {
         return Err("Sam record too short".into());
     }
@@ -341,38 +335,31 @@ fn strs_to_sam<'r>(chunks: &[&'r [u8]]) -> Result<SamRecord<'r>, EtError> {
         }
         joined.into()
     };
-    Ok(SamRecord {
-        query_name: alloc::str::from_utf8(chunks[0])?,
-        flag: alloc::str::from_utf8(chunks[1])?.parse()?,
-        ref_name,
-        pos,
-        mapq,
-        cigar,
-        rnext,
-        pnext,
-        tlen: alloc::str::from_utf8(chunks[8])?.parse()?,
-        seq,
-        qual: Cow::Borrowed(qual),
-        extra,
-    })
+    record.query_name = alloc::str::from_utf8(chunks[0])?;
+    record.flag = alloc::str::from_utf8(chunks[1])?.parse()?;
+    record.ref_name = ref_name;
+    record.pos = pos;
+    record.mapq = mapq;
+    record.cigar = cigar;
+    record.rnext = rnext;
+    record.pnext = pnext;
+    record.tlen = alloc::str::from_utf8(chunks[8])?.parse()?;
+    record.seq = seq;
+    record.qual = Cow::Borrowed(qual);
+    record.extra = extra;
+    Ok(())
 }
 
-impl<'r> FromBuffer<'r> for Option<SamRecord<'r>> {
+impl<'r> FromBuffer<'r> for SamRecord<'r> {
     type State = &'r mut SamState;
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
-        let buffer_pos = (rb.reader_pos, rb.record_pos);
-        Ok(if let Some(NewLine(line)) = rb.extract(())? {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+        Ok(if let Some(NewLine(line)) = NewLine::get(rb, ())? {
             let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
-            Some(strs_to_sam(&chunks).map_err(|mut e| {
-                // we can't use `fill_pos` b/c that touchs the buffer
-                // and messes up the lifetimes :/
-                e.byte = Some(buffer_pos.0);
-                e.record = Some(buffer_pos.1 + 1);
-                e
-            })?)
+            strs_to_sam(&chunks, self)?;
+            true
         } else {
-            None
+            false
         })
     }
 }

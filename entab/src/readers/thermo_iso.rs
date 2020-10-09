@@ -13,13 +13,13 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// A string serialized out by the MFC framework.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MfcString<'r>(Cow<'r, str>);
 
 impl<'r> FromBuffer<'r> for MfcString<'r> {
     type State = ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             rb.reserve(1)?;
         }
@@ -48,7 +48,8 @@ impl<'r> FromBuffer<'r> for MfcString<'r> {
         } else {
             alloc::str::from_utf8(data)?.into()
         };
-        Ok(MfcString(string))
+        self.0 = string;
+        Ok(true)
     }
 }
 
@@ -65,7 +66,7 @@ fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
 }
 
 /// The current state of the ThermoDxfReader
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ThermoDxfState {
     first: bool,
     n_scans_left: usize,
@@ -79,19 +80,18 @@ impl<'r> StateMetadata<'r> for ThermoDxfState {}
 impl<'r> FromBuffer<'r> for ThermoDxfState {
     type State = ();
 
-    fn get(_rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
-        Ok(ThermoDxfState {
-            first: true,
-            n_scans_left: 0,
-            cur_mz_idx: 0,
-            mzs: vec![],
-            cur_time: 0.,
-        })
+    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+        self.first = true;
+        self.n_scans_left = 0;
+        self.cur_mz_idx = 0;
+        self.mzs = Vec::new();
+        self.cur_time = 0.;
+        Ok(true)
     }
 }
 
 /// A single data point from a Thermo DXF file
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ThermoDxfRecord {
     /// The time the reading was taken at
     pub time: f64,
@@ -103,10 +103,10 @@ pub struct ThermoDxfRecord {
 
 impl_record!(ThermoDxfRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
+impl<'r> FromBuffer<'r> for ThermoDxfRecord {
     type State = &'r mut ThermoDxfState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.n_scans_left == 0 {
             // it appears the last u32 before the `FFFF04`... CRawData header
             // is the number of sections in the data, but
@@ -123,7 +123,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
                 if !rb.seek_pattern(
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x82\x82\x03\x00\x00\x00\x2F\x00\xFF\xFE\xFF",
                 )? {
-                    return Ok(None);
+                    return Ok(false);
                 }
                 // only consume up the to the `FFFEFF` part b/c that's part of the
                 // gas name CString
@@ -132,7 +132,7 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
 
             let gas_name = rb.extract::<MfcString>(())?.0;
             if gas_name == "" {
-                return Ok(None);
+                return Ok(false);
             }
             // the gas name
             state.mzs = mzs_from_gas(&gas_name)?;
@@ -161,18 +161,17 @@ impl<'r> FromBuffer<'r> for Option<ThermoDxfRecord> {
         let mz = state.mzs[state.cur_mz_idx];
         state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
 
-        Ok(Some(ThermoDxfRecord {
-            time: state.cur_time / 60.,
-            mz,
-            intensity,
-        }))
+        self.time = state.cur_time / 60.;
+        self.mz = mz;
+        self.intensity = intensity;
+        Ok(true)
     }
 }
 
 impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfState, ());
 
 /// The current state of the ThermoCfReader
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ThermoCfState {
     n_scans_left: usize,
     cur_mz_idx: usize,
@@ -185,18 +184,17 @@ impl<'r> StateMetadata<'r> for ThermoCfState {}
 impl<'r> FromBuffer<'r> for ThermoCfState {
     type State = ();
 
-    fn get(_rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
-        Ok(ThermoCfState {
-            n_scans_left: 0,
-            cur_mz_idx: 0,
-            mzs: vec![],
-            cur_time: 0.,
-        })
+    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+        self.n_scans_left = 0;
+        self.cur_mz_idx = 0;
+        self.mzs = Vec::new();
+        self.cur_time = 0.;
+        Ok(true)
     }
 }
 
 /// A single data point from a Thermo CF file
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ThermoCfRecord {
     /// The time the reading was taken at
     pub time: f64,
@@ -208,15 +206,15 @@ pub struct ThermoCfRecord {
 
 impl_record!(ThermoCfRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for Option<ThermoCfRecord> {
+impl<'r> FromBuffer<'r> for ThermoCfRecord {
     type State = &'r mut ThermoCfState;
 
-    fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.n_scans_left == 0 {
             if !rb.seek_pattern(
                 b"\xFF\xFE\xFF\x00\xFF\xFE\xFF\x08R\x00a\x00w\x00 \x00D\x00a\x00t\x00a\x00",
             )? {
-                return Ok(None);
+                return Ok(false);
             }
             // pattern and then 3 u32's (values 0, 2, 2)
             let _ = rb.extract::<&[u8]>(36)?;
@@ -262,11 +260,10 @@ impl<'r> FromBuffer<'r> for Option<ThermoCfRecord> {
         let mz = state.mzs[state.cur_mz_idx];
         state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
 
-        Ok(Some(ThermoCfRecord {
-            time: state.cur_time / 60.,
-            mz,
-            intensity,
-        }))
+        self.time = state.cur_time / 60.;
+        self.mz = mz;
+        self.intensity = intensity;
+        Ok(true)
     }
 }
 

@@ -5,7 +5,8 @@
     missing_copy_implementations,
     trivial_casts,
     trivial_numeric_casts,
-    unreachable_pub,
+    // TODO: reenable
+    // unreachable_pub,
     unused_import_braces,
     unused_qualifications,
     unused_results

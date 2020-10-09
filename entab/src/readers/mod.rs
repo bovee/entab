@@ -38,7 +38,7 @@ pub fn get_reader<'r>(
     rb: ReadBuffer<'r>,
 ) -> Result<Box<dyn RecordReader + 'r>, EtError> {
     Ok(match parser_type {
-        "bam" => Box::new(sam::BamReader::new(rb, ())?),
+        // "bam" => Box::new(sam::BamReader::new(rb, ())?),
         "chemstation_fid" => Box::new(chemstation::ChemstationFidReader::new(rb, ())?),
         "chemstation_ms" => Box::new(chemstation::ChemstationMsReader::new(rb, ())?),
         "chemstation_mwd" => Box::new(chemstation::ChemstationMwdReader::new(rb, ())?),
@@ -93,12 +93,14 @@ macro_rules! impl_reader {
         pub struct $reader<'r> {
             rb: ReadBuffer<'r>,
             state: $state,
+            // record: $record,  // FIXME
         }
 
         impl<'r> $reader<'r> {
             /// Create a new instance of the reader
             pub fn new(mut rb: ReadBuffer<'r>, params: $new_params) -> Result<Self, EtError> {
                 let state = rb.extract(params)?;
+                // let record = <$record>::default(); // FIXME
                 Ok($reader { rb, state })
             }
 
@@ -109,8 +111,23 @@ macro_rules! impl_reader {
             #[allow(clippy::should_implement_trait)]
             pub fn next(&mut self) -> Result<Option<$record>, EtError> {
                 self.rb.record_pos += 1;
-                self.rb.extract(&mut self.state)
+                <$record>::get(&mut self.rb, &mut self.state)
             }
+
+            // TODO: get the lifetimes working for this
+            // /// Return the specialized version of this record.
+            // ///
+            // /// To get the "generic" version, please use the `next_record`
+            // /// method from the `RecordReader` trait.
+            // #[allow(clippy::should_implement_trait)]
+            // pub fn next_into(&mut self, record: &'r mut $record) -> Result<bool, EtError> {
+            //     self.rb.record_pos += 1;
+            //     Ok(if record.from_buffer(&mut self.rb, &mut self.state)? {
+            //         true
+            //     } else {
+            //         false
+            //     })
+            // }
         }
 
         impl<'r> $crate::readers::RecordReader for $reader<'r> {
@@ -118,7 +135,7 @@ macro_rules! impl_reader {
             fn next_record(
                 &mut self,
             ) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
-                if let Some(record) = self.rb.extract::<Option<$record>>(&mut self.state)? {
+                if let Some(record) = <$record>::get(&mut self.rb, &mut self.state)? {
                     Ok(Some(record.into()))
                 } else {
                     Ok(None)

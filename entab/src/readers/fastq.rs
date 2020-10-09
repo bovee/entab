@@ -6,7 +6,7 @@ use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// A single sequence with quality data from a FASTQ file
 pub struct FastqRecord<'r> {
     /// The ID/header line
@@ -19,19 +19,19 @@ pub struct FastqRecord<'r> {
 
 impl_record!(FastqRecord<'r>: id, sequence, quality);
 
-impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
+impl<'r> FromBuffer<'r> for FastqRecord<'r> {
     type State = &'r mut ();
 
-    fn get(rb: &'r mut ReadBuffer, _state: Self::State) -> Result<Self, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             if rb.eof() {
-                return Ok(None);
+                return Ok(false);
             }
             rb.refill()?;
             // if the buffer perfectly aligns, it's possible we could do a zero-byte read
             // and now we're in an EOF
             if rb.eof() {
-                return Ok(None);
+                return Ok(false);
             }
         }
         if rb[0] != b'@' {
@@ -102,12 +102,10 @@ impl<'r> FromBuffer<'r> for Option<FastqRecord<'r>> {
         };
 
         let record = rb.extract::<&[u8]>(rec_end)?;
-
-        Ok(Some(FastqRecord {
-            id: alloc::str::from_utf8(&record[header_range])?,
-            sequence: &record[seq_range],
-            quality: &record[qual_range],
-        }))
+        self.id = alloc::str::from_utf8(&record[header_range])?;
+        self.sequence = &record[seq_range];
+        self.quality = &record[qual_range];
+        Ok(true)
     }
 }
 
