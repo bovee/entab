@@ -1,10 +1,11 @@
 use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
+use alloc::format;
 #[cfg(feature = "std")]
 use alloc::vec::Vec;
-#[cfg(feature = "std")]
 use core::any::type_name;
+#[cfg(feature = "std")]
 use core::mem::swap;
 use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 #[cfg(feature = "std")]
@@ -132,7 +133,7 @@ impl<'s> ReadBuffer<'s> {
         let amt_read = self
             .reader
             .read(&mut buffer[len..])
-            .map_err(|e| EtError::from(e).fill_pos(&self))?;
+            .map_err(|e| EtError::from(e).add_context(&self))?;
         unsafe {
             buffer.set_len(len + amt_read);
         }
@@ -159,7 +160,7 @@ impl<'s> ReadBuffer<'s> {
     pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
         while self.len() < amt {
             if self.eof {
-                return Err(EtError::new("Data ended prematurely").fill_pos(&self));
+                return Err(EtError::new("Data ended prematurely", &self));
             }
             self.refill()?;
         }
@@ -241,16 +242,14 @@ impl<'s> ReadBuffer<'s> {
     where
         T: FromBuffer<'r> + Default,
     {
-        let record_pos = self.record_pos;
-        let byte_pos = self.get_byte_pos();
         if let Some(record) = T::get(self, state)? {
-            Ok(record)
-        } else {
-            let mut e = EtError::new(format!("Could not get {} from stream", type_name::<Self>()));
-            e.record = Some(record_pos);
-            e.byte = Some(byte_pos);
-            Err(e)
+            return Ok(record);
         }
+        // TODO: it would be nice to use EtError::new here
+        Err(EtError::from(format!(
+            "Could not get {} from stream",
+            type_name::<Self>()
+        )))
     }
 }
 

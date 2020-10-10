@@ -39,7 +39,7 @@ impl PngColorType {
             3 => Ok(PngColorType::Indexed),
             4 => Ok(PngColorType::AlphaGrayscale),
             6 => Ok(PngColorType::AlphaColor),
-            _ => Err(EtError::new("Unknown PNG color type")),
+            _ => Err("Unknown PNG color type".into()),
         }
     }
 
@@ -126,7 +126,7 @@ impl PngState {
                     };
                     self.image_data[pos].wrapping_add(paeth)
                 }
-                _ => return Err(EtError::new("Unknown line filter")),
+                _ => return Err("Unknown line filter".into()),
             }
         }
         self.image_data[line_num * line_len] = 0;
@@ -152,10 +152,10 @@ impl<'r> FromBuffer<'r> for PngState {
         _state: Self::State,
     ) -> Result<bool, EtError> {
         if rb.extract::<&[u8]>(8)? != b"\x89PNG\r\n\x1A\n" {
-            return Err(EtError::new("Invalid PNG magic"));
+            return Err(EtError::new("Invalid PNG magic", &rb));
         }
         if rb.extract::<&[u8]>(8)? != b"\x00\x00\x00\x0DIHDR" {
-            return Err(EtError::new("Invalid PNG header"));
+            return Err(EtError::new("Invalid PNG header", &rb));
         }
         self.width = rb.extract::<u32>(Endian::Big)? as usize;
         self.height = rb.extract::<u32>(Endian::Big)? as usize;
@@ -163,13 +163,13 @@ impl<'r> FromBuffer<'r> for PngState {
         self.color_type = PngColorType::from_byte(rb.extract(Endian::Big)?)?;
         // skip the compression, filter, and interlace bytes
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG compression must be type 0"));
+            return Err(EtError::new("PNG compression must be type 0", &rb));
         }
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG filtering must be type 0"));
+            return Err(EtError::new("PNG filtering must be type 0", &rb));
         }
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG interlacing not supported yet"));
+            return Err(EtError::new("PNG interlacing not supported yet", &rb));
         }
 
         // parse through the entire file beforehand; because the data is compressed into multiple
@@ -255,11 +255,7 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
 impl<'r> FromBuffer<'r> for PngRecord {
     type State = &'r mut PngState;
 
-    fn from_buffer(
-        &mut self,
-        _rb: &'r mut ReadBuffer,
-        state: Self::State,
-    ) -> Result<bool, EtError> {
+    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if state.cur_y >= state.height {
             return Ok(false);
         }
@@ -276,12 +272,15 @@ impl<'r> FromBuffer<'r> for PngRecord {
                 let palette_pos = get_bits(&line, pos, bd, false)? as usize;
                 if let Some(palette) = &state.palette {
                     if palette_pos >= palette.len() {
-                        return Err(EtError::new("Color index was outside palette dimensions"));
+                        return Err(EtError::new(
+                            "Color index was outside palette dimensions",
+                            &rb,
+                        ));
                     }
                     let (red, green, blue) = palette[palette_pos];
                     (red, green, blue, u16::MAX)
                 } else {
-                    return Err(EtError::new("No palette was provided"));
+                    return Err(EtError::new("No palette was provided", &rb));
                 }
             }
             PngColorType::Grayscale => {

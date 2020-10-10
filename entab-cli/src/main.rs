@@ -15,7 +15,15 @@ use entab::EtError;
 
 use crate::tsv_params::TsvParams;
 
-pub fn main() -> Result<(), EtError> {
+pub fn main() {
+    if let Err(e) = run() {
+        eprintln!("##### AN ERROR OCCURRED ####");
+        eprintln!("{}", e);
+        eprintln!("#####");
+    }
+}
+
+pub fn run() -> Result<(), EtError> {
     let matches = App::new("entab")
         .about("Turn anything into a TSV")
         .author(crate_authors!())
@@ -115,7 +123,7 @@ pub fn main() -> Result<(), EtError> {
 
         while let Some(fields) = rec_reader.next_record()? {
             params.write_value(&fields[0], &mut writer)?;
-            for field in fields {
+            for field in fields.iter().skip(1) {
                 writer.write_all(&[params.main_delimiter])?;
                 params.write_value(&field, &mut writer)?;
             }

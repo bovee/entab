@@ -65,13 +65,13 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
                 }
             }
             if rb.len() > 1024 {
-                return Err(EtError::new(format!(
-                    "Tags larger than {} not supported",
-                    1024
-                )));
+                return Err(EtError::new(
+                    format!("Tags larger than {} not supported", 1024),
+                    &rb,
+                ));
             }
             if rb.eof() {
-                return Err(EtError::new("Tag was never closed"));
+                return Err(EtError::new("Tag was never closed", &rb));
             }
             start = rb.len() - 1;
             rb.refill()?;
@@ -81,7 +81,8 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
         let is_closing = data[1] == b'/';
         let is_self_closing = data.last() == Some(&b'/');
         let (tag_type, data) = match (is_closing, is_self_closing) {
-            (true, true) => return Err(EtError::new("Tag can not start and end with '/'")),
+            // TODO: we should be able to use EtError::new here
+            (true, true) => return Err(EtError::from("Tag can not start and end with '/'")),
             (true, false) => (XmlTagType::Close, &data[2..data.len() - 1]),
             (false, true) => (XmlTagType::SelfClose, &data[1..data.len() - 2]),
             (false, false) => (XmlTagType::Open, &data[1..data.len() - 1]),
@@ -114,10 +115,10 @@ impl<'r> FromBuffer<'r> for XmlText<'r> {
                 break e;
             }
             if rb.len() > 65536 {
-                return Err(EtError::new(format!(
-                    "XML text larger than {} not supported",
-                    65536
-                )));
+                return Err(EtError::new(
+                    format!("XML text larger than {} not supported", 65536),
+                    &rb,
+                ));
             }
             if rb.eof() {
                 // TODO: add test for this case
@@ -169,10 +170,13 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
     fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             if !state.stack.is_empty() {
-                return Err(EtError::new(format!(
-                    "Closing tag for {} not present?",
-                    state.stack.pop().unwrap()
-                )));
+                return Err(EtError::new(
+                    format!(
+                        "Closing tag for {} not present?",
+                        state.stack.pop().unwrap()
+                    ),
+                    &rb,
+                ));
             } else {
                 return Ok(false);
             }
@@ -187,16 +191,19 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
                 XmlTagType::Close => {
                     if let Some(open_tag) = state.stack.pop() {
                         if open_tag != tag.id {
-                            return Err(EtError::new(format!(
-                                "Closing tag {} found, but {} was open.",
-                                tag.id, open_tag
-                            )));
+                            return Err(EtError::new(
+                                format!("Closing tag {} found, but {} was open.", tag.id, open_tag),
+                                &rb,
+                            ));
                         }
                     } else {
-                        return Err(EtError::new(format!(
-                            "Closing tag {} found, but no tags opened before it.",
-                            tag.id
-                        )));
+                        return Err(EtError::new(
+                            format!(
+                                "Closing tag {} found, but no tags opened before it.",
+                                tag.id
+                            ),
+                            &rb,
+                        ));
                     }
                 }
                 // TODO: we need to return the tag stack with this tag on it

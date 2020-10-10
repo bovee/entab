@@ -54,10 +54,10 @@ pub fn get_reader<'r>(
         "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(rb, ())?),
         "tsv" => Box::new(tsv::TsvReader::new(rb, (b'\t', b'"'))?),
         _ => {
-            return Err(EtError::new(format!(
-                "No parser available for the filetype {}",
-                parser_type
-            )))
+            return Err(EtError::new(
+                format!("No parser available for the filetype {}", parser_type),
+                &rb,
+            ))
         }
     })
 }

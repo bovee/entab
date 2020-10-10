@@ -89,8 +89,8 @@ pub enum Value<'a> {
 impl<'a> Value<'a> {
     /// Converts an ISO-8601 formated date into a Value::Datetime
     pub fn from_iso_date(string: &str) -> Result<Self, EtError> {
-        let datetime =
-            NaiveDateTime::parse_from_str(string, "%+").map_err(|e| EtError::new(e.to_string()))?;
+        let datetime = NaiveDateTime::parse_from_str(string, "%+")
+            .map_err(|e| EtError::from(e.to_string()))?;
         Ok(Self::Datetime(datetime))
     }
 }

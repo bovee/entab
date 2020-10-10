@@ -68,7 +68,7 @@ impl<'r> TsvReader<'r> {
         let header = if let Some(NewLine(h)) = NewLine::get(&mut rb, ())? {
             h
         } else {
-            return Err(EtError::new("could not read headers from TSV").fill_pos(&rb));
+            return Err(EtError::new("could not read headers from TSV", &rb));
         };
         // prefill with something impossible so we can tell how big
         let mut buffer = vec!["\t"; 32];
@@ -107,7 +107,7 @@ impl<'r> TsvReader<'r> {
                 self.delim_char,
                 self.quote_char,
             )
-            .map_err(|e| e.fill_pos(&self.rb))?;
+            .map_err(|e| e.add_context(&self.rb))?;
         }
 
         self.rb.record_pos += 1;

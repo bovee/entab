@@ -33,7 +33,7 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
             return Ok(false);
         }
         if rb[0] != b'>' {
-            return Err(EtError::new("Valid FASTA records start with '>'"));
+            return Err(EtError::new("Valid FASTA records start with '>'", &rb));
         }
         let mut seq_newlines: Vec<usize> = Vec::new();
         let (header_range, seq_range, rec_end) = loop {
@@ -45,7 +45,7 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
                     (p, p + 1)
                 }
             } else if rb.eof() {
-                return Err("Incomplete record".into());
+                return Err(EtError::new("Incomplete record", &rb));
             } else {
                 rb.refill()?;
                 continue;
@@ -87,7 +87,6 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
         };
 
         let record = rb.extract::<&[u8]>(rec_end)?;
-
         self.id = alloc::str::from_utf8(&record[header_range])?;
         let raw_sequence = &record[seq_range];
         self.sequence = if seq_newlines.is_empty() {
@@ -138,6 +137,16 @@ mod tests {
             ix += 1;
         }
         assert_eq!(ix, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_fasta_short() -> Result<(), EtError> {
+        const TEST_FASTA: &[u8] = b">id";
+        let rb = ReadBuffer::from_slice(TEST_FASTA);
+        let mut pt = FastaReader::new(rb, ())?;
+        assert!(pt.next().is_err());
+
         Ok(())
     }
 

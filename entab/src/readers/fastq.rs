@@ -39,7 +39,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             }
         }
         if rb[0] != b'@' {
-            return Err("Valid FASTQ records start with '@'".into());
+            return Err(EtError::new("Valid FASTQ records start with '@'", &rb));
         }
         let (header_range, seq_range, qual_range, rec_end) = loop {
             let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &rb[..]) {
@@ -50,14 +50,14 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                     (p, p + 1)
                 }
             } else if rb.eof() {
-                return Err("Record ended prematurely in header".into());
+                return Err(EtError::new("Record ended prematurely in header", &rb));
             } else {
                 rb.refill()?;
                 continue;
             };
             let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &rb[seq_start..]) {
                 if p == 0 || rb[seq_start + p - 1] != b'\n' {
-                    return Err("Unexpected + found in sequence".into());
+                    return Err(EtError::new("Unexpected + found in sequence", &rb));
                 }
                 // the + is technically part of the next header so we're
                 // already one short before we even check the \r
@@ -68,7 +68,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                     (seq_start + p - 1, seq_start + p)
                 }
             } else if rb.eof() {
-                return Err("Record ended prematurely in sequence".into());
+                return Err(EtError::new("Record ended prematurely in sequence", &rb));
             } else {
                 rb.refill()?;
                 continue;
@@ -76,7 +76,10 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             let qual_start = if let Some(p) = memchr(b'\n', &rb[id2_start..]) {
                 id2_start + p + 1
             } else if rb.eof() {
-                return Err("Record ended prematurely in second header".into());
+                return Err(EtError::new(
+                    "Record ended prematurely in second header",
+                    &rb,
+                ));
             } else {
                 rb.refill()?;
                 continue;
@@ -91,7 +94,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             }
 
             if qual_end > rb.len() && rb.eof() {
-                return Err("Record ended prematurely in quality".into());
+                return Err(EtError::new("Record ended prematurely in quality", &rb));
             } else if rec_end > rb.len() && !rb.eof() {
                 rb.refill()?;
                 continue;

@@ -111,7 +111,8 @@ fn extract_bam_record<'r, 's>(
 
     let mut start = query_name_len;
     if start > data.len() {
-        return Err(EtError::new("Invalid query name length"));
+        // TODO: use EtError::new ?
+        return Err(EtError::from("Invalid query name length"));
     }
     let mut query_name = &data[..start];
     if query_name.last() == Some(&0) {

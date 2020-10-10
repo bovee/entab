@@ -12,24 +12,13 @@ pub trait FromBuffer<'r>: Sized {
 
     fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError>;
 
+    #[inline]
     fn get(rb: &'r mut ReadBuffer, state: Self::State) -> Result<Option<Self>, EtError>
     where
         Self: Default,
     {
         let mut record = Self::default();
-        // this is really annoying. it would be nice to be able to capture
-        // the record and byte directly in the closure so we don't have to
-        // calculate them every time, but the immutable/mutable borrows of
-        // rb prevent that
-        let record_pos = rb.record_pos;
-        let byte_pos = rb.get_byte_pos();
-        let update_err = |mut e: EtError| {
-            e.record = Some(record_pos);
-            e.byte = Some(byte_pos);
-            e
-        };
-
-        if !record.from_buffer(rb, state).map_err(update_err)? {
+        if !record.from_buffer(rb, state)? {
             return Ok(None);
         }
         Ok(Some(record))
@@ -85,10 +74,9 @@ macro_rules! impl_extract {
             #[inline]
             fn out_of(rb: &'r [u8], state: Self::State) -> Result<Self, EtError> {
                 if rb.len() < core::mem::size_of::<$return>() {
-                    return Err(EtError::new(format!(
-                        "Could not read {}",
-                        core::any::type_name::<$return>()
-                    )));
+                    return Err(
+                        format!("Could not read {}", core::any::type_name::<$return>()).into(),
+                    );
                 }
                 let slice = rb[..core::mem::size_of::<$return>()].try_into().unwrap();
                 Ok(match state {

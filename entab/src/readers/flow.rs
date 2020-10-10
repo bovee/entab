@@ -37,7 +37,7 @@ impl<'r> FromBuffer<'r> for FcsHeaderKeyValue<'r> {
                 } else if temp != None && rb[i + 1] == delim {
                     break (temp.unwrap(), i + 1);
                 } else {
-                    return Err(EtError::new("FCS header ended abruptly"));
+                    return Err(EtError::new("FCS header ended abruptly", &rb));
                 }
             }
             if rb[i] == delim && temp != None {
@@ -110,7 +110,7 @@ impl<'r> FromBuffer<'r> for FcsState {
 
         let magic = rb.extract::<&[u8]>(10)?;
         if &magic[..3] != b"FCS" {
-            return Err(EtError::new("FCS file has invalid header"));
+            return Err(EtError::new("FCS file has invalid header", &rb));
         }
         let mut metadata = BTreeMap::new();
 
@@ -123,7 +123,7 @@ impl<'r> FromBuffer<'r> for FcsState {
         // let analysis_start = rb.extract::<AsciiInt>(8)?.0 as usize;
         // let analysis_end = rb.extract::<AsciiInt>(8)?.0 as usize;
         if text_start < 58 {
-            return Err(EtError::new("Bad FCS text start offset"));
+            return Err(EtError::new("Bad FCS text start offset", &rb));
         }
         let _ = rb.extract::<&[u8]>(text_start as usize - 58 - start_pos)?;
         let delim: u8 = rb.extract(Endian::Little)?;
@@ -158,13 +158,16 @@ impl<'r> FromBuffer<'r> for FcsState {
                 ("$DATATYPE", "F") => data_type = 'F',
                 ("$DATATYPE", "I") => data_type = 'I',
                 ("$DATATYPE", v) => {
-                    return Err(EtError::new(format!("Unknown FCS $DATATYPE {}", v)))
+                    return Err(EtError::new(format!("Unknown FCS $DATATYPE {}", v), &rb))
                 }
                 ("$MODE", "L") => {}
                 ("$MODE", "C") | ("$MODE", "U") => {
-                    return Err(EtError::new("FCS histograms not yet supported ($MODE=C/U)"))
+                    return Err(EtError::new(
+                        "FCS histograms not yet supported ($MODE=C/U)",
+                        &rb,
+                    ))
                 }
-                ("$MODE", v) => return Err(EtError::new(format!("Unknown FCS $MODE {}", v))),
+                ("$MODE", v) => return Err(EtError::new(format!("Unknown FCS $MODE {}", v), &rb)),
                 ("$TOT", v) => n_events_left = v.trim().parse()?,
                 ("$BTIM", v) => {
                     // TODO: sometimes there's a fractional (/60) part after the last colon
@@ -218,7 +221,7 @@ impl<'r> FromBuffer<'r> for FcsState {
                 ("$PAR", v) => {
                     let n_params = v.trim().parse()?;
                     if n_params < params.len() {
-                        return Err(EtError::new(format!("Declared number of params ({}) is less than the observed number of params ({})", n_params, params.len())));
+                        return Err(EtError::new(format!("Declared number of params ({}) is less than the observed number of params ({})", n_params, params.len()), &rb));
                     }
                     params.resize_with(n_params, FcsParam::default)
                 }
@@ -255,19 +258,19 @@ impl<'r> FromBuffer<'r> for FcsState {
         let _ = rb.extract::<&[u8]>((data_start - rb.get_byte_pos()) as usize)?;
 
         if data_end < data_start {
-            return Err(EtError::new("Invalid end from data segment"));
+            return Err(EtError::new("Invalid end from data segment", &rb));
         }
         // check that the datatypes and params match up
         for p in &params {
             match data_type {
                 'D' => {
                     if p.size != 64 {
-                        return Err(EtError::new("Param size must be 64 for $DATATYPE=D"));
+                        return Err(EtError::new("Param size must be 64 for $DATATYPE=D", &rb));
                     }
                 }
                 'F' => {
                     if p.size != 32 {
-                        return Err(EtError::new("Param size must be 32 for $DATATYPE=F"));
+                        return Err(EtError::new("Param size must be 32 for $DATATYPE=F", &rb));
                     }
                 }
                 _ => {}
@@ -304,7 +307,7 @@ impl<'r> FcsReader<'r> {
         if let Some(state) = FcsState::get(&mut rb, ())? {
             Ok(FcsReader { rb, state })
         } else {
-            Err(EtError::new("Could not read FCS headers"))
+            Err(EtError::new("Could not read FCS headers", &rb))
         }
     }
 }
@@ -344,6 +347,7 @@ impl<'r> RecordReader for FcsReader<'r> {
                 'A' if param.size < 0 => {
                     return Err(EtError::new(
                         "Delimited-ASCII number datatypes are not yet supported",
+                        &self.rb,
                     ));
                 }
                 'D' => self.rb.extract::<f64>(self.state.endian)?.into(),
@@ -354,11 +358,16 @@ impl<'r> RecordReader for FcsReader<'r> {
                         16 => self.rb.extract::<u16>(self.state.endian)?.into(),
                         32 => self.rb.extract::<u32>(self.state.endian)?.into(),
                         64 => self.rb.extract::<u64>(self.state.endian)?,
-                        x => return Err(EtError::new(format!("Unknown param size {}", x))),
+                        x => {
+                            return Err(EtError::new(format!("Unknown param size {}", x), &self.rb))
+                        }
                     };
                     if value > param.range && param.range > 0 {
                         if param.range.count_ones() != 1 {
-                            return Err(EtError::new("Only ranges of power 2 can mask values"));
+                            return Err(EtError::new(
+                                "Only ranges of power 2 can mask values",
+                                &self.rb,
+                            ));
                         }
                         let range_mask = param.range - 1;
                         (value & range_mask).into()
