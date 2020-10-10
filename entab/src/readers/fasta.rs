@@ -35,21 +35,21 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
         if rb[0] != b'>' {
             return Err(EtError::new("Valid FASTA records start with '>'", &rb));
         }
-        let mut seq_newlines: Vec<usize> = Vec::new();
-        let (header_range, seq_range, rec_end) = loop {
-            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &rb[..]) {
+        let (header_range, seq_start) = loop {
+            if let Some(p) = memchr(b'\n', &rb[..]) {
                 if p > 0 && rb[p - 1] == b'\r' {
                     // strip out the \r too if this is a \r\n ending
-                    (p - 1, p + 1)
+                    break (1..p - 1, p + 1);
                 } else {
-                    (p, p + 1)
+                    break (1..p, p + 1);
                 }
             } else if rb.eof() {
                 return Err(EtError::new("Incomplete record", &rb));
-            } else {
-                rb.refill()?;
-                continue;
-            };
+            }
+            rb.refill()?;
+        };
+        let mut seq_newlines: Vec<usize> = Vec::new();
+        let (seq_range, rec_end) = loop {
             let mut found_end = false;
             for raw_pos in memchr_iter(b'\n', &rb[seq_start..]) {
                 let pos = seq_start + raw_pos;
@@ -62,12 +62,7 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
                     break;
                 }
             }
-            if !found_end && !rb.eof() {
-                rb.refill()?;
-                seq_newlines.truncate(0);
-                continue;
-            }
-            let (seq_end, rec_end) = if found_end {
+            if found_end {
                 // found_end only happens if we added a newline
                 // so the pop is safe to unwrap
                 let mut endpos = seq_newlines.pop().unwrap();
@@ -78,12 +73,16 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
                 while endpos > 0 && seq_newlines.last() == Some(endpos - 1).as_ref() {
                     endpos = seq_newlines.pop().unwrap();
                 }
-                (seq_start + endpos, rec_end)
-            } else {
+                break (seq_start..seq_start + endpos, rec_end);
+            } else if rb.eof() {
                 // at eof; just return the end
-                (rb.len(), rb.len())
+                break (seq_start..rb.len(), rb.len());
             };
-            break (1..header_end, seq_start..seq_end, rec_end);
+            // need more data
+            rb.refill()?;
+            // TODO: we probably don't need to reset this if we track our
+            // current position
+            seq_newlines.truncate(0);
         };
 
         let record = rb.extract::<&[u8]>(rec_end)?;

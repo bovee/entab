@@ -174,6 +174,12 @@ impl<'a> From<&'a [u8]> for Value<'a> {
     }
 }
 
+impl<'a> From<Vec<u8>> for Value<'a> {
+    fn from(x: Vec<u8>) -> Self {
+        Value::String(Cow::Owned(String::from_utf8_lossy(&x).into_owned()))
+    }
+}
+
 impl<'a> From<&'a str> for Value<'a> {
     fn from(x: &'a str) -> Self {
         Value::String(x.into())

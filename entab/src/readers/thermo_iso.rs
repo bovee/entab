@@ -165,13 +165,10 @@ impl<'r> FromBuffer<'r> for ThermoDxfRecord {
             state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
         }
 
-        let intensity = rb.extract::<f64>(Endian::Little)?;
-        let mz = state.mzs[state.cur_mz_idx];
-        state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
-
         self.time = state.cur_time / 60.;
-        self.mz = mz;
-        self.intensity = intensity;
+        self.mz = state.mzs[state.cur_mz_idx];
+        self.intensity = rb.extract::<f64>(Endian::Little)?;
+        state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
         Ok(true)
     }
 }
@@ -271,13 +268,11 @@ impl<'r> FromBuffer<'r> for ThermoCfRecord {
             state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
         }
 
-        let intensity = rb.extract::<f64>(Endian::Little)?;
-        let mz = state.mzs[state.cur_mz_idx];
+        self.time = state.cur_time / 60.;
+        self.mz = state.mzs[state.cur_mz_idx];
+        self.intensity = rb.extract::<f64>(Endian::Little)?;
         state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
 
-        self.time = state.cur_time / 60.;
-        self.mz = mz;
-        self.intensity = intensity;
         Ok(true)
     }
 }

@@ -55,110 +55,6 @@ impl<'r> FromBuffer<'r> for BamState {
     }
 }
 
-fn extract_bam_record<'r, 's>(
-    reader: &'r mut ReadBuffer<'s>,
-    record_len: usize,
-    references: &'r [(String, usize)],
-    record: &mut BamRecord<'r>,
-) -> Result<(), EtError> {
-    if record_len < 32 {
-        return Err("Record is unexpectedly short".into());
-    }
-    let raw_ref_name_id: i32 = reader.extract(Endian::Little)?;
-    let ref_name = if raw_ref_name_id < 0 {
-        ""
-    } else if raw_ref_name_id as usize >= references.len() {
-        return Err("Invalid reference sequence ID".into());
-    } else {
-        &references[raw_ref_name_id as usize].0
-    };
-    let raw_pos: i32 = reader.extract(Endian::Little)?;
-    let pos = if raw_pos == -1 {
-        None
-    } else {
-        Some(raw_pos as u64)
-    };
-    let query_name_len = usize::from(reader.extract::<u8>(Endian::Little)?);
-    let raw_mapq: u8 = reader.extract(Endian::Little)?;
-    let mapq = if raw_mapq == 255 {
-        None
-    } else {
-        Some(raw_mapq)
-    };
-    // don't care about the BAI index bin - &data[10..12]
-    let _ = reader.extract::<&[u8]>(2_usize)?;
-    let n_cigar_op = usize::from(reader.extract::<u16>(Endian::Little)?);
-    let flag: u16 = reader.extract(Endian::Little)?;
-    let seq_len = reader.extract::<u32>(Endian::Little)? as usize;
-    let raw_rnext_id: i32 = reader.extract(Endian::Little)?;
-    let rnext = if raw_rnext_id < 0 {
-        ""
-    } else if raw_rnext_id as usize >= references.len() {
-        return Err("Invalid next reference sequence ID".into());
-    } else {
-        &references[raw_rnext_id as usize].0
-    };
-    let raw_pnext: i32 = reader.extract(Endian::Little)?;
-    let pnext = if raw_pnext == -1 {
-        None
-    } else {
-        Some(raw_pnext as u32)
-    };
-    let tlen: i32 = reader.extract(Endian::Little)?;
-
-    // now parse the variable length records
-    let data = reader.extract::<&[u8]>(record_len - 32)?;
-
-    let mut start = query_name_len;
-    if start > data.len() {
-        // TODO: use EtError::new ?
-        return Err(EtError::from("Invalid query name length"));
-    }
-    let mut query_name = &data[..start];
-    if query_name.last() == Some(&0) {
-        query_name = &query_name[..query_name_len - 1]
-    }
-    let mut cigar: Vec<u8> = Vec::new();
-    for _ in 0..n_cigar_op {
-        let cigar_op = u32::out_of(&data[start..], Endian::Little)? as usize;
-        cigar.extend((cigar_op >> 4).to_string().as_bytes());
-        cigar.push(b"MIDNSHP=X"[cigar_op & 7]);
-        start += 4;
-    }
-    if start + seq_len / 2 >= data.len() {
-        return Err("Record ended abruptly while reading sequence".into());
-    }
-    let mut seq = vec![0; seq_len];
-    for idx in 0..seq_len {
-        let byte = data[start + (idx / 2)];
-        let byte = usize::from(if idx % 2 == 0 { byte >> 4 } else { byte & 15 });
-        seq[idx] = b"=ACMGRSVTWYHKDBN"[byte]
-    }
-    start += (seq_len + 1) / 2;
-    let qual: Cow<[u8]> = if data[start] == 255 {
-        Cow::Borrowed(b"")
-    } else {
-        let raw_qual = &data[start..start + seq_len];
-        let qual: Vec<u8> = raw_qual.iter().map(|m| m + 33).collect();
-        Cow::Owned(qual)
-    };
-
-    record.query_name = alloc::str::from_utf8(query_name)?;
-    record.flag = flag;
-    record.ref_name = ref_name;
-    record.pos = pos;
-    record.mapq = mapq;
-    record.cigar = Cow::Owned(cigar);
-    record.rnext = rnext;
-    record.pnext = pnext;
-    record.tlen = tlen;
-    record.seq = Cow::Owned(seq);
-    record.qual = qual;
-    // TODO: parse the extra flags some day?
-    // self.extra = Cow::Borrowed(b"");
-    Ok(())
-}
-
 /// A single record from a BAM file.
 #[derive(Debug, Default)]
 pub struct BamRecord<'r> {
@@ -181,7 +77,7 @@ pub struct BamRecord<'r> {
     /// `M` - Match (may be either a `=` or an `X`),
     /// `=` - Identical match
     /// `X` - Near-match (e.g. a SNP)
-    pub cigar: Cow<'r, [u8]>,
+    pub cigar: Vec<u8>,
     /// Next read's name
     pub rnext: &'r str,
     /// Position of the next read's alignment
@@ -189,9 +85,9 @@ pub struct BamRecord<'r> {
     /// Template length
     pub tlen: i32,
     /// The sequence of the query, if present.
-    pub seq: Cow<'r, [u8]>,
+    pub seq: Vec<u8>,
     /// The quality scores of the query, if present.
-    pub qual: Cow<'r, [u8]>,
+    pub qual: Vec<u8>,
     /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
@@ -210,8 +106,91 @@ impl<'r> FromBuffer<'r> for BamRecord<'r> {
         }
 
         // now read the record itself
-        let rec_len = rb.extract::<u32>(Endian::Little)? as usize;
-        extract_bam_record(rb, rec_len, &state.references, self)?;
+        let record_len = rb.extract::<u32>(Endian::Little)? as usize;
+        if record_len < 32 {
+            return Err(EtError::new("Record is unexpectedly short", &rb));
+        }
+        let raw_ref_name_id: i32 = rb.extract(Endian::Little)?;
+        self.ref_name = if raw_ref_name_id < 0 {
+            ""
+        } else if raw_ref_name_id as usize >= state.references.len() {
+            return Err(EtError::new("Invalid reference sequence ID", &rb));
+        } else {
+            &state.references[raw_ref_name_id as usize].0
+        };
+        let raw_pos: i32 = rb.extract(Endian::Little)?;
+        self.pos = if raw_pos == -1 {
+            None
+        } else {
+            Some(raw_pos as u64)
+        };
+        let query_name_len = usize::from(rb.extract::<u8>(Endian::Little)?);
+        let raw_mapq: u8 = rb.extract(Endian::Little)?;
+        self.mapq = if raw_mapq == 255 {
+            None
+        } else {
+            Some(raw_mapq)
+        };
+        // don't care about the BAI index bin - &data[10..12]
+        let _ = rb.extract::<&[u8]>(2_usize)?;
+        let n_cigar_op = usize::from(rb.extract::<u16>(Endian::Little)?);
+        self.flag = rb.extract::<u16>(Endian::Little)?;
+        let seq_len = rb.extract::<u32>(Endian::Little)? as usize;
+        let raw_rnext_id: i32 = rb.extract(Endian::Little)?;
+        self.rnext = if raw_rnext_id < 0 {
+            ""
+        } else if raw_rnext_id as usize >= state.references.len() {
+            return Err(EtError::new("Invalid next reference sequence ID", &rb));
+        } else {
+            &state.references[raw_rnext_id as usize].0
+        };
+        let raw_pnext: i32 = rb.extract(Endian::Little)?;
+        self.pnext = if raw_pnext == -1 {
+            None
+        } else {
+            Some(raw_pnext as u32)
+        };
+        self.tlen = rb.extract::<i32>(Endian::Little)?;
+
+        // now parse the variable length records
+        let data = rb.extract::<&[u8]>(record_len - 32)?;
+
+        let mut start = query_name_len;
+        if start > data.len() {
+            // TODO: use EtError::new ?
+            return Err(EtError::from("Invalid query name length"));
+        }
+        let mut query_name = &data[..start];
+        if query_name.last() == Some(&0) {
+            query_name = &query_name[..query_name_len - 1]
+        }
+        self.query_name = alloc::str::from_utf8(query_name)?;
+
+        self.cigar = Vec::new();
+        for _ in 0..n_cigar_op {
+            let cigar_op = u32::out_of(&data[start..], Endian::Little)? as usize;
+            self.cigar.extend((cigar_op >> 4).to_string().as_bytes());
+            self.cigar.push(b"MIDNSHP=X"[cigar_op & 7]);
+            start += 4;
+        }
+        if start + seq_len / 2 >= data.len() {
+            return Err("Record ended abruptly while reading sequence".into());
+        }
+        self.seq = vec![0; seq_len];
+        for idx in 0..seq_len {
+            let byte = data[start + (idx / 2)];
+            let byte = usize::from(if idx % 2 == 0 { byte >> 4 } else { byte & 15 });
+            self.seq[idx] = b"=ACMGRSVTWYHKDBN"[byte]
+        }
+        start += (seq_len + 1) / 2;
+        self.qual = if data[start] == 255 {
+            Vec::new()
+        } else {
+            let raw_qual = &data[start..start + seq_len];
+            raw_qual.iter().map(|m| m + 33).collect()
+        };
+        // TODO: parse the extra flags some day?
+        // self.extra = Cow::Borrowed(b"");
         Ok(true)
     }
 }
@@ -269,7 +248,7 @@ pub struct SamRecord<'r> {
     /// `M` - Match (may be either a `=` or an `X`),
     /// `=` - Identical match
     /// `X` - Near-match (e.g. a SNP)
-    pub cigar: Cow<'r, [u8]>,
+    pub cigar: &'r [u8],
     /// Next read's name
     pub rnext: &'r str,
     /// Position of the next read's alignment
@@ -277,87 +256,14 @@ pub struct SamRecord<'r> {
     /// Template length
     pub tlen: i32,
     /// The sequence of the query, if present.
-    pub seq: Cow<'r, [u8]>,
+    pub seq: &'r [u8],
     /// The quality scores of the query, if present.
-    pub qual: Cow<'r, [u8]>,
+    pub qual: &'r [u8],
     /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
 
 impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
-
-fn strs_to_sam<'r>(chunks: &[&'r [u8]], mut record: &mut SamRecord<'r>) -> Result<(), EtError> {
-    if chunks.len() < 11 {
-        return Err("Sam record too short".into());
-    }
-    let ref_name = if chunks[2] == b"*" {
-        ""
-    } else {
-        alloc::str::from_utf8(chunks[2])?
-    };
-    let pos = if chunks[3] == b"0" {
-        None
-    } else {
-        // convert to 0-based indexing while we're at it
-        let mut val = alloc::str::from_utf8(chunks[3])?.parse()?;
-        val -= 1;
-        Some(val)
-    };
-    let mapq = if chunks[4] == b"255" {
-        None
-    } else {
-        Some(alloc::str::from_utf8(chunks[4])?.parse()?)
-    };
-    let cigar: Cow<[u8]> = if chunks[5] == b"*" {
-        Cow::Borrowed(b"")
-    } else {
-        chunks[5].into()
-    };
-    let rnext = if chunks[6] == b"*" {
-        ""
-    } else {
-        alloc::str::from_utf8(chunks[6])?
-    };
-    let pnext = if chunks[7] == b"0" {
-        None
-    } else {
-        // convert to 0-based indexing while we're at it
-        let mut val = alloc::str::from_utf8(chunks[7])?.parse()?;
-        val -= 1;
-        Some(val)
-    };
-    let seq = if chunks[9] == b"*" {
-        Cow::Borrowed(&b""[..])
-    } else {
-        chunks[9].into()
-    };
-    let qual = if chunks[10] == b"*" { b"" } else { chunks[10] };
-    let extra: Cow<[u8]> = if chunks.len() == 11 {
-        Cow::Borrowed(b"")
-    } else if chunks.len() == 12 {
-        chunks[11].into()
-    } else {
-        let mut joined = chunks[11].to_vec();
-        for c in &chunks[12..] {
-            joined.push(b'|');
-            joined.extend(*c);
-        }
-        joined.into()
-    };
-    record.query_name = alloc::str::from_utf8(chunks[0])?;
-    record.flag = alloc::str::from_utf8(chunks[1])?.parse()?;
-    record.ref_name = ref_name;
-    record.pos = pos;
-    record.mapq = mapq;
-    record.cigar = cigar;
-    record.rnext = rnext;
-    record.pnext = pnext;
-    record.tlen = alloc::str::from_utf8(chunks[8])?.parse()?;
-    record.seq = seq;
-    record.qual = Cow::Borrowed(qual);
-    record.extra = extra;
-    Ok(())
-}
 
 impl<'r> FromBuffer<'r> for SamRecord<'r> {
     type State = &'r mut SamState;
@@ -369,7 +275,66 @@ impl<'r> FromBuffer<'r> for SamRecord<'r> {
     ) -> Result<bool, EtError> {
         Ok(if let Some(NewLine(line)) = NewLine::get(rb, ())? {
             let chunks: Vec<&[u8]> = line.split(|c| *c == b'\t').collect();
-            strs_to_sam(&chunks, self)?;
+            if chunks.len() < 11 {
+                return Err("Sam record too short".into());
+            }
+            self.query_name = alloc::str::from_utf8(chunks[0])?;
+            self.flag = alloc::str::from_utf8(chunks[1])?.parse()?;
+            self.ref_name = if chunks[2] == b"*" {
+                ""
+            } else {
+                alloc::str::from_utf8(chunks[2])?
+            };
+            self.pos = if chunks[3] == b"0" {
+                None
+            } else {
+                // convert to 0-based indexing while we're at it
+                let mut val = alloc::str::from_utf8(chunks[3])?.parse()?;
+                val -= 1;
+                Some(val)
+            };
+            self.mapq = if chunks[4] == b"255" {
+                None
+            } else {
+                Some(alloc::str::from_utf8(chunks[4])?.parse()?)
+            };
+            self.cigar = if chunks[5] == b"*" {
+                b""
+            } else {
+                chunks[5]
+            };
+            self.rnext = if chunks[6] == b"*" {
+                ""
+            } else {
+                alloc::str::from_utf8(chunks[6])?
+            };
+            self.pnext = if chunks[7] == b"0" {
+                None
+            } else {
+                // convert to 0-based indexing while we're at it
+                let mut val = alloc::str::from_utf8(chunks[7])?.parse()?;
+                val -= 1;
+                Some(val)
+            };
+            self.tlen = alloc::str::from_utf8(chunks[8])?.parse()?;
+            self.seq = if chunks[9] == b"*" {
+                b""
+            } else {
+                chunks[9]
+            };
+            self.qual = if chunks[10] == b"*" { b"" } else { chunks[10] };
+            self.extra = if chunks.len() == 11 {
+                Cow::Borrowed(b"")
+            } else if chunks.len() == 12 {
+                chunks[11].into()
+            } else {
+                let mut joined = chunks[11].to_vec();
+                for c in &chunks[12..] {
+                    joined.push(b'|');
+                    joined.extend(*c);
+                }
+                joined.into()
+            };
             true
         } else {
             false
@@ -396,7 +361,7 @@ mod tests {
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
-            assert_eq!(seq, Cow::Borrowed(KNOWN_SEQ));
+            assert_eq!(seq, KNOWN_SEQ);
         } else {
             panic!("Sam reader returned non-Mz record");
         };
@@ -438,7 +403,7 @@ mod tests {
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
-            let known_seq: Cow<[u8]> = Cow::Owned(KNOWN_SEQ.to_vec());
+            let known_seq = KNOWN_SEQ.to_vec();
             assert_eq!(seq, known_seq);
         } else {
             panic!("Sam reader returned non-Mz record");

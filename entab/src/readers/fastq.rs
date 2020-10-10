@@ -41,21 +41,23 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
         if rb[0] != b'@' {
             return Err(EtError::new("Valid FASTQ records start with '@'", &rb));
         }
-        let (header_range, seq_range, qual_range, rec_end) = loop {
-            let (header_end, seq_start) = if let Some(p) = memchr(b'\n', &rb[..]) {
+        // figure out where the first id/header line ends
+        let (header_range, seq_start) = loop {
+            if let Some(p) = memchr(b'\n', &rb[..]) {
                 if p > 0 && rb[p - 1] == b'\r' {
                     // strip out the \r too if this is a \r\n ending
-                    (p - 1, p + 1)
+                    break (1..p - 1, p + 1);
                 } else {
-                    (p, p + 1)
+                    break (1..p, p + 1);
                 }
             } else if rb.eof() {
                 return Err(EtError::new("Record ended prematurely in header", &rb));
-            } else {
-                rb.refill()?;
-                continue;
-            };
-            let (seq_end, id2_start) = if let Some(p) = memchr(b'+', &rb[seq_start..]) {
+            }
+            rb.refill()?;
+        };
+        // figure out where the sequence data is
+        let (seq_range, id2_start) = loop {
+            if let Some(p) = memchr(b'+', &rb[seq_start..]) {
                 if p == 0 || rb[seq_start + p - 1] != b'\n' {
                     return Err(EtError::new("Unexpected + found in sequence", &rb));
                 }
@@ -63,34 +65,35 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                 // already one short before we even check the \r
                 if seq_start + p > 2 && rb[seq_start + p - 2] == b'\r' {
                     // strip out the \r too if this is a \r\n ending
-                    (seq_start + p - 2, seq_start + p)
+                    break (seq_start..seq_start + p - 2, seq_start + p);
                 } else {
-                    (seq_start + p - 1, seq_start + p)
+                    break (seq_start..seq_start + p - 1, seq_start + p);
                 }
             } else if rb.eof() {
                 return Err(EtError::new("Record ended prematurely in sequence", &rb));
-            } else {
-                rb.refill()?;
-                continue;
-            };
-            let qual_start = if let Some(p) = memchr(b'\n', &rb[id2_start..]) {
-                id2_start + p + 1
+            }
+            rb.refill()?;
+        };
+        // skip over the second id/header line
+        let qual_start = loop {
+            if let Some(p) = memchr(b'\n', &rb[id2_start..]) {
+                break id2_start + p + 1;
             } else if rb.eof() {
                 return Err(EtError::new(
                     "Record ended prematurely in second header",
                     &rb,
                 ));
-            } else {
-                rb.refill()?;
-                continue;
-            };
-
-            let qual_end = qual_start + (seq_end - seq_start);
-            let mut rec_end = qual_end + (id2_start - seq_end);
+            }
+            rb.refill()?;
+        };
+        // and get the quality scores location
+        let (qual_range, rec_end) = loop {
+            let qual_end = qual_start + (seq_range.end - seq_range.start);
+            let mut rec_end = qual_end + (id2_start - seq_range.end);
             // sometimes the terminal one or two newlines might be missing
             // so we deduct here to avoid a error overconsuming
             if rec_end > rb.len() && rb.eof() {
-                rec_end -= id2_start - seq_end;
+                rec_end -= id2_start - seq_range.end;
             }
 
             if qual_end > rb.len() && rb.eof() {
@@ -100,12 +103,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                 continue;
             }
 
-            break (
-                1..header_end,
-                seq_start..seq_end,
-                qual_start..qual_end,
-                rec_end,
-            );
+            break (qual_start..qual_end, rec_end);
         };
 
         let record = rb.extract::<&[u8]>(rec_end)?;
