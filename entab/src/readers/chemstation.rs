@@ -312,15 +312,25 @@ impl<'r> FromBuffer<'r> for ChemstationMsRecord {
         }
 
         // refill case
-        if state.n_mzs_left == 0 {
+        while state.n_mzs_left == 0 {
             // handle the record header
             let raw_n_mzs_left: u16 = rb.extract(Endian::Big)?;
-            if raw_n_mzs_left <= 14 {
-                return Err("Invalid record header".into());
+            if raw_n_mzs_left < 14 {
+                return Err(EtError::new("Invalid Chemstation MS record header", &rb));
             }
-            state.n_mzs_left = usize::from((raw_n_mzs_left - 13) / 2);
+            state.n_mzs_left = usize::from((raw_n_mzs_left - 14) / 2);
             state.cur_time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
+            // eight more bytes of unknown information and then last 4 bytes
+            // is a u16/u16 pair for the highest peak?
             let _ = rb.extract::<&[u8]>(12_usize)?;
+            if state.n_mzs_left == 0 {
+                // this is an empty record so debit and eat the footer too
+                state.n_scans_left -= 1;
+                let _ = rb.extract::<&[u8]>(10_usize)?;
+                if state.n_scans_left == 0 {
+                    return Ok(false);
+                }
+            }
         };
 
         // just read the mz/intensity
@@ -332,6 +342,7 @@ impl<'r> FromBuffer<'r> for ChemstationMsRecord {
             state.n_scans_left -= 1;
             // eat the footer
             let _ = rb.extract::<&[u8]>(10_usize)?;
+            // the very last 4 bytes are a u32 for the TIC
         }
         state.n_mzs_left -= 1;
 

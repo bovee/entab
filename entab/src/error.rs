@@ -60,17 +60,18 @@ impl EtError {
     ///
     /// Used to display e.g. where a parsing error in a file occured.
     pub fn add_context(mut self, rb: &ReadBuffer) -> Self {
-        let (context, context_pos) = match (rb.consumed < 16, rb.len() < rb.consumed + 16) {
-            (true, true) => ((&rb[..]).to_vec(), rb.consumed),
-            (true, false) => ((&rb[..rb.consumed + 16]).to_vec(), rb.consumed),
+        let rb_len = rb.buffer.len();
+        let (context, context_pos) = match (rb.consumed < 16, rb_len < rb.consumed + 16) {
+            (true, true) => ((&rb.buffer[..]).to_vec(), rb.consumed),
+            (true, false) => ((&rb.buffer[..rb.consumed + 16]).to_vec(), rb.consumed),
             (false, true) => {
-                if rb.consumed < rb.len() {
-                    ((&rb[rb.consumed - 16..]).to_vec(), 16)
+                if rb.consumed < rb_len {
+                    ((&rb.buffer[rb.consumed - 16..]).to_vec(), 16)
                 } else {
                     (Vec::new(), 0)
                 }
             }
-            (false, false) => ((&rb[rb.consumed - 16..rb.consumed + 16]).to_vec(), 16),
+            (false, false) => ((&rb.buffer[rb.consumed - 16..rb.consumed + 16]).to_vec(), 16),
         };
 
         self.context = Some(EtErrorContext {
@@ -199,5 +200,32 @@ impl From<ParseIntError> for EtError {
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::format;
+
+    use super::*;
+
+    #[test]
+    fn test_context_display() {
+        let rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
+        let err = EtError::new("Test", &rb);
+        let msg = format!("{}", err);
+        assert_eq!(msg, "Test\
+                       \n31323334353637383930414243444546\
+                       \n 1 2 3 4 5 6 7 8 9 0 A B C D E F\
+                       \n^^ 0\n");
+
+        let mut rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
+        let _ = rb.consume(10);
+        let err = EtError::new("Test", &rb);
+        let msg = format!("{}", err);
+        assert_eq!(msg, "Test\
+                       \n31323334353637383930414243444546\
+                       \n 1 2 3 4 5 6 7 8 9 0 A B C D E F\
+                       \n                  ^^ 10\n");
     }
 }
