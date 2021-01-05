@@ -9,27 +9,10 @@ use chrono::NaiveDateTime;
 
 use crate::buffer::ReadBuffer;
 use crate::parsers::{Endian, FromBuffer, FromSlice};
+use crate::readers::agilent::read_agilent_header;
 use crate::record::{RecordHeader, StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
-
-fn read_agilent_header<'r>(rb: &'r mut ReadBuffer, ms_format: bool) -> Result<&'r [u8], EtError> {
-    rb.reserve(268)?;
-
-    // figure out how big the header should be and then get it
-    let raw_header_size = u32::out_of(&rb[264..268], Endian::Big)? as usize;
-    if raw_header_size == 0 {
-        return Err(EtError::new("Invalid header length of 0", &rb));
-    }
-    let mut header_size = 2 * (raw_header_size - 1);
-    if !ms_format {
-        header_size *= 256;
-    }
-    if header_size < 512 {
-        return Err(EtError::new("Header length too short", &rb));
-    }
-    rb.extract::<&[u8]>(header_size)
-}
 
 #[derive(Debug, Default)]
 /// Metadata consistly found in Chemstation file formats
@@ -331,7 +314,7 @@ impl<'r> FromBuffer<'r> for ChemstationMsRecord {
                     return Ok(false);
                 }
             }
-        };
+        }
 
         // just read the mz/intensity
         let mz = f64::from(rb.extract::<u16>(Endian::Big)?) / 20.;
@@ -642,7 +625,7 @@ mod tests {
 
     #[test]
     fn test_chemstation_reader_fid() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test_fid.ch"));
+        let rb = ReadBuffer::from_slice(include_bytes!("../../../tests/data/test_fid.ch"));
         let mut reader = ChemstationFidReader::new(rb, ())?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "intensity"]);
@@ -663,7 +646,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_ms() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!(
-            "../../tests/data/carotenoid_extract.d/MSD1.MS"
+            "../../../tests/data/carotenoid_extract.d/MSD1.MS"
         ));
         let mut reader = ChemstationMsReader::new(rb, ())?;
         let _ = reader.metadata();
@@ -697,7 +680,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_mwd() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!(
-            "../../tests/data/chemstation_mwd.d/mwd1A.ch"
+            "../../../tests/data/chemstation_mwd.d/mwd1A.ch"
         ));
         let mut reader = ChemstationMwdReader::new(rb, ())?;
         assert_eq!(reader.headers(), ["time", "signal", "intensity"]);
@@ -722,7 +705,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!(
-            "../../tests/data/carotenoid_extract.d/dad1.uv"
+            "../../../tests/data/carotenoid_extract.d/dad1.uv"
         ));
         let mut reader = ChemstationUvReader::new(rb, ())?;
         let _ = reader.metadata();

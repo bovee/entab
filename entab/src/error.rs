@@ -71,7 +71,10 @@ impl EtError {
                     (Vec::new(), 0)
                 }
             }
-            (false, false) => ((&rb.buffer[rb.consumed - 16..rb.consumed + 16]).to_vec(), 16),
+            (false, false) => (
+                (&rb.buffer[rb.consumed - 16..rb.consumed + 16]).to_vec(),
+                16,
+            ),
         };
 
         self.context = Some(EtErrorContext {
@@ -86,12 +89,12 @@ impl EtError {
 
 impl fmt::Display for EtError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\n", self.msg)?;
+        writeln!(f, "{}", self.msg)?;
         if let Some(context) = &self.context {
             for c in &context.context {
                 write!(f, "{:X}", c)?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
             for c in &context.context {
                 if *c > 31 && *c < 127 {
                     write!(f, " {}", char::from(*c))?;
@@ -214,18 +217,24 @@ mod tests {
         let rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
         let err = EtError::new("Test", &rb);
         let msg = format!("{}", err);
-        assert_eq!(msg, "Test\
+        assert_eq!(
+            msg,
+            "Test\
                        \n31323334353637383930414243444546\
                        \n 1 2 3 4 5 6 7 8 9 0 A B C D E F\
-                       \n^^ 0\n");
+                       \n^^ 0\n"
+        );
 
         let mut rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
         let _ = rb.consume(10);
         let err = EtError::new("Test", &rb);
         let msg = format!("{}", err);
-        assert_eq!(msg, "Test\
+        assert_eq!(
+            msg,
+            "Test\
                        \n31323334353637383930414243444546\
                        \n 1 2 3 4 5 6 7 8 9 0 A B C D E F\
-                       \n                  ^^ 10\n");
+                       \n                  ^^ 10\n"
+        );
     }
 }

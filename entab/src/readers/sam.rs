@@ -298,11 +298,7 @@ impl<'r> FromBuffer<'r> for SamRecord<'r> {
             } else {
                 Some(alloc::str::from_utf8(chunks[4])?.parse()?)
             };
-            self.cigar = if chunks[5] == b"*" {
-                b""
-            } else {
-                chunks[5]
-            };
+            self.cigar = if chunks[5] == b"*" { b"" } else { chunks[5] };
             self.rnext = if chunks[6] == b"*" {
                 ""
             } else {
@@ -317,11 +313,7 @@ impl<'r> FromBuffer<'r> for SamRecord<'r> {
                 Some(val)
             };
             self.tlen = alloc::str::from_utf8(chunks[8])?.parse()?;
-            self.seq = if chunks[9] == b"*" {
-                b""
-            } else {
-                chunks[9]
-            };
+            self.seq = if chunks[9] == b"*" { b"" } else { chunks[9] };
             self.qual = if chunks[10] == b"*" { b"" } else { chunks[10] };
             self.extra = if chunks.len() == 11 {
                 Cow::Borrowed(b"")

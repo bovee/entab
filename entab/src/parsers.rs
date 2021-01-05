@@ -125,7 +125,7 @@ impl<'r> FromBuffer<'r> for &'r [u8] {
 /// before so should handle almost all current text file formats, but
 /// may fail on older '\r' only formats.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct NewLine<'r>(pub &'r [u8]);
+pub(crate) struct NewLine<'r>(pub(crate) &'r [u8]);
 
 impl<'r> FromBuffer<'r> for NewLine<'r> {
     type State = ();

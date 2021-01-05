@@ -215,6 +215,12 @@ impl<'a> From<&'a [String]> for Value<'a> {
     }
 }
 
+impl<'a> From<Vec<Value<'a>>> for Value<'a> {
+    fn from(value: Vec<Value<'a>>) -> Self {
+        Value::List(value)
+    }
+}
+
 impl<'a> Serialize for Value<'a> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match *self {

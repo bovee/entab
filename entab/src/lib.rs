@@ -5,8 +5,7 @@
     missing_copy_implementations,
     trivial_casts,
     trivial_numeric_casts,
-    // TODO: reenable
-    // unreachable_pub,
+    unreachable_pub,
     unused_import_braces,
     unused_qualifications,
     unused_results
@@ -14,7 +13,11 @@
 //! entab is a library to parse different "record-formatted" file formats
 //! into tabular form.
 //!
-//! An example reading a FASTA file and extracting all the ids:
+//! Entab provides two different ways to parse each file it supports. If you
+//! know the type of the file you'll be reading, you generally want to use the
+//! specific parser for that file type which will return a record of a specific
+//! type. For example, to parse the IDs out of a FASTA file you might do the
+//! following:
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
@@ -26,6 +29,29 @@
 //! let mut reader = FastaReader::new(buffer, ())?;
 //! while let Some(FastaRecord { id, .. }) = reader.next()? {
 //!     println!("{}", id);
+//! }
+//! # }
+//! # use entab::EtError;
+//! # Ok::<(), EtError>(())
+//! ```
+//!
+//! Alternatively, you may not know the type of file when writing your code so
+//! you may want to abstract over as many types as possible. This is where the
+//! slower, generic parser framework is used (for example, in the bindings
+//! libraries also). This framework takes a parser name which can be
+//! autodetected via `entab::filetype::sniff_reader_filetype` and
+//! `entab::filetype::FileType::to_parser_name`:
+//! ```
+//! # #[cfg(feature = "std")] {
+//! use std::fs::File;
+//! use entab::buffer::ReadBuffer;
+//! use entab::readers::get_reader;
+//!
+//! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
+//! let buffer = ReadBuffer::new(file)?;
+//! let mut reader = get_reader("fasta", buffer)?;
+//! while let Some(record) = reader.next_record()? {
+//!     println!("{:?}", record[0]);
 //! }
 //! # }
 //! # use entab::EtError;

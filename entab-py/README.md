@@ -1,4 +1,4 @@
-# entab
+# Entab
 
 Parse record-based file formats into a stream of records.
 
@@ -8,7 +8,7 @@ Parse record-based file formats into a stream of records.
 from entab import Reader
 reader = Reader(filename='test.fa')
 for record in reader:
-    ...
+    print(record.id)
 ```
 
 ## Development
