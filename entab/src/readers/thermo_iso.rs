@@ -37,7 +37,7 @@ impl<'r> FromBuffer<'r> for MfcString<'r> {
         } else if rb[1..3] == [0xFE, 0xFF] {
             (4, 4 + 2 * usize::from(rb[3]), true)
         } else {
-            return Err(EtError::new("Unknown string header", &rb));
+            return Err(EtError::new("Unknown string header", rb));
         };
 
         let data = &rb.extract::<&[u8]>(end)?[start..];
@@ -120,7 +120,7 @@ impl<'r> FromBuffer<'r> for ThermoDxfRecord {
             // is the number of sections in the data, but
             if state.first {
                 if !rb.seek_pattern(b"CRawData")? {
-                    return Err(EtError::new("Could not find data", &rb));
+                    return Err(EtError::new("Could not find data", rb));
                 }
                 state.first = false;
                 // str plus a u32 (value 3) and a `2F00`
@@ -248,7 +248,7 @@ impl<'r> FromBuffer<'r> for ThermoCfRecord {
             if n_mzs != state.mzs.len() {
                 return Err(EtError::new(
                     format!("Gas type {} has bad information", gas_type),
-                    &rb,
+                    rb,
                 ));
             }
 
@@ -302,7 +302,7 @@ mod tests {
         } else {
             panic!("Thermo DXF reader returned bad record");
         }
-        while let Some(_) = reader.next()? {}
+        while reader.next()?.is_some() {}
         Ok(())
     }
 
@@ -323,7 +323,7 @@ mod tests {
         } else {
             panic!("Thermo CF reader returned bad record");
         }
-        while let Some(_) = reader.next()? {}
+        while reader.next()?.is_some() {}
         Ok(())
     }
 }

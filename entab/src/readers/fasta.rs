@@ -33,7 +33,7 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
             return Ok(false);
         }
         if rb[0] != b'>' {
-            return Err(EtError::new("Valid FASTA records start with '>'", &rb));
+            return Err(EtError::new("Valid FASTA records start with '>'", rb));
         }
         let (header_range, seq_start) = loop {
             if let Some(p) = memchr(b'\n', &rb[..]) {
@@ -44,7 +44,7 @@ impl<'r> FromBuffer<'r> for FastaRecord<'r> {
                     break (1..p, p + 1);
                 }
             } else if rb.eof() {
-                return Err(EtError::new("Incomplete record", &rb));
+                return Err(EtError::new("Incomplete record", rb));
             }
             rb.refill()?;
         };

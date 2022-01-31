@@ -32,12 +32,12 @@ impl<'r> FromBuffer<'r> for InficonState {
         // the "instrument collection steps" section and it appears to be
         // a constant distance before the "list of mzs" section
         if !rb.seek_pattern(b"\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xF6\xFF\xFF\xFF\x00\x00\x00\x00")? {
-            return Err(EtError::new("Could not find m/z header list", &rb));
+            return Err(EtError::new("Could not find m/z header list", rb));
         }
         let _ = rb.extract::<&[u8]>(148)?;
         let n_segments = rb.extract::<u32>(Endian::Little)? as usize;
         if n_segments > 10000 {
-            return Err(EtError::new("Inficon file has too many segments", &rb));
+            return Err(EtError::new("Inficon file has too many segments", rb));
         }
         // now read all of the collection segments
         let mut mz_segments = vec![Vec::new(); n_segments];
@@ -51,7 +51,7 @@ impl<'r> FromBuffer<'r> for InficonState {
                 let end_mz = rb.extract::<u32>(Endian::Little)?;
                 if start_mz >= end_mz || end_mz >= 1e11 as u32 {
                     // only malformed data should hit this
-                    return Err(EtError::new("m/z range is too big or invalid", &rb));
+                    return Err(EtError::new("m/z range is too big or invalid", rb));
                 }
                 // then dwell time (u32; microseconds) and three more u32s
                 let _ = rb.extract::<&[u8]>(16)?;
@@ -72,7 +72,7 @@ impl<'r> FromBuffer<'r> for InficonState {
         }
         self.mz_segments = mz_segments;
         if !rb.seek_pattern(b"\xFF\xFF\xFF\xFFHapsGPIR")? {
-            return Err(EtError::new("Could not find start of scan data", &rb));
+            return Err(EtError::new("Could not find start of scan data", rb));
         }
         // seek to right before the "HapsScan" section because the section
         // length is encoded in the four bytes before the header for that
@@ -80,7 +80,7 @@ impl<'r> FromBuffer<'r> for InficonState {
         let data_length = u64::from(rb.extract::<u32>(Endian::Little)?);
         let _ = rb.extract::<&[u8]>(8)?;
         if rb.extract::<&[u8]>(8)? != b"HapsScan" {
-            return Err(EtError::new("Data header was malformed", &rb));
+            return Err(EtError::new("Data header was malformed", rb));
         }
         let _ = rb.extract::<&[u8]>(56)?;
         self.data_end = rb.get_byte_pos() + data_length;
@@ -124,7 +124,7 @@ impl<'r> FromBuffer<'r> for InficonRecord {
             if state.cur_segment >= state.mz_segments.len() {
                 return Err(EtError::new(
                     format!("Invalid segment number ({}) specified", state.cur_segment),
-                    &rb,
+                    rb,
                 ));
             }
             if n_mzs != state.mz_segments[state.cur_segment].len() {
@@ -134,7 +134,7 @@ impl<'r> FromBuffer<'r> for InficonRecord {
                         n_mzs,
                         state.mz_segments[state.cur_segment].len()
                     ),
-                    &rb,
+                    rb,
                 ));
             }
             state.mzs_left = n_mzs;

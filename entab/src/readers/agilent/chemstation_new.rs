@@ -25,10 +25,10 @@ impl<'r> FromBuffer<'r> for ChemstationUvState {
 
     fn from_buffer(
         &mut self,
-        mut rb: &'r mut ReadBuffer,
+        rb: &'r mut ReadBuffer,
         _state: Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(&mut rb, false)?;
+        let header = read_agilent_header(rb, false)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
         // TODO: get other metadata
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(intensity, -15.6675);
 
         let mut n_mzs = 1;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 6744 * 301);

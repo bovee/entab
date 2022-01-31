@@ -152,10 +152,10 @@ impl<'r> FromBuffer<'r> for PngState {
         _state: Self::State,
     ) -> Result<bool, EtError> {
         if rb.extract::<&[u8]>(8)? != b"\x89PNG\r\n\x1A\n" {
-            return Err(EtError::new("Invalid PNG magic", &rb));
+            return Err(EtError::new("Invalid PNG magic", rb));
         }
         if rb.extract::<&[u8]>(8)? != b"\x00\x00\x00\x0DIHDR" {
-            return Err(EtError::new("Invalid PNG header", &rb));
+            return Err(EtError::new("Invalid PNG header", rb));
         }
         self.width = rb.extract::<u32>(Endian::Big)? as usize;
         self.height = rb.extract::<u32>(Endian::Big)? as usize;
@@ -163,13 +163,13 @@ impl<'r> FromBuffer<'r> for PngState {
         self.color_type = PngColorType::from_byte(rb.extract(Endian::Big)?)?;
         // skip the compression, filter, and interlace bytes
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG compression must be type 0", &rb));
+            return Err(EtError::new("PNG compression must be type 0", rb));
         }
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG filtering must be type 0", &rb));
+            return Err(EtError::new("PNG filtering must be type 0", rb));
         }
         if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG interlacing not supported yet", &rb));
+            return Err(EtError::new("PNG interlacing not supported yet", rb));
         }
 
         // parse through the entire file beforehand; because the data is compressed into multiple
@@ -269,40 +269,40 @@ impl<'r> FromBuffer<'r> for PngRecord {
         let pos = state.cur_x * state.color_type.pixel_size();
         let (red, green, blue, alpha) = match state.color_type {
             PngColorType::Indexed => {
-                let palette_pos = get_bits(&line, pos, bd, false)? as usize;
+                let palette_pos = get_bits(line, pos, bd, false)? as usize;
                 if let Some(palette) = &state.palette {
                     if palette_pos >= palette.len() {
                         return Err(EtError::new(
                             "Color index was outside palette dimensions",
-                            &rb,
+                            rb,
                         ));
                     }
                     let (red, green, blue) = palette[palette_pos];
                     (red, green, blue, u16::MAX)
                 } else {
-                    return Err(EtError::new("No palette was provided", &rb));
+                    return Err(EtError::new("No palette was provided", rb));
                 }
             }
             PngColorType::Grayscale => {
-                let gray = get_bits(&line, pos, bd, true)?;
+                let gray = get_bits(line, pos, bd, true)?;
                 (gray, gray, gray, u16::MAX)
             }
             PngColorType::AlphaGrayscale => {
-                let gray = get_bits(&line, pos, bd, true)?;
-                let alpha = get_bits(&line, pos + 1, bd, true)?;
+                let gray = get_bits(line, pos, bd, true)?;
+                let alpha = get_bits(line, pos + 1, bd, true)?;
                 (gray, gray, gray, alpha)
             }
             PngColorType::Color => {
-                let red = get_bits(&line, pos, bd, true)?;
-                let green = get_bits(&line, pos + 1, bd, true)?;
-                let blue = get_bits(&line, pos + 2, bd, true)?;
+                let red = get_bits(line, pos, bd, true)?;
+                let green = get_bits(line, pos + 1, bd, true)?;
+                let blue = get_bits(line, pos + 2, bd, true)?;
                 (red, green, blue, u16::MAX)
             }
             PngColorType::AlphaColor => {
-                let red = get_bits(&line, pos, bd, true)?;
-                let green = get_bits(&line, pos + 1, bd, true)?;
-                let blue = get_bits(&line, pos + 2, bd, true)?;
-                let alpha = get_bits(&line, pos + 3, bd, true)?;
+                let red = get_bits(line, pos, bd, true)?;
+                let green = get_bits(line, pos + 1, bd, true)?;
+                let blue = get_bits(line, pos + 2, bd, true)?;
+                let alpha = get_bits(line, pos + 3, bd, true)?;
                 (red, green, blue, alpha)
             }
         };
@@ -337,7 +337,7 @@ mod tests {
         let _ = reader.metadata();
 
         let mut n_recs = 0;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_recs += 1;
         }
         // 200x200 image

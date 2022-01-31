@@ -67,11 +67,11 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
             if rb.len() > 1024 {
                 return Err(EtError::new(
                     format!("Tags larger than {} not supported", 1024),
-                    &rb,
+                    rb,
                 ));
             }
             if rb.eof() {
-                return Err(EtError::new("Tag was never closed", &rb));
+                return Err(EtError::new("Tag was never closed", rb));
             }
             start = rb.len() - 1;
             rb.refill()?;
@@ -117,7 +117,7 @@ impl<'r> FromBuffer<'r> for XmlText<'r> {
             if rb.len() > 65536 {
                 return Err(EtError::new(
                     format!("XML text larger than {} not supported", 65536),
-                    &rb,
+                    rb,
                 ));
             }
             if rb.eof() {
@@ -175,7 +175,7 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
                         "Closing tag for {} not present?",
                         state.stack.pop().unwrap()
                     ),
-                    &rb,
+                    rb,
                 ));
             } else {
                 return Ok(false);
@@ -193,7 +193,7 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
                         if open_tag != tag.id {
                             return Err(EtError::new(
                                 format!("Closing tag {} found, but {} was open.", tag.id, open_tag),
-                                &rb,
+                                rb,
                             ));
                         }
                     } else {
@@ -202,7 +202,7 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
                                 "Closing tag {} found, but no tags opened before it.",
                                 tag.id
                             ),
-                            &rb,
+                            rb,
                         ));
                     }
                 }

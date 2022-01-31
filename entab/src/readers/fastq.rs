@@ -39,7 +39,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             }
         }
         if rb[0] != b'@' {
-            return Err(EtError::new("Valid FASTQ records start with '@'", &rb));
+            return Err(EtError::new("Valid FASTQ records start with '@'", rb));
         }
         // figure out where the first id/header line ends
         let (header_range, seq_start) = loop {
@@ -51,7 +51,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                     break (1..p, p + 1);
                 }
             } else if rb.eof() {
-                return Err(EtError::new("Record ended prematurely in header", &rb));
+                return Err(EtError::new("Record ended prematurely in header", rb));
             }
             rb.refill()?;
         };
@@ -59,7 +59,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
         let (seq_range, id2_start) = loop {
             if let Some(p) = memchr(b'+', &rb[seq_start..]) {
                 if p == 0 || rb[seq_start + p - 1] != b'\n' {
-                    return Err(EtError::new("Unexpected + found in sequence", &rb));
+                    return Err(EtError::new("Unexpected + found in sequence", rb));
                 }
                 // the + is technically part of the next header so we're
                 // already one short before we even check the \r
@@ -70,7 +70,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
                     break (seq_start..seq_start + p - 1, seq_start + p);
                 }
             } else if rb.eof() {
-                return Err(EtError::new("Record ended prematurely in sequence", &rb));
+                return Err(EtError::new("Record ended prematurely in sequence", rb));
             }
             rb.refill()?;
         };
@@ -81,7 +81,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             } else if rb.eof() {
                 return Err(EtError::new(
                     "Record ended prematurely in second header",
-                    &rb,
+                    rb,
                 ));
             }
             rb.refill()?;
@@ -97,7 +97,7 @@ impl<'r> FromBuffer<'r> for FastqRecord<'r> {
             }
 
             if qual_end > rb.len() && rb.eof() {
-                return Err(EtError::new("Record ended prematurely in quality", &rb));
+                return Err(EtError::new("Record ended prematurely in quality", rb));
             } else if rec_end > rb.len() && !rb.eof() {
                 rb.refill()?;
                 continue;
@@ -212,7 +212,7 @@ mod tests {
     fn test_fastq_from_file() -> Result<(), EtError> {
         let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test.fastq"));
         let mut reader = FastqReader::new(rb, ())?;
-        while let Some(_) = reader.next()? {}
+        while reader.next()?.is_some() {}
         Ok(())
     }
 }

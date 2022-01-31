@@ -3,7 +3,7 @@ use std::fs::File;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use entab::buffer::ReadBuffer;
-use entab::readers::chemstation::ChemstationMsReader;
+use entab::readers::agilent::chemstation::ChemstationMsReader;
 use entab::readers::fasta::FastaReader;
 use entab::readers::fastq::FastqReader;
 use entab::readers::get_reader;

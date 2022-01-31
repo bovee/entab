@@ -108,13 +108,13 @@ impl<'r> FromBuffer<'r> for BamRecord<'r> {
         // now read the record itself
         let record_len = rb.extract::<u32>(Endian::Little)? as usize;
         if record_len < 32 {
-            return Err(EtError::new("Record is unexpectedly short", &rb));
+            return Err(EtError::new("Record is unexpectedly short", rb));
         }
         let raw_ref_name_id: i32 = rb.extract(Endian::Little)?;
         self.ref_name = if raw_ref_name_id < 0 {
             ""
         } else if raw_ref_name_id as usize >= state.references.len() {
-            return Err(EtError::new("Invalid reference sequence ID", &rb));
+            return Err(EtError::new("Invalid reference sequence ID", rb));
         } else {
             &state.references[raw_ref_name_id as usize].0
         };
@@ -140,7 +140,7 @@ impl<'r> FromBuffer<'r> for BamRecord<'r> {
         self.rnext = if raw_rnext_id < 0 {
             ""
         } else if raw_rnext_id as usize >= state.references.len() {
-            return Err(EtError::new("Invalid next reference sequence ID", &rb));
+            return Err(EtError::new("Invalid next reference sequence ID", rb));
         } else {
             &state.references[raw_rnext_id as usize].0
         };

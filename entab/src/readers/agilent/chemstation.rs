@@ -73,7 +73,7 @@ impl<'r> From<&ChemstationMetadata> for BTreeMap<String, Value<'r>> {
             metadata.description.clone().into(),
         );
         let _ = map.insert("operator".to_string(), metadata.operator.clone().into());
-        let _ = map.insert("run_date".to_string(), metadata.run_date.clone().into());
+        let _ = map.insert("run_date".to_string(), metadata.run_date.into());
         let _ = map.insert("instrument".to_string(), metadata.instrument.clone().into());
         let _ = map.insert("method".to_string(), metadata.method.clone().into());
         map
@@ -179,11 +179,11 @@ impl<'r> FromBuffer<'r> for ChemstationFidState {
 
     fn from_buffer(
         &mut self,
-        mut rb: &'r mut ReadBuffer,
+        rb: &'r mut ReadBuffer,
         _state: Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(&mut rb, false)?;
-        let metadata = get_metadata(&header)?;
+        let header = read_agilent_header(rb, false)?;
+        let metadata = get_metadata(header)?;
 
         self.cur_time = metadata.start_time;
         self.cur_intensity = 0.;
@@ -215,7 +215,7 @@ impl<'r> FromBuffer<'r> for ChemstationFidRecord {
         if rb.is_empty() && rb.eof() {
             return Ok(false);
         } else if rb.len() == 1 && rb.eof() {
-            return Err(EtError::new("FID record was incomplete", &rb));
+            return Err(EtError::new("FID record was incomplete", rb));
         }
         let time = state.cur_time;
         state.cur_time += state.time_step;
@@ -258,11 +258,11 @@ impl<'r> FromBuffer<'r> for ChemstationMsState {
 
     fn from_buffer(
         &mut self,
-        mut rb: &'r mut ReadBuffer,
+        rb: &'r mut ReadBuffer,
         _state: Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(&mut rb, true)?;
-        let metadata = get_metadata(&header)?;
+        let header = read_agilent_header(rb, true)?;
+        let metadata = get_metadata(header)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
@@ -299,7 +299,7 @@ impl<'r> FromBuffer<'r> for ChemstationMsRecord {
             // handle the record header
             let raw_n_mzs_left: u16 = rb.extract(Endian::Big)?;
             if raw_n_mzs_left < 14 {
-                return Err(EtError::new("Invalid Chemstation MS record header", &rb));
+                return Err(EtError::new("Invalid Chemstation MS record header", rb));
             }
             state.n_mzs_left = usize::from((raw_n_mzs_left - 14) / 2);
             state.cur_time = f64::from(rb.extract::<u32>(Endian::Big)?) / 60000.;
@@ -357,11 +357,11 @@ impl<'r> FromBuffer<'r> for ChemstationMwdState {
 
     fn from_buffer(
         &mut self,
-        mut rb: &'r mut ReadBuffer,
+        rb: &'r mut ReadBuffer,
         _state: Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(&mut rb, false)?;
-        let metadata = get_metadata(&header)?;
+        let header = read_agilent_header(rb, false)?;
+        let metadata = get_metadata(header)?;
 
         self.n_wvs_left = 0;
         self.cur_time = metadata.start_time;
@@ -397,16 +397,11 @@ impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
     fn from(record: ChemstationMwdRecord<'r>) -> Self {
         // signal name is something like "MWD A, Sig=210,5 Ref=360,100"
         let signal = record
-            .signal_name
-            .splitn(2, "Sig=")
-            .nth(1)
+            .signal_name.split_once("Sig=").map(|x| x.1)
             .and_then(|last_part| {
-                last_part
-                    .splitn(2, ',')
-                    .next()
+                Some(last_part.split_once(',').map_or(last_part, |x| x.0))
                     .and_then(|sig_name| sig_name.parse::<f64>().ok())
-            })
-            .unwrap_or_else(|| 0.);
+            }).unwrap_or(0.);
         vec![record.time.into(), signal.into(), record.intensity.into()]
     }
 }
@@ -464,10 +459,10 @@ impl<'r> FromBuffer<'r> for ChemstationUvState {
 
     fn from_buffer(
         &mut self,
-        mut rb: &'r mut ReadBuffer,
+        rb: &'r mut ReadBuffer,
         _state: Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(&mut rb, false)?;
+        let header = read_agilent_header(rb, false)?;
         let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
 
         // TODO: get other metadata
@@ -635,7 +630,7 @@ mod tests {
         assert!((intensity - 17.500).abs() < 0.001);
 
         let mut n_mzs = 1;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 2699);
@@ -670,7 +665,7 @@ mod tests {
         assert_eq!(intensity, 184.);
 
         let mut n_mzs = 2;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 95471);
@@ -695,7 +690,7 @@ mod tests {
         assert!((intensity - -36.34977).abs() < 0.00001);
 
         let mut n_mzs = 1;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 1801);
@@ -720,7 +715,7 @@ mod tests {
         assert_eq!(intensity, -15.6675);
 
         let mut n_mzs = 1;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 6744 * 301);

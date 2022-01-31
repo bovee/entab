@@ -2,8 +2,6 @@ use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
 use alloc::format;
-#[cfg(feature = "std")]
-use alloc::vec::Vec;
 use core::any::type_name;
 #[cfg(feature = "std")]
 use core::mem::swap;
@@ -56,10 +54,7 @@ impl<'s> ReadBuffer<'s> {
         buffer_size: usize,
         mut reader: Box<dyn Read + 's>,
     ) -> Result<Self, EtError> {
-        let mut buffer = Vec::with_capacity(buffer_size);
-        unsafe {
-            buffer.set_len(buffer.capacity());
-        }
+        let mut buffer = vec![0; buffer_size];
         let amt_read = reader.read(&mut buffer)?;
         unsafe {
             buffer.set_len(amt_read);
@@ -133,7 +128,7 @@ impl<'s> ReadBuffer<'s> {
         let amt_read = self
             .reader
             .read(&mut buffer[len..])
-            .map_err(|e| EtError::from(e).add_context(&self))?;
+            .map_err(|e| EtError::from(e).add_context(self))?;
         unsafe {
             buffer.set_len(len + amt_read);
         }
@@ -160,7 +155,7 @@ impl<'s> ReadBuffer<'s> {
     pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
         while self.len() < amt {
             if self.eof {
-                return Err(EtError::new("Data ended prematurely", &self));
+                return Err(EtError::new("Data ended prematurely", self));
             }
             self.refill()?;
         }

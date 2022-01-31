@@ -40,21 +40,13 @@ macro_rules! impl_record {
         impl<'r> $crate::record::RecordHeader for $type {
             fn header() -> ::alloc::vec::Vec<::alloc::string::String> {
                 use ::alloc::string::ToString;
-                let mut header = ::alloc::vec::Vec::new();
-                $(
-                    header.push(stringify!($key).to_string());
-                )*
-                header
+                vec![$(stringify!($key).to_string(),)*]
             }
         }
 
         impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value<'r>> {
             fn from(record: $type) -> Self {
-                let mut list = ::alloc::vec::Vec::new();
-                $(
-                    list.push(record.$key.into());
-                )*
-                list
+                vec![$(record.$key.into(),)*]
             }
         }
     };

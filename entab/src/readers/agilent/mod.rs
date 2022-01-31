@@ -27,14 +27,14 @@ pub(crate) fn read_agilent_header<'r>(
     // figure out how big the header should be and then get it
     let raw_header_size = u32::out_of(&rb[264..268], Endian::Big)? as usize;
     if raw_header_size == 0 {
-        return Err(EtError::new("Invalid header length of 0", &rb));
+        return Err(EtError::new("Invalid header length of 0", rb));
     }
     let mut header_size = 2 * (raw_header_size - 1);
     if !ms_format {
         header_size *= 256;
     }
     if header_size < 512 {
-        return Err(EtError::new("Header length too short", &rb));
+        return Err(EtError::new("Header length too short", rb));
     }
     rb.extract::<&[u8]>(header_size)
 }
