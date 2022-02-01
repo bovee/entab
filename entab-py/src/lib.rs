@@ -15,10 +15,10 @@ use pyo3::{create_exception, exceptions};
 
 use crate::raw_io_wrapper::RawIoWrapper;
 
-create_exception!(entab, EntabError, exceptions::Exception);
+create_exception!(entab, EntabError, exceptions::PyException);
 
 fn to_py(err: EtError) -> PyErr {
-    EntabError::py_err(err.to_string())
+    EntabError::new_err(err.to_string())
     // TODO: somehow bind err.byte and err.record in here too?
 }
 
@@ -42,14 +42,14 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
             list.to_object(py)
         }
         _ => {
-            return Err(EntabError::py_err("record subelements unimplemented"));
+            return Err(EntabError::new_err("record subelements unimplemented"));
         }
     })
 }
 
 // TODO: remove the unsendable; by wrapping reader in an Arc?
 #[pyclass(unsendable)]
-#[text_signature = "(/, data=None, filename=None, parser=None)"]
+#[pyo3(text_signature = "(/, data=None, filename=None, parser=None)")]
 pub struct Reader {
     #[pyo3(get)]
     parser: String,
@@ -62,7 +62,7 @@ impl PyIterProtocol for Reader {
     fn __iter__(slf: PyRefMut<Self>) -> PyResult<PyObject> {
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let val: PyObject = FromPy::from_py(slf, py);
+        let val: PyObject = slf.into_py(py);
         Ok(val.clone_ref(py))
     }
 
@@ -97,14 +97,14 @@ impl Reader {
                 } else if d.hasattr("read")? {
                     Box::new(RawIoWrapper::new(d))
                 } else {
-                    return Err(EntabError::py_err(
+                    return Err(EntabError::new_err(
                         "`data` must be str, bytes or implement `read`",
                     ));
                 }
             }
             (None, Some(f)) => Box::new(File::open(f)?),
             _ => {
-                return Err(EntabError::py_err(
+                return Err(EntabError::new_err(
                     "One and only one of `data` or `filename` must be provided",
                 ))
             }
@@ -123,7 +123,7 @@ impl Reader {
             .map(|h| h.replace(" ", "_").replace("-", "_"))
             .collect();
         let collections = PyModule::import(py, "collections")?;
-        let record_class = collections.call1("namedtuple", ("Record", headers))?.into();
+        let record_class = collections.getattr("namedtuple")?.call1(("Record", headers))?.into();
 
         Ok(Reader {
             parser: parser_name.to_string(),
@@ -175,6 +175,7 @@ mod tests {
 
     #[test]
     fn test_reader_creation() -> PyResult<()> {
+        pyo3::prepare_freethreaded_python();
         let gil = Python::acquire_gil();
         let py = gil.python();
 

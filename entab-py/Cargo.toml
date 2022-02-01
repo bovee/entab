@@ -7,12 +7,10 @@ description = "Record-format file reader"
 repository = "https://github.com/bovee/entab"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 entab_base = { package = "entab", path = "../entab", default-features = false, features = ["std", "compression_manylinux"] }
 memmap = "0.7"
-pyo3 = "0.11.1"
+pyo3 = "0.15.1"
 
 [lib]
 name = "entab"
