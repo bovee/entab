@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 entab_base = { package = "entab", path = "../entab"}
-extendr-api = "0.1.10"
-libR-sys = "0.1.10"
+extendr-api = "0.2.0"
+libR-sys = "0.2.0"
 
 [lib]
 name = "entab"

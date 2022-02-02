@@ -13,4 +13,5 @@ Suggests:
     devtools,
     roxygen2
 LazyData: true
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
+SystemRequirements: Cargo (rustc package manager)

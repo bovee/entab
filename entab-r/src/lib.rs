@@ -8,9 +8,9 @@ use entab_base::compression::decompress;
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use extendr_api::*;
+use extendr_api::{append, append_lang, append_with_name, class_symbol, extendr, extendr_module, lang, make_lang, Robj};
 
-use util::{unwrap_result, vec_to_list};
+use util::{unwrap_result, vec_to_frame, vec_to_list};
 
 fn value_to_robj(value: Value) -> Robj {
     match value {
@@ -45,7 +45,7 @@ struct Reader {
     reader: Box<dyn RecordReader>,
 }
 
-fn new_reader(filename: &str, parser: &str) -> Result<Reader, EtError> {
+fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
     let stream: Box<dyn Read> = Box::new(File::open(filename)?);
     let (reader, filetype, _) = decompress(stream)?;
     let buffer = ReadBuffer::new(reader)?;
@@ -61,7 +61,7 @@ fn new_reader(filename: &str, parser: &str) -> Result<Reader, EtError> {
         parser: parser_name.to_string(),
         header_names,
         reader,
-    })
+    }.into())
 }
 
 fn next_reader(reader: &mut Reader) -> Result<Robj, EtError> {
@@ -74,6 +74,22 @@ fn next_reader(reader: &mut Reader) -> Result<Robj, EtError> {
     } else {
         Ok(().into())
     }
+}
+
+fn get_dataframe(reader: &mut Reader) -> Result<Robj, EtError> {
+    let mut data: Vec<Vec<Robj>> = vec![vec![]; reader.header_names.len()];
+    while let Some(record) = reader.reader.next_record()? {
+        let mut ix = 0;
+        for v in &record {
+            data[ix].push(value_to_robj(v.clone()));
+            ix += 1;
+        }
+    }
+    let mut vectors: Vec<Robj> = vec![];
+    for v in data {
+        vectors.push(v.into());
+    }
+    Ok(vec_to_frame(&vectors, &reader.header_names))
 }
 
 #[extendr]
@@ -108,7 +124,14 @@ impl Reader {
     }
 }
 
+#[extendr]
+fn as_data_frame(reader: &mut Reader) -> Robj {
+    unwrap_result(get_dataframe(reader))
+}
+
+
 extendr_module! {
     mod entab;
     impl Reader;
+    fn as_data_frame;
 }

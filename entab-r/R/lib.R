@@ -5,21 +5,13 @@
 #'
 
 #' @export Reader
-Reader <- setClass("Reader", representation( pointer = "externalptr" ) )
+Reader <- setClass("Reader", slots = c( pointer = "externalptr" ) )
 
 #' Convert the Reader into a data.frame
 #' 
 #' @export
 setMethod("as.data.frame", "Reader", function(x, ...) {
-    value <- .Call("wrap__Reader__next", x@pointer)
-    df <- as.data.frame(matrix(,0,length(value)))
-    names(df) <- .Call("wrap__Reader__headers", x@pointer)
-    while (!is.null(value)) {
-        # TODO: this is super slow and doesn't scale very well
-	df <- rbind(df, value)
-        value <- .Call("wrap__Reader__next", x@pointer)
-    }
-    df
+    .Call("wrap__as_data_frame", x@pointer)
 } )
 
 #' Expose methods
@@ -42,6 +34,9 @@ setMethod("show", "Reader", function(object) {
 #' 
 #' @return Reader wrapping the opened file
 setMethod("initialize", "Reader", function(.Object, filename, parser = "") {
-    .Object@pointer <- .Call("wrap__Reader__new", filename, parser)
+    d <- .Call("wrap__Reader__new", filename, parser)
+    # extendr is setting class, but we need to strip it to fit in the slot
+    attr(d, "class") <- NULL
+    .Object@pointer <- d
     .Object
 } )
