@@ -31,26 +31,26 @@ pub fn run() -> Result<(), EtError> {
         .arg(
             Arg::new("input")
                 .short('i')
-                .about("Path to read; if not provided stdin will be used")
+                .help("Path to read; if not provided stdin will be used")
                 .takes_value(true),
         )
         .arg(
             Arg::new("output")
                 .short('o')
-                .about("Path to write to; if not provided stdout will be used")
+                .help("Path to write to; if not provided stdout will be used")
                 .takes_value(true),
         )
         .arg(
             Arg::new("parser")
                 .short('p')
-                .about("Parser to use [if not specified, file type will be auto-detected]")
+                .help("Parser to use [if not specified, file type will be auto-detected]")
                 .takes_value(true),
         )
         .arg(
             Arg::new("metadata")
                 .short('m')
                 .long("metadata")
-                .about("Reports metadata about the file instead of the data itself"),
+                .help("Reports metadata about the file instead of the data itself"),
         )
         .get_matches();
 
