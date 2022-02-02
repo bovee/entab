@@ -40,13 +40,13 @@ macro_rules! impl_record {
         impl<'r> $crate::record::RecordHeader for $type {
             fn header() -> ::alloc::vec::Vec<::alloc::string::String> {
                 use ::alloc::string::ToString;
-                vec![$(stringify!($key).to_string(),)*]
+                ::alloc::vec![$(stringify!($key).to_string(),)*]
             }
         }
 
         impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value<'r>> {
             fn from(record: $type) -> Self {
-                vec![$(record.$key.into(),)*]
+                ::alloc::vec![$(record.$key.into(),)*]
             }
         }
     };
