@@ -50,8 +50,11 @@ The Python library can be installed with:
 pip install entab
 ```
 
-There are also very experimental R bindings that can be installed in
-"development" mode.
+The R bindings can be installed from inside R with (note you will need Cargo and a Rust buildchain locally):
+```r
+library(devtools)
+devtools::install_github("bovee/entab", subdir="entab-r")
+```
 
 ## Priorities
 

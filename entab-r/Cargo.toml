@@ -5,7 +5,7 @@ authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-entab_base = { package = "entab", path = "../entab"}
+entab_base = { package = "entab", version = "0.2.2" }
 extendr-api = "0.2.0"
 libR-sys = "0.2.0"
 
