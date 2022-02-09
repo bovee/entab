@@ -1,8 +1,10 @@
+use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
 use alloc::str::Utf8Error;
 use alloc::string::{FromUtf8Error, String, ToString};
 use alloc::vec::Vec;
+use core::convert::Infallible;
 use core::fmt;
 use core::num::{ParseFloatError, ParseIntError};
 #[cfg(feature = "std")]
@@ -34,52 +36,60 @@ pub struct EtErrorContext {
 /// The Error struct for entab
 pub struct EtError {
     /// A succinct message describing the error
-    pub msg: String,
+    pub msg: Cow<'static, str>,
     /// Extra context, if available
     pub context: Option<EtErrorContext>,
+    /// If the error could be recovered from by pulling more data into the buffer.
+    pub incomplete: bool,
     #[cfg(feature = "std")]
     orig_err: Option<Box<dyn Error>>,
 }
 
 impl EtError {
     /// Create a new EtError with a display message of `msg`
-    pub fn new<T>(msg: T, rb: &ReadBuffer) -> Self
-    where
-        T: Into<String>,
-    {
+    pub fn new(msg: &'static str) -> Self {
         EtError {
-            msg: msg.into(),
+            msg: Cow::Borrowed(msg),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: None,
         }
-        .add_context(rb)
+    }
+
+    /// Create a new EtError indicating an incomplete parse state.
+    pub fn incomplete(mut self) -> Self {
+        self.incomplete = true;
+        self
     }
 
     /// Fill the positional error information from a ReadBuffer
     ///
     /// Used to display e.g. where a parsing error in a file occured.
-    pub fn add_context(mut self, rb: &ReadBuffer) -> Self {
-        let rb_len = rb.buffer.len();
-        let (context, context_pos) = match (rb.consumed < 16, rb_len < rb.consumed + 16) {
-            (true, true) => ((&rb.buffer[..]).to_vec(), rb.consumed),
-            (true, false) => ((&rb.buffer[..rb.consumed + 16]).to_vec(), rb.consumed),
+    pub fn add_context(mut self, buffer: &ReadBuffer) -> Self {
+        let buf_len = buffer.as_ref().len();
+        let (context, context_pos) = match (buffer.consumed < 16, buf_len < buffer.consumed + 16) {
+            (true, true) => (buffer.as_ref().to_vec(), buffer.consumed),
+            (true, false) => (
+                (&buffer.as_ref()[..buffer.consumed + 16]).to_vec(),
+                buffer.consumed,
+            ),
             (false, true) => {
-                if rb.consumed < rb_len {
-                    ((&rb.buffer[rb.consumed - 16..]).to_vec(), 16)
+                if buffer.consumed < buf_len {
+                    ((&buffer.as_ref()[buffer.consumed - 16..]).to_vec(), 16)
                 } else {
                     (Vec::new(), 0)
                 }
             }
             (false, false) => (
-                (&rb.buffer[rb.consumed - 16..rb.consumed + 16]).to_vec(),
+                (&buffer.as_ref()[buffer.consumed - 16..buffer.consumed + 16]).to_vec(),
                 16,
             ),
         };
 
         self.context = Some(EtErrorContext {
-            record: rb.record_pos,
-            byte: rb.get_byte_pos(),
+            record: buffer.record_pos,
+            byte: buffer.reader_pos + buffer.consumed as u64,
             context,
             context_pos,
         });
@@ -128,11 +138,18 @@ impl Error for EtError {
     }
 }
 
-impl From<&str> for EtError {
-    fn from(error: &str) -> Self {
+impl From<Infallible> for EtError {
+    fn from(_error: Infallible) -> Self {
+        panic!("Infallible things shouldn't panic!")
+    }
+}
+
+impl From<&'static str> for EtError {
+    fn from(error: &'static str) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Borrowed(error),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: None,
         }
@@ -142,8 +159,9 @@ impl From<&str> for EtError {
 impl From<String> for EtError {
     fn from(msg: String) -> Self {
         EtError {
-            msg,
+            msg: Cow::Owned(msg),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: None,
         }
@@ -153,8 +171,9 @@ impl From<String> for EtError {
 impl From<FromUtf8Error> for EtError {
     fn from(error: FromUtf8Error) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Owned(error.to_string()),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
@@ -165,8 +184,9 @@ impl From<FromUtf8Error> for EtError {
 impl From<IoError> for EtError {
     fn from(error: IoError) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Owned(error.to_string()),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
@@ -176,8 +196,9 @@ impl From<IoError> for EtError {
 impl From<Utf8Error> for EtError {
     fn from(error: Utf8Error) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Owned(error.to_string()),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
@@ -187,8 +208,9 @@ impl From<Utf8Error> for EtError {
 impl From<ParseFloatError> for EtError {
     fn from(error: ParseFloatError) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Owned(error.to_string()),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
@@ -198,8 +220,9 @@ impl From<ParseFloatError> for EtError {
 impl From<ParseIntError> for EtError {
     fn from(error: ParseIntError) -> Self {
         EtError {
-            msg: error.to_string(),
+            msg: Cow::Owned(error.to_string()),
             context: None,
+            incomplete: false,
             #[cfg(feature = "std")]
             orig_err: Some(Box::new(error)),
         }
@@ -214,8 +237,8 @@ mod tests {
 
     #[test]
     fn test_context_display() {
-        let rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
-        let err = EtError::new("Test", &rb);
+        let buf: ReadBuffer = b"1234567890ABCDEF"[..].into();
+        let err = EtError::new("Test").add_context(&buf);
         let msg = format!("{}", err);
         assert_eq!(
             msg,
@@ -225,9 +248,9 @@ mod tests {
                        \n^^ 0\n"
         );
 
-        let mut rb = ReadBuffer::from_slice(b"1234567890ABCDEF");
-        let _ = rb.consume(10);
-        let err = EtError::new("Test", &rb);
+        let mut buf: ReadBuffer = b"1234567890ABCDEF"[..].into();
+        buf.consumed += 10;
+        let err = EtError::new("Test").add_context(&buf);
         let msg = format!("{}", err);
         assert_eq!(
             msg,

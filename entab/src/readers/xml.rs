@@ -8,8 +8,7 @@ use alloc::vec::Vec;
 
 use memchr::{memchr, memchr3_iter};
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::FromBuffer;
+use crate::parsers::{extract, unsafe_access_state, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -39,14 +38,16 @@ pub struct XmlTag<'r> {
     id: &'r str,
 }
 
-impl<'r> FromBuffer<'r> for XmlTag<'r> {
+impl<'r> FromSlice<'r> for XmlTag<'r> {
     type State = ();
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
     ) -> Result<bool, EtError> {
+        let con = &mut 0;
         let mut cur_quote = b' ';
         let mut start = 0;
         let end = 'read: loop {
@@ -65,34 +66,37 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
                 }
             }
             if rb.len() > 1024 {
-                return Err(EtError::new(
-                    format!("Tags larger than {} not supported", 1024),
-                    rb,
-                ));
+                return Err(format!("Tags larger than {} not supported", 1024).into());
             }
-            if rb.eof() {
-                return Err(EtError::new("Tag was never closed", rb));
+            if eof {
+                return Err("Tag was never closed".into());
             }
             start = rb.len() - 1;
-            rb.refill()?;
+            return Ok(false);
         };
-        let data = rb.consume(end);
+        *con += end;
+        Ok(true)
+    }
 
-        let is_closing = data[1] == b'/';
-        let is_self_closing = data.last() == Some(&b'/');
+    fn get(
+        &mut self,
+        buf: &'r [u8],
+        state: &Self::State,
+    ) -> Result<(), EtError> {
+        let is_closing = buf[1] == b'/';
+        let is_self_closing = buf.last() == Some(&b'/');
         let (tag_type, data) = match (is_closing, is_self_closing) {
             // TODO: we should be able to use EtError::new here
             (true, true) => return Err(EtError::from("Tag can not start and end with '/'")),
-            (true, false) => (XmlTagType::Close, &data[2..data.len() - 1]),
-            (false, true) => (XmlTagType::SelfClose, &data[1..data.len() - 2]),
-            (false, false) => (XmlTagType::Open, &data[1..data.len() - 1]),
+            (true, false) => (XmlTagType::Close, &buf[2..buf.len() - 1]),
+            (false, true) => (XmlTagType::SelfClose, &buf[1..buf.len() - 2]),
+            (false, false) => (XmlTagType::Open, &buf[1..buf.len() - 1]),
         };
         let id_end = memchr(b' ', data).unwrap_or(data.len());
         self.tag_type = tag_type;
         self.id = from_utf8(&data[..id_end])?;
         // TODO: parse attributes
-
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -100,13 +104,14 @@ impl<'r> FromBuffer<'r> for XmlTag<'r> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct XmlText<'r>(&'r str);
 
-impl<'r> FromBuffer<'r> for XmlText<'r> {
+impl<'r> FromSlice<'r> for XmlText<'r> {
     type State = ();
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let mut start = 0;
         let end = loop {
@@ -115,20 +120,28 @@ impl<'r> FromBuffer<'r> for XmlText<'r> {
                 break e;
             }
             if rb.len() > 65536 {
-                return Err(EtError::new(
-                    format!("XML text larger than {} not supported", 65536),
-                    rb,
-                ));
+                return Err(
+                    format!("XML text larger than {} not supported", 65536).into()
+                );
             }
-            if rb.eof() {
+            if eof {
                 // TODO: add test for this case
                 break rb.len();
             }
             start = rb.len() - 1;
-            rb.refill()?;
+            return Ok(false);
         };
-        self.0 = from_utf8(rb.consume(end))?;
+        *consumed += end;
         Ok(true)
+    }
+
+    fn get(
+        &mut self,
+        buf: &'r [u8],
+        state: &Self::State,
+    ) -> Result<(), EtError> {
+        self.0 = from_utf8(buf)?;
+        Ok(())
     }
 }
 
@@ -141,18 +154,8 @@ pub struct XmlState {
 
 impl<'r> StateMetadata<'r> for XmlState {}
 
-impl<'r> FromBuffer<'r> for XmlState {
+impl<'r> FromSlice<'r> for XmlState {
     type State = ();
-
-    fn from_buffer(
-        &mut self,
-        _rb: &'r mut ReadBuffer,
-        _state: Self::State,
-    ) -> Result<bool, EtError> {
-        // self.token_counts = Vec::new();
-        self.stack = Vec::new();
-        Ok(true)
-    }
 }
 
 /// A single record from an XML stream
@@ -164,26 +167,21 @@ pub struct XmlRecord<'r> {
     // attributes: BTreeMap<String>
 }
 
-impl<'r> FromBuffer<'r> for XmlRecord<'r> {
+impl<'r> FromSlice<'r> for XmlRecord<'r> {
     type State = &'r mut XmlState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn parse(rb: &[u8], eof: bool, consumed: &mut usize, state: &mut Self::State) -> Result<bool, EtError> {
         if rb.is_empty() {
             if !state.stack.is_empty() {
-                return Err(EtError::new(
-                    format!(
-                        "Closing tag for {} not present?",
-                        state.stack.pop().unwrap()
-                    ),
-                    rb,
-                ));
+                return Err(format!("Closing tag for {} not present?", state.stack.pop().unwrap()).into());
             } else {
                 return Ok(false);
             }
         }
+        let con = &mut 0;
         let text = if rb[0] == b'<' {
             // it's a tag
-            let tag = rb.extract::<XmlTag>(())?;
+            let tag = extract::<XmlTag>(rb, con, ())?;
             match tag.tag_type {
                 XmlTagType::Open => {
                     state.stack.push(tag.id.to_owned());
@@ -191,19 +189,17 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
                 XmlTagType::Close => {
                     if let Some(open_tag) = state.stack.pop() {
                         if open_tag != tag.id {
-                            return Err(EtError::new(
-                                format!("Closing tag {} found, but {} was open.", tag.id, open_tag),
-                                rb,
-                            ));
+                            return Err(
+                                format!("Closing tag {} found, but {} was open.", tag.id, open_tag).into()
+                            );
                         }
                     } else {
-                        return Err(EtError::new(
+                        return Err(
                             format!(
                                 "Closing tag {} found, but no tags opened before it.",
                                 tag.id
-                            ),
-                            rb,
-                        ));
+                            ).into()
+                        );
                     }
                 }
                 // TODO: we need to return the tag stack with this tag on it
@@ -212,13 +208,25 @@ impl<'r> FromBuffer<'r> for XmlRecord<'r> {
             ""
         } else {
             // it's text
-            let text = rb.extract::<XmlText>(())?;
+            let text = extract::<XmlText>(rb, con, ())?;
             text.0
         };
+        *consumed += *con;
 
-        self.tags = &state.stack;
-        self.text = text;
         Ok(true)
+    }
+
+    fn get(
+        &mut self,
+        rb: &'r [u8],
+        state: &Self::State,
+    ) -> Result<(), EtError> {
+        self.text = text;
+        // FIXME: this is actually fairly unsafe because `stack` changes per iteration so `tags` is
+        // going to not be stable if the reference to XmlRecord is saved for longer than one
+        // iteration.
+        self.tags = &unsafe_access_state(state).stack;
+        Ok(())
     }
 }
 
@@ -232,8 +240,8 @@ mod tests {
 
     #[test]
     fn test_xml_reader() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(b"<a>test</a>");
-        let mut reader = XmlReader::new(rb, ())?;
+        let data: &[u8] = b"<a>test</a>";
+        let mut reader = XmlReader::new(data, ())?;
 
         // TODO: don't emit on tag close? also emit the current tag?
         let rec = reader.next()?.unwrap();

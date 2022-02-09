@@ -6,8 +6,7 @@ use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use core::marker::Copy;
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, FromBuffer};
+use crate::parsers::{extract, extract_opt, Endian, FromSlice, SeekPattern, Skip};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -16,44 +15,62 @@ use crate::{impl_reader, impl_record};
 #[derive(Debug, Default)]
 pub struct MfcString<'r>(Cow<'r, str>);
 
-impl<'r> FromBuffer<'r> for MfcString<'r> {
+impl<'r> FromSlice<'r> for MfcString<'r> {
     type State = ();
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         if rb.is_empty() {
-            rb.reserve(1)?;
+            return Err(EtError::from("No MfcString").incomplete());
         }
         if rb[0] == 0xFF && rb.len() < 4 {
-            rb.reserve(4)?;
+            return Err(EtError::from("Expected longer MfcString").incomplete());
         }
-        let (start, end, utf16) = if rb[0] != 0xFF {
-            (1, 1 + usize::from(rb[0]), false)
+        let end = if rb[0] != 0xFF {
+            1 + usize::from(rb[0])
         } else if rb[1..3] == [0xFF, 0xFF] {
-            (4, 4 + usize::from(rb[3]), false)
+            4 + usize::from(rb[3])
         } else if rb[1..3] == [0xFE, 0xFF] {
-            (4, 4 + 2 * usize::from(rb[3]), true)
+            4 + 2 * usize::from(rb[3])
         } else {
-            return Err(EtError::new("Unknown string header", rb));
+            return Err("Unknown string header".into());
+        };
+        if rb.len() < end {
+            return Err(EtError::from("MfcString ended early").incomplete());
+        }
+        *consumed += end;
+
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+        let (start, utf16) = if rb[0] != 0xFF {
+            (1, false)
+        } else if rb[1..3] == [0xFF, 0xFF] {
+            (4, false)
+        } else if rb[1..3] == [0xFE, 0xFF] {
+            (4, true)
+        } else {
+            return Err("Unknown string header".into());
         };
 
-        let data = &rb.extract::<&[u8]>(end)?[start..];
         let string = if utf16 {
-            let iter = (0..end - start)
+            let iter = (start..rb.len())
                 .step_by(2)
-                .map(|i| u16::from_le_bytes([data[i], data[i + 1]]));
+                .map(|i| u16::from_le_bytes([rb[i], rb[i + 1]]));
             decode_utf16(iter)
                 .map(|r| r.unwrap_or(REPLACEMENT_CHARACTER))
                 .collect::<String>()
                 .into()
         } else {
-            alloc::str::from_utf8(data)?.into()
+            alloc::str::from_utf8(&rb[start..])?.into()
         };
         self.0 = string;
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -70,32 +87,35 @@ fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
 }
 
 /// The current state of the ThermoDxfReader
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ThermoDxfState {
     first: bool,
     n_scans_left: usize,
     cur_mz_idx: usize,
     mzs: Vec<f64>,
     cur_time: f64,
+    cur_mz: f64,
+    cur_intensity: f64,
+}
+
+impl Default for ThermoDxfState {
+    fn default() -> Self {
+        ThermoDxfState {
+            first: true,
+            n_scans_left: 0,
+            cur_mz_idx: 0,
+            mzs: Vec::new(),
+            cur_time: 0.,
+            cur_mz: 0.,
+            cur_intensity: 0.,
+        }
+    }
 }
 
 impl<'r> StateMetadata<'r> for ThermoDxfState {}
 
-impl<'r> FromBuffer<'r> for ThermoDxfState {
+impl<'r> FromSlice<'r> for ThermoDxfState {
     type State = ();
-
-    fn from_buffer(
-        &mut self,
-        _rb: &'r mut ReadBuffer,
-        _state: Self::State,
-    ) -> Result<bool, EtError> {
-        self.first = true;
-        self.n_scans_left = 0;
-        self.cur_mz_idx = 0;
-        self.mzs = Vec::new();
-        self.cur_time = 0.;
-        Ok(true)
-    }
 }
 
 /// A single data point from a Thermo DXF file
@@ -111,34 +131,45 @@ pub struct ThermoDxfRecord {
 
 impl_record!(ThermoDxfRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for ThermoDxfRecord {
+impl<'r> FromSlice<'r> for ThermoDxfRecord {
     type State = &'r mut ThermoDxfState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        let con = &mut 0;
         if state.n_scans_left == 0 {
             // it appears the last u32 before the `FFFF04`... CRawData header
             // is the number of sections in the data, but
             if state.first {
-                if !rb.seek_pattern(b"CRawData")? {
-                    return Err(EtError::new("Could not find data", rb));
+                if extract_opt::<SeekPattern>(rb, eof, con, b"CRawData")?.is_none() {
+                    return Err("Could not find CRawData section".into());
                 }
                 state.first = false;
                 // str plus a u32 (value 3) and a `2F00`
-                let _ = rb.extract::<&[u8]>(14)?;
+                let _ = extract::<&[u8]>(rb, con, 14)?;
             } else {
                 // `8282` is the replacement for CRawData, but we pad it out a
                 // little in our search to help with specificity
-                if !rb.seek_pattern(
+                if extract_opt::<SeekPattern>(
+                    rb,
+                    eof,
+                    con,
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x82\x82\x03\x00\x00\x00\x2F\x00\xFF\xFE\xFF",
-                )? {
+                )?
+                .is_none()
+                {
                     return Ok(false);
                 }
                 // only consume up the to the `FFFEFF` part b/c that's part of the
                 // gas name CString
-                let _ = rb.extract::<&[u8]>(16)?;
+                let _ = extract::<&[u8]>(rb, con, 16)?;
             }
 
-            let gas_name = rb.extract::<MfcString>(())?.0;
+            let gas_name = extract::<MfcString>(rb, con, ())?.0;
             if gas_name == "" {
                 return Ok(false);
             }
@@ -146,30 +177,37 @@ impl<'r> FromBuffer<'r> for ThermoDxfRecord {
             state.mzs = mzs_from_gas(&gas_name)?;
 
             // `FFFEFF00` and then three u32s (values 0, 1, 1)
-            let _ = rb.extract::<&[u8]>(16)?;
+            let _ = extract::<Skip>(rb, con, 16)?;
 
-            if rb.extract::<u8>(Endian::Little)? == 0xFF {
+            if extract::<u8>(rb, con, Endian::Little)? == 0xFF {
                 // CEvalGasData header and the u32 (value 1)
-                let _ = rb.extract::<&[u8]>(20)?;
+                let _ = extract::<Skip>(rb, con, 20)?;
             } else {
                 // replacement sentinel (`8482`) and the u32 (value 1)
-                let _ = rb.extract::<&[u8]>(6)?;
+                let _ = extract::<Skip>(rb, con, 6)?;
             }
 
-            let bytes_data = rb.extract::<u32>(Endian::Little)? as usize;
+            let bytes_data = extract::<u32>(rb, con, Endian::Little)? as usize;
             state.n_scans_left = bytes_data / (4 + 8 * state.mzs.len());
             state.cur_mz_idx = 0;
         }
         state.n_scans_left -= 1;
         if state.cur_mz_idx == 0 {
-            state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
+            state.cur_time = f64::from(extract::<f32>(rb, con, Endian::Little)?);
         }
 
-        self.time = state.cur_time / 60.;
-        self.mz = state.mzs[state.cur_mz_idx];
-        self.intensity = rb.extract::<f64>(Endian::Little)?;
+        state.cur_mz = state.mzs[state.cur_mz_idx];
+        state.cur_intensity = extract::<f64>(rb, con, Endian::Little)?;
         state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
+        *consumed += *con;
         Ok(true)
+    }
+
+    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+        self.time = state.cur_time / 60.;
+        self.mz = state.cur_mz;
+        self.intensity = state.cur_intensity;
+        Ok(())
     }
 }
 
@@ -182,24 +220,14 @@ pub struct ThermoCfState {
     cur_mz_idx: usize,
     mzs: Vec<f64>,
     cur_time: f64,
+    cur_mz: f64,
+    cur_intensity: f64,
 }
 
 impl<'r> StateMetadata<'r> for ThermoCfState {}
 
-impl<'r> FromBuffer<'r> for ThermoCfState {
+impl<'r> FromSlice<'r> for ThermoCfState {
     type State = ();
-
-    fn from_buffer(
-        &mut self,
-        _rb: &'r mut ReadBuffer,
-        _state: Self::State,
-    ) -> Result<bool, EtError> {
-        self.n_scans_left = 0;
-        self.cur_mz_idx = 0;
-        self.mzs = Vec::new();
-        self.cur_time = 0.;
-        Ok(true)
-    }
 }
 
 /// A single data point from a Thermo CF file
@@ -215,65 +243,79 @@ pub struct ThermoCfRecord {
 
 impl_record!(ThermoCfRecord: time, mz, intensity);
 
-impl<'r> FromBuffer<'r> for ThermoCfRecord {
+impl<'r> FromSlice<'r> for ThermoCfRecord {
     type State = &'r mut ThermoCfState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        let con = &mut 0;
         if state.n_scans_left == 0 {
-            if !rb.seek_pattern(
+            if extract_opt::<SeekPattern>(
+                rb,
+                eof,
+                con,
                 b"\xFF\xFE\xFF\x00\xFF\xFE\xFF\x08R\x00a\x00w\x00 \x00D\x00a\x00t\x00a\x00",
-            )? {
+            )?
+            .is_none()
+            {
                 return Ok(false);
             }
             // pattern and then 3 u32's (values 0, 2, 2)
-            let _ = rb.extract::<&[u8]>(36)?;
+            let _ = extract::<&[u8]>(rb, con, 36)?;
             // read the title and an additional `030000002C00`
-            if rb.extract::<u8>(Endian::Little)? == 0xFF {
+            if extract::<u8>(rb, con, Endian::Little)? == 0xFF {
                 // CRawDataScanStorage title
-                let _ = rb.extract::<&[u8]>(34)?;
+                let _ = extract::<&[u8]>(rb, con, 34)?;
             } else {
                 // the title was elided (there's a 3E86 sentinel?)
-                let _ = rb.extract::<&[u8]>(10)?;
+                let _ = extract::<&[u8]>(rb, con, 10)?;
             }
             // Now there's a CString with the type of the gas
             // remove "Trace Data" from the front of the string
-            let gas_type = rb.extract::<MfcString>(())?.0[11..].to_owned();
+            let gas_type = extract::<MfcString>(rb, con, ())?.0[11..].to_owned();
             state.mzs = mzs_from_gas(&gas_type)?;
 
             // then 4 u32's (0, 2, 0, 4) and a FEF0 block
-            let _ = rb.extract::<&[u8]>(20)?;
-            state.n_scans_left = rb.extract::<u32>(Endian::Little)? as usize;
+            let _ = extract::<&[u8]>(rb, con, 20)?;
+            state.n_scans_left = extract::<u32>(rb, con, Endian::Little)? as usize;
             // sanity check our guess for the masses
-            let n_mzs = rb.extract::<u32>(Endian::Little)? as usize;
+            let n_mzs = extract::<u32>(rb, con, Endian::Little)? as usize;
             if n_mzs != state.mzs.len() {
-                return Err(EtError::new(
-                    format!("Gas type {} has bad information", gas_type),
-                    rb,
-                ));
+                return Err(format!("Gas type {} has bad information", gas_type).into());
             }
 
             // then a CBinary header (or replacement sentinel) followed by a u32
             // (value 2), a FEF0 block, another u32 (value 2), and then the number
             // of bytes of data that follow (value = n_scans * (4 + 8 * n_mzs))
-            if rb.extract::<u8>(Endian::Little)? == 0xFF {
+            if extract::<u8>(rb, con, Endian::Little)? == 0xFF {
                 // CBinary title
-                let _ = rb.extract::<&[u8]>(28)?;
+                let _ = extract::<&[u8]>(rb, con, 28)?;
             } else {
                 // the title was elided (there's a 4086 sentinel?)
-                let _ = rb.extract::<&[u8]>(18)?;
+                let _ = extract::<&[u8]>(rb, con, 18)?;
             }
         }
         state.n_scans_left -= 1;
         if state.cur_mz_idx == 0 {
-            state.cur_time = f64::from(rb.extract::<f32>(Endian::Little)?);
+            state.cur_time = f64::from(extract::<f32>(rb, con, Endian::Little)?);
         }
 
-        self.time = state.cur_time / 60.;
-        self.mz = state.mzs[state.cur_mz_idx];
-        self.intensity = rb.extract::<f64>(Endian::Little)?;
+        state.cur_mz = state.mzs[state.cur_mz_idx];
+        state.cur_intensity = extract::<f64>(rb, con, Endian::Little)?;
         state.cur_mz_idx = (state.cur_mz_idx + 1) % state.mzs.len();
-
+        *consumed += *con;
         Ok(true)
+    }
+
+    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+        self.time = state.cur_time / 60.;
+        self.mz = state.cur_mz;
+        self.intensity = state.cur_intensity;
+        Ok(())
     }
 }
 
@@ -282,12 +324,11 @@ impl_reader!(ThermoCfReader, ThermoCfRecord, ThermoCfState, ());
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::ReadBuffer;
     use crate::readers::RecordReader;
 
     #[test]
     fn test_thermo_dxf_reader() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/b3_alkanes.dxf"));
+        let rb: &[u8] = include_bytes!("../../tests/data/b3_alkanes.dxf");
         let mut reader = ThermoDxfReader::new(rb, ())?;
         let _ = reader.metadata();
         if let Some(ThermoDxfRecord {
@@ -307,8 +348,19 @@ mod tests {
     }
 
     #[test]
+    fn test_thermo_dxf_bad_fuzzes() -> Result<(), EtError> {
+        let test_data = [
+            255, 255, 5, 0, 0, 0, 32, 0, 0, 67, 82, 97, 119, 68, 97, 116, 97, 0, 10, 255, 255, 0,
+            255, 255, 255, 255, 255, 0, 0, 0, 0,
+        ];
+        let mut reader = ThermoDxfReader::new(&test_data[..], ())?;
+        assert!(reader.next().is_err());
+        Ok(())
+    }
+
+    #[test]
     fn test_thermo_cf_reader() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/test-0000.cf"));
+        let rb: &[u8] = include_bytes!("../../tests/data/test-0000.cf");
         let mut reader = ThermoCfReader::new(rb, ())?;
         let _ = reader.metadata();
         if let Some(ThermoCfRecord {

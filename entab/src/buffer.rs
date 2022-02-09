@@ -1,36 +1,27 @@
 use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
-use alloc::format;
-use core::any::type_name;
+use core::convert::{AsRef, From, TryFrom};
 #[cfg(feature = "std")]
 use core::mem::swap;
-use core::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 #[cfg(feature = "std")]
 use core::ptr;
 #[cfg(feature = "std")]
+use std::fs::File;
+#[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
-use memchr::memchr;
-
-use crate::parsers::FromBuffer;
+use crate::parsers::FromSlice;
 use crate::EtError;
 
 /// Default buffer size
-pub const BUFFER_SIZE: usize = 1000;
+pub const BUFFER_SIZE: usize = 10_000;
 
-/// Wraps a Box<Read> to allow buffered reading
-///
-/// Primary differences from Rust's built-in BufReader:
-///  - residual in buffer is maintained between `fill_buf`s
-///  - buffer will be expanded if not enough data present to parse
-///  - EOF state is tracked
-pub struct ReadBuffer<'s> {
-    /// The primary buffer; reloaded from `reader` when needed
-    pub buffer: Cow<'s, [u8]>,
-    /// The stream to read from
+/// Buffers Read to provide something that can be used for parsing
+pub struct ReadBuffer<'r> {
     #[cfg(feature = "std")]
-    reader: Box<dyn Read + 's>,
+    reader: Box<dyn Read>,
+    buffer: Cow<'r, [u8]>,
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
     pub reader_pos: u64,
     /// The total number of records consumed (used for error messages)
@@ -39,62 +30,41 @@ pub struct ReadBuffer<'s> {
     pub consumed: usize,
     /// Is this the last chunk before EOF?
     pub eof: bool,
+    /// After the parser has had a chance to run through eof, then this will be set to end parsing.
+    pub end: bool,
 }
 
-impl<'s> ReadBuffer<'s> {
-    /// Create a new ReadBuffer from the `reader` using the default size.
+impl<'r> ReadBuffer<'r> {
+    /// Create a new buffer and associated ParserState.
     #[cfg(feature = "std")]
-    pub fn new(reader: Box<dyn Read + 's>) -> Result<Self, EtError> {
-        Self::with_capacity(BUFFER_SIZE, reader)
-    }
-
-    /// Create a new ReadBuffer from the `reader` using the size provided
-    #[cfg(feature = "std")]
-    pub fn with_capacity(
-        buffer_size: usize,
-        mut reader: Box<dyn Read + 's>,
+    pub fn from_reader(
+        mut reader: Box<dyn Read>,
+        buffer_size: Option<usize>,
     ) -> Result<Self, EtError> {
-        let mut buffer = vec![0; buffer_size];
+        let mut buffer = vec![0; buffer_size.unwrap_or(BUFFER_SIZE)];
         let amt_read = reader.read(&mut buffer)?;
-        unsafe {
-            buffer.set_len(amt_read);
-        }
-        // it's possible amt_read < buffer.capacity() for e.g. reading out of
-        // a compressed stream where different chunks can be smaller than the
-        // buffer length so we can't infer anything about EOF from amt_read.
-
+        buffer.truncate(amt_read);
         Ok(ReadBuffer {
-            buffer: Cow::Owned(buffer),
             reader,
+            buffer: Cow::Owned(buffer),
             reader_pos: 0,
             record_pos: 0,
             consumed: 0,
             eof: false,
+            end: false,
         })
     }
 
-    /// Create a new ReadBuffer from `slice`
+    /// Refill the buffer from the reader and update the associated ParserState.
     ///
-    /// Buffer will automatically be at "eof" and `refill` will have no
-    /// effect.
-    pub fn from_slice(slice: &'s [u8]) -> Self {
-        ReadBuffer {
-            buffer: Cow::Borrowed(slice),
-            #[cfg(feature = "std")]
-            reader: Box::new(Cursor::new(b"")),
-            reader_pos: 0,
-            record_pos: 0,
-            consumed: 0,
-            eof: true,
-        }
-    }
-
-    /// Refill the buffer from the `reader`; if no data has been consumed the
-    /// buffer's size if doubled and the new buffer is filled.
+    /// If the buffer was successfully refilled return `true` and if the buffer could not be refilled
+    /// (because it had previously reached EOF) return `false`.
     #[cfg(feature = "std")]
-    pub fn refill(&mut self) -> Result<(), EtError> {
-        if self.eof {
-            return Ok(());
+    pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
+        if self.end {
+            return Ok(None);
+        } else if self.eof {
+            self.end = true;
         }
 
         // pull the buffer out; if self.buffer's Borrowed then eof should
@@ -113,138 +83,113 @@ impl<'s> ReadBuffer<'s> {
             capacity = buffer.capacity();
         };
 
-        // copy the old data to the front of the buffer
         let len = buffer.len() - self.consumed;
         unsafe {
+            // copy the old data to the front of the buffer
             let new_ptr = buffer.as_mut_ptr();
             let old_ptr = new_ptr.add(self.consumed);
             ptr::copy(old_ptr, new_ptr, len);
-        }
 
-        // resize the buffer and read in new data
-        unsafe {
+            // resize the buffer in prep to read in new data
             buffer.set_len(capacity);
         }
         let amt_read = self
             .reader
             .read(&mut buffer[len..])
             .map_err(|e| EtError::from(e).add_context(self))?;
-        unsafe {
-            buffer.set_len(len + amt_read);
-        }
+        buffer.truncate(len + amt_read);
         self.consumed = 0;
         swap(&mut Cow::Owned(buffer), &mut self.buffer);
         if amt_read == 0 {
             self.eof = true;
         }
 
-        Ok(())
+        Ok(Some(&self.buffer[self.consumed..]))
     }
 
-    /// Refill the buffer; since `no_std` doesn't support the Read trait, this
-    /// is a noop.
+    /// Refill implementation for no_std
     #[cfg(not(feature = "std"))]
-    pub fn refill(&mut self) -> Result<(), EtError> {
-        // no_std doesn't support Readers so this is always just an
-        // unrefillable slice
-        return Ok(());
-    }
-
-    /// Same result as `refill`, but ensures the buffer is at least `amt` bytes
-    /// large. Will error if not enough data is available.
-    pub fn reserve(&mut self, amt: usize) -> Result<(), EtError> {
-        while self.len() < amt {
-            if self.eof {
-                return Err(EtError::new("Data ended prematurely", self));
-            }
-            self.refill()?;
+    pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
+        if self.end {
+            return Ok(None);
+        } else if self.eof {
+            self.end = true;
         }
-        Ok(())
+        self.eof = true;
+        Ok(Some(&self.buffer[self.consumed..]))
     }
 
-    /// Move the buffer to the start of the first found location of `pat`.
-    /// If `pat` is not found, the buffer will be exhausted.
-    pub fn seek_pattern(&mut self, pat: &[u8]) -> Result<bool, EtError> {
+    /// Uses the state to extract a record from the buffer
+    #[inline]
+    pub fn next<'n, T>(
+        &'n mut self,
+        mut state: <T as FromSlice<'n>>::State,
+    ) -> Result<Option<T>, EtError>
+    where
+        T: FromSlice<'n> + 'n,
+    {
+        let mut consumed = self.consumed;
         loop {
-            if let Some(pos) = memchr(pat[0], &self[..]) {
-                if pos + pat.len() > self.len() {
-                    if self.eof() {
-                        let _ = self.consume(self.len());
-                        return Ok(false);
-                    }
-                    let _ = self.consume(pos);
-                    self.refill()?;
-                    continue;
-                }
-                if &self[pos..pos + pat.len()] == pat {
-                    let _ = self.consume(pos);
+            match T::parse(
+                &self.buffer[consumed..],
+                self.eof,
+                &mut self.consumed,
+                &mut state,
+            ) {
+                Ok(true) => {
+                    self.record_pos += 1;
                     break;
                 }
-                let _ = self.consume(1);
-                continue;
-            } else if self.eof() {
-                let _ = self.consume(self.len());
-                return Ok(false);
+                Ok(false) => return Ok(None),
+                Err(e) => {
+                    if !e.incomplete || self.eof {
+                        return Err(e.add_context(self));
+                    }
+                }
             }
-            // couldn't find the character; load more
-            if self.len() > pat.len() - 1 {
-                let _ = self.consume(self.len() + 1 - pat.len());
+            if self.refill()?.is_none() {
+                return Ok(None);
             }
-            self.refill()?;
+            consumed = 0;
         }
-        Ok(true)
+        let mut record = T::default();
+        T::get(&mut record, &self.buffer[consumed..self.consumed], &state)
+            .map_err(|e| e.add_context(self))?;
+        Ok(Some(record))
     }
 
-    /// Returns the byte slice of size requested and marks that data as used
-    /// so the next time `refill`/`reserve`/`extract` are called, this memory
-    /// can be freed.
-    pub fn consume(&mut self, amt: usize) -> &[u8] {
-        let start = self.consumed;
-        self.consumed += amt;
-        &self.buffer[start..self.consumed]
-    }
-
-    /// True if this is the last chunk in the stream
-    pub fn eof(&self) -> bool {
-        self.eof
-    }
-
-    /// True if any data is left in the buffer
-    pub fn is_empty(&self) -> bool {
-        self.consumed >= self.buffer.len()
-    }
-
-    /// How much data is in the buffer
-    pub fn len(&self) -> usize {
-        self.buffer.len() - self.consumed
-    }
-
-    /// The byte position that the reader is on
-    pub fn get_byte_pos(&self) -> u64 {
-        self.reader_pos + self.consumed as u64
-    }
-
-    /// Get a record of type `T` from this ReadBuffer, taking a `state`
-    /// whose type is dependent on `T` and consuming the bytes used to
-    /// represent that record.
-    ///
-    /// Please note that each call to this function may resize the
-    /// underlying buffer and invalidate any previous references so you should
-    /// manually implement parsers that will retrieve multiple referential
-    /// records (e.g. calling extract::<&[u8]>() multiple times will not work).
+    /// Uses the state to extract a record from the buffer
     #[inline]
-    pub fn extract<'r, T>(&'r mut self, state: T::State) -> Result<T, EtError>
+    pub fn next_no_refill<'n, T>(
+        &'n mut self,
+        mut state: <T as FromSlice<'n>>::State,
+    ) -> Result<Option<T>, EtError>
     where
-        T: FromBuffer<'r> + Default,
+        T: FromSlice<'n> + 'n,
     {
-        if let Some(record) = T::get(self, state)? {
-            return Ok(record);
+        let consumed = self.consumed;
+        match T::parse(
+            &self.buffer[consumed..],
+            self.eof,
+            &mut self.consumed,
+            &mut state,
+        ) {
+            Ok(true) => {
+                self.record_pos += 1;
+                let mut record = T::default();
+                T::get(&mut record, &self.buffer[consumed..self.consumed], &state)
+                    .map_err(|e| e.add_context(self))?;
+                Ok(Some(record))
+            }
+            Ok(false) => Ok(None),
+            Err(e) => {
+                if !e.incomplete || self.eof {
+                    Err(e.add_context(self))
+                } else {
+                    Ok(None)
+                }
+            }
         }
-        // TODO: it would be nice to use EtError::new here
-        Err(EtError::from(format!(
-            "Could not get {} from stream",
-            type_name::<Self>()
-        )))
     }
 }
 
@@ -255,79 +200,97 @@ impl<'r> ::core::fmt::Debug for ReadBuffer<'r> {
             "<ReadBuffer pos={}:{} cur_len={} end={}>",
             self.record_pos,
             self.reader_pos + self.consumed as u64,
-            self.len(),
-            self.eof()
+            self.as_ref().len(),
+            self.eof,
         )
     }
 }
 
-// It's not really possible to implement Index<(Bound, Bound)> or otherwise
-// make this generic over all forms of Range* so we do a little hacky business
-macro_rules! impl_index {
-    ($index:ty, $return:ty) => {
-        impl<'r> Index<$index> for ReadBuffer<'r> {
-            type Output = $return;
+#[cfg(feature = "std")]
+impl<'r> TryFrom<Box<dyn Read>> for ReadBuffer<'r> {
+    type Error = EtError;
 
-            fn index(&self, index: $index) -> &Self::Output {
-                &self.buffer[self.consumed..][index]
-            }
-        }
-    };
+    fn try_from(reader: Box<dyn Read>) -> Result<Self, Self::Error> {
+        ReadBuffer::from_reader(reader, None)
+    }
 }
 
-impl_index!(Range<usize>, [u8]);
-impl_index!(RangeFrom<usize>, [u8]);
-impl_index!(RangeTo<usize>, [u8]);
-impl_index!(RangeFull, [u8]);
-impl_index!(usize, u8);
+#[cfg(feature = "std")]
+impl<'r> TryFrom<File> for ReadBuffer<'r> {
+    type Error = EtError;
+
+    fn try_from(reader: File) -> Result<Self, Self::Error> {
+        ReadBuffer::from_reader(Box::new(reader), None)
+    }
+}
+
+impl<'r> From<&'r [u8]> for ReadBuffer<'r> {
+    fn from(buffer: &'r [u8]) -> Self {
+        ReadBuffer {
+            #[cfg(feature = "std")]
+            reader: Box::new(Cursor::new(b"")),
+            buffer: Cow::Borrowed(buffer),
+            reader_pos: 0,
+            record_pos: 0,
+            consumed: 0,
+            eof: true,
+            end: false,
+        }
+    }
+}
+
+impl<'r> AsRef<[u8]> for ReadBuffer<'r> {
+    fn as_ref(&self) -> &[u8] {
+        &self.buffer
+    }
+}
 
 #[cfg(test)]
 mod test {
-    #[cfg(feature = "std")]
-    use alloc::boxed::Box;
+    //     #[cfg(feature = "std")]
+    //     use alloc::boxed::Box;
     #[cfg(feature = "std")]
     use std::io::Cursor;
 
-    use crate::parsers::{FromBuffer, NewLine};
+    use crate::parsers::{NewLine, SeekPattern};
     use crate::EtError;
 
     use super::ReadBuffer;
-
-    #[cfg(feature = "std")]
-    #[test]
-    fn test_buffer() -> Result<(), EtError> {
-        let reader = Box::new(Cursor::new(b"123456"));
-        let mut rb = ReadBuffer::new(reader)?;
-
-        assert_eq!(&rb[..], b"123456");
-        let _ = rb.consume(3);
-        assert_eq!(&rb[..], b"456");
-        Ok(())
-    }
-
-    #[cfg(feature = "std")]
-    #[test]
-    fn test_buffer_small() -> Result<(), EtError> {
-        let reader = Box::new(Cursor::new(b"123456"));
-        let mut rb = ReadBuffer::with_capacity(3, reader)?;
-
-        assert_eq!(&rb[..], b"123");
-        assert_eq!(rb.consume(3), b"123");
-        assert_eq!(&rb[..], b"");
-
-        rb.refill()?;
-        assert_eq!(&rb[..], b"456");
-        Ok(())
-    }
+    //
+    //     #[cfg(feature = "std")]
+    //     #[test]
+    //     fn test_buffer() -> Result<(), EtError> {
+    //         let reader = Box::new(Cursor::new(b"123456"));
+    //         let mut rb = ReadBuffer::new(reader)?;
+    //
+    //         assert_eq!(&rb[..], b"123456");
+    //         let _ = rb.consume(3);
+    //         assert_eq!(&rb[..], b"456");
+    //         Ok(())
+    //     }
+    //
+    //     #[cfg(feature = "std")]
+    //     #[test]
+    //     fn test_buffer_small() -> Result<(), EtError> {
+    //         let reader = Box::new(Cursor::new(b"123456"));
+    //         let mut rb = ReadBuffer::with_capacity(3, reader)?;
+    //
+    //         assert_eq!(&rb[..], b"123");
+    //         assert_eq!(rb.consume(3), b"123");
+    //         assert_eq!(&rb[..], b"");
+    //
+    //         rb.refill()?;
+    //         assert_eq!(&rb[..], b"456");
+    //         Ok(())
+    //     }
 
     #[cfg(feature = "std")]
     #[test]
     fn test_read_lines() -> Result<(), EtError> {
-        let reader = Box::new(Cursor::new(b"1\n2\n3"));
-        let mut rb = ReadBuffer::with_capacity(3, reader)?;
+        let mut rb = ReadBuffer::from_reader(Box::new(Cursor::new(b"1\n2\n3")), None)?;
 
         let mut ix = 0;
-        while let Some(NewLine(line)) = NewLine::get(&mut rb, ())? {
+        while let Some(NewLine(line)) = rb.next(0)? {
             match ix {
                 0 => assert_eq!(line, b"1"),
                 1 => assert_eq!(line, b"2"),
@@ -340,46 +303,49 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn test_read_lines_from_slice() -> Result<(), EtError> {
-        let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
-        let mut ix = 0;
-        while let Some(NewLine(line)) = NewLine::get(&mut rb, ())? {
-            match ix {
-                0 => assert_eq!(line, b"1"),
-                1 => assert_eq!(line, b"2"),
-                2 => assert_eq!(line, b"3"),
-                _ => panic!("Invalid index; buffer tried to read too far"),
-            }
-            ix += 1;
-        }
-        assert_eq!(ix, 3);
-        Ok(())
-    }
+    // FIXME: delete this and add tests in parsers.rs?
+    // #[test]
+    // fn test_read_lines_from_slice() -> Result<(), EtError> {
+    //     let rb = &b"1\n2\n3"[..];
+    //     let mut ix = 0;
+    //     while let NewLine(line) = extract(rb, &mut 0, 0)? {
+    //         match ix {
+    //             0 => assert_eq!(line, b"1"),
+    //             1 => assert_eq!(line, b"2"),
+    //             2 => assert_eq!(line, b"3"),
+    //             _ => panic!("Invalid index; buffer tried to read too far"),
+    //         }
+    //         ix += 1;
+    //     }
+    //     assert_eq!(ix, 3);
+    //     Ok(())
+    // }
 
     #[test]
     fn test_seek_pattern() -> Result<(), EtError> {
-        let mut rb = ReadBuffer::from_slice(b"1\n2\n3");
-        assert_eq!(rb.seek_pattern(b"1")?, true);
-        assert_eq!(&rb[..], b"1\n2\n3");
-        assert_eq!(rb.seek_pattern(b"3")?, true);
-        assert_eq!(&rb[..], b"3");
-        assert_eq!(rb.seek_pattern(b"1")?, false);
+        let mut buffer: ReadBuffer = b"1\n2\n3"[..].into();
+        let _: Option<SeekPattern> = buffer.next(&b"1"[..])?;
+        assert_eq!(&buffer.as_ref()[buffer.consumed..], b"1\n2\n3");
+        let _: Option<SeekPattern> = buffer.next(&b"3"[..])?;
+        assert_eq!(&buffer.as_ref()[buffer.consumed..], b"3");
+        let e = buffer.next::<SeekPattern>(&b"1"[..])?;
+        assert!(e.is_none());
 
-        let mut rb = ReadBuffer::from_slice(b"ABC\n123\nEND");
-        assert_eq!(rb.seek_pattern(b"123")?, true);
-        assert_eq!(&rb[..], b"123\nEND");
+        let mut buffer: ReadBuffer = b"ABC\n123\nEND"[..].into();
+        assert_eq!(&buffer.as_ref()[buffer.consumed..], b"ABC\n123\nEND");
+        let _: Option<SeekPattern> = buffer.next(&b"123"[..])?;
+        assert_eq!(&buffer.as_ref()[buffer.consumed..], b"123\nEND");
         Ok(())
     }
-
-    #[cfg(feature = "std")]
-    #[test]
-    fn test_expansion() -> Result<(), EtError> {
-        let reader = Box::new(Cursor::new(b"1234567890"));
-        let mut rb = ReadBuffer::with_capacity(2, reader)?;
-        assert!(rb.len() == 2);
-        let _ = rb.refill();
-        assert!(rb.len() >= 4);
-        Ok(())
-    }
+    //
+    //     #[cfg(feature = "std")]
+    //     #[test]
+    //     fn test_expansion() -> Result<(), EtError> {
+    //         let reader = Box::new(Cursor::new(b"1234567890"));
+    //         let mut rb = ReadBuffer::with_capacity(2, reader)?;
+    //         assert!(rb.len() == 2);
+    //         let _ = rb.refill();
+    //         assert!(rb.len() >= 4);
+    //         Ok(())
+    //     }
 }

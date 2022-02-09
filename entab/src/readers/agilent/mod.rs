@@ -13,28 +13,30 @@ pub use chemstation::{
 };
 pub use chemstation_new::{ChemstationUvReader, ChemstationUvRecord};
 
-use crate::buffer::ReadBuffer;
 use crate::error::EtError;
-use crate::parsers::{Endian, FromSlice};
+use crate::parsers::{extract, Endian, Skip};
 
 /// Read the header chunk for an Agilent file
-pub(crate) fn read_agilent_header<'r>(
-    rb: &'r mut ReadBuffer,
-    ms_format: bool,
-) -> Result<&'r [u8], EtError> {
-    rb.reserve(268)?;
+pub(crate) fn read_agilent_header(rb: &[u8], ms_format: bool) -> Result<usize, EtError> {
+    if rb.len() < 268 {
+        return Err(EtError::from("Agilent header too short").incomplete());
+    }
 
     // figure out how big the header should be and then get it
-    let raw_header_size = u32::out_of(&rb[264..268], Endian::Big)? as usize;
+    let raw_header_size = extract::<u32>(&rb[264..268], &mut 0, Endian::Big)? as usize;
     if raw_header_size == 0 {
-        return Err(EtError::new("Invalid header length of 0", rb));
+        return Err("Invalid header length of 0".into());
     }
     let mut header_size = 2 * (raw_header_size - 1);
     if !ms_format {
         header_size *= 256;
     }
     if header_size < 512 {
-        return Err(EtError::new("Header length too short", rb));
+        return Err("Header length too short".into());
+    } else if header_size > 20_000 {
+        return Err("Header length too long".into());
     }
-    rb.extract::<&[u8]>(header_size)
+    let con = &mut 0;
+    let _ = extract::<Skip>(rb, con, header_size)?;
+    Ok(*con)
 }

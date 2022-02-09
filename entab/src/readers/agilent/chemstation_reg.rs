@@ -4,8 +4,7 @@ use core::marker::Copy;
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, FromBuffer, FromSlice};
+use crate::parsers::{Endian, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -21,10 +20,16 @@ pub struct ChemstationRegState {}
 
 impl<'r> StateMetadata<'r> for ChemstationRegState {}
 
-impl<'r> FromBuffer<'r> for ChemstationRegState {
+impl<'r> FromSlice<'r> for ChemstationRegState {
     type State = ();
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        let con = &mut 0;
         let header = rb.extract::<&[u8]>(45)?;
 
         println!("{:x?}", &header[20..30]);
@@ -117,8 +122,15 @@ impl<'r> FromBuffer<'r> for ChemstationRegState {
             }
         }
 
-
         Ok(true)
+    }
+
+    fn get(
+        &mut self,
+        rb: &'r [u8],
+        state: &Self::State,
+    ) -> Result<(), EtError> {
+        Ok(())
     }
 }
 
@@ -128,11 +140,24 @@ pub struct ChemstationRegRecord {
     point: f64
 }
 
-impl<'r> FromBuffer<'r> for ChemstationRegRecord {
+impl<'r> FromSlice<'r> for ChemstationRegRecord {
     type State = &'r mut ChemstationRegState;
 
-    fn from_buffer(&mut self, _rb: &'r mut ReadBuffer, _state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
         Ok(false)
+    }
+
+    fn get(
+        &mut self,
+        rb: &'r [u8],
+        state: &Self::State,
+    ) -> Result<(), EtError> {
+        Ok(())
     }
 }
 

@@ -21,12 +21,10 @@
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
-//! use entab::buffer::ReadBuffer;
 //! use entab::readers::fasta::{FastaReader, FastaRecord};
 //!
-//! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
-//! let buffer = ReadBuffer::new(file)?;
-//! let mut reader = FastaReader::new(buffer, ())?;
+//! let file = File::open("./tests/data/sequence.fasta")?;
+//! let mut reader = FastaReader::new(file, ())?;
 //! while let Some(FastaRecord { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }
@@ -44,12 +42,10 @@
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
-//! use entab::buffer::ReadBuffer;
 //! use entab::readers::get_reader;
 //!
-//! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
-//! let buffer = ReadBuffer::new(file)?;
-//! let mut reader = get_reader("fasta", buffer)?;
+//! let file = File::open("./tests/data/sequence.fasta")?;
+//! let mut reader = get_reader("fasta", file)?;
 //! while let Some(record) = reader.next_record()? {
 //!     println!("{:?}", record[0]);
 //! }
@@ -70,7 +66,7 @@ pub mod error;
 /// File format inference
 pub mod filetype;
 /// Lightweight parsers to read records out of buffers
-mod parsers;
+pub mod parsers;
 /// Parsers for specific file formats
 pub mod readers;
 /// Record and abstract record reading

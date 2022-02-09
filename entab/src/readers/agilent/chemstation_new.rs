@@ -1,7 +1,6 @@
 use core::marker::Copy;
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, FromBuffer, FromSlice};
+use crate::parsers::{extract, Endian, FromSlice};
 use crate::readers::agilent::read_agilent_header;
 use crate::record::StateMetadata;
 use crate::EtError;
@@ -20,25 +19,24 @@ pub struct ChemstationUvState {
 
 impl<'r> StateMetadata<'r> for ChemstationUvState {}
 
-impl<'r> FromBuffer<'r> for ChemstationUvState {
+impl<'r> FromSlice<'r> for ChemstationUvState {
     type State = ();
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        let header = read_agilent_header(rb, false)?;
-        let n_scans = u32::out_of(&header[278..], Endian::Big)? as usize;
-
+        *consumed += read_agilent_header(rb, false)?;
         // TODO: get other metadata
-        self.n_scans_left = n_scans;
-        self.n_wvs_left = 0;
-        self.cur_time = 0.;
-        self.cur_wv = 0.;
-        self.cur_intensity = 0.;
-        self.wv_step = 0.;
         Ok(true)
+    }
+
+    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+        let n_scans = extract::<u32>(&rb[278..], &mut 0, Endian::Big)? as usize;
+        self.n_scans_left = n_scans;
+        Ok(())
     }
 }
 
@@ -55,32 +53,39 @@ pub struct ChemstationUvRecord {
 
 impl_record!(ChemstationUvRecord: time, wavelength, intensity);
 
-impl<'r> FromBuffer<'r> for ChemstationUvRecord {
+impl<'r> FromSlice<'r> for ChemstationUvRecord {
     type State = &'r mut ChemstationUvState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        _consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
         if state.n_scans_left == 0 {
             return Ok(false);
         }
 
+        let con = &mut 0;
         // refill case
-        if state.n_wvs_left == 0 {
-            let _ = rb.extract::<&[u8]>(4_usize)?;
+        let mut n_wvs_left = state.n_wvs_left;
+        if n_wvs_left == 0 {
+            let _ = extract::<&[u8]>(rb, con, 4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = (rb.extract::<u32>(Endian::Little)? as f64) / 60000.;
-            let wv_start: u16 = rb.extract(Endian::Little)?;
-            let wv_end: u16 = rb.extract(Endian::Little)?;
-            let wv_step: u16 = rb.extract(Endian::Little)?;
+            state.cur_time = (extract::<u32>(rb, con, Endian::Little)? as f64) / 60000.;
+            let wv_start: u16 = extract(rb, con, Endian::Little)?;
+            let wv_end: u16 = extract(rb, con, Endian::Little)?;
+            let wv_step: u16 = extract(rb, con, Endian::Little)?;
 
-            state.n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
+            n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
-            let _ = rb.extract::<&[u8]>(8_usize)?;
+            let _ = extract::<&[u8]>(rb, con, 8_usize)?;
         };
 
-        let delta = rb.extract::<i16>(Endian::Little)?;
+        let delta = extract::<i16>(rb, con, Endian::Little)?;
         if delta == -32768 {
-            state.cur_intensity = f64::from(rb.extract::<u32>(Endian::Little)?);
+            state.cur_intensity = f64::from(extract::<u32>(rb, con, Endian::Little)?);
         } else {
             state.cur_intensity += f64::from(delta);
         }
@@ -88,12 +93,15 @@ impl<'r> FromBuffer<'r> for ChemstationUvRecord {
         if state.n_wvs_left == 1 {
             state.n_scans_left -= 1;
         }
-        state.n_wvs_left -= 1;
+        state.n_wvs_left = n_wvs_left - 1;
+        Ok(true)
+    }
 
+    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
         self.time = state.cur_time;
         self.wavelength = state.cur_wv;
         self.intensity = state.cur_intensity / 2000.;
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -120,14 +128,12 @@ impl_reader!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::ReadBuffer;
+
     use crate::readers::RecordReader;
 
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(include_bytes!(
-            "../../../tests/data/carotenoid_extract.d/dad1.uv"
-        ));
+        let rb: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
         let mut reader = ChemstationUvReader::new(rb, ())?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);

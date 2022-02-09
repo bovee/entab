@@ -2,8 +2,7 @@ use alloc::vec::Vec;
 
 use memchr::{memchr, memchr_iter};
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::FromBuffer;
+use crate::parsers::FromSlice;
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -19,106 +18,108 @@ pub struct FastaRecord<'r> {
     pub sequence: Cow<'r, [u8]>,
 }
 
+/// The current state of FASTA parsing
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FastaState {
+    header_end: usize,
+    seq: (usize, usize),
+}
+
+impl<'r> StateMetadata<'r> for FastaState {}
+
+impl<'r> FromSlice<'r> for FastaState {
+    type State = ();
+}
+
 impl_record!(FastaRecord<'r>: id, sequence);
 
-impl<'r> FromBuffer<'r> for FastaRecord<'r> {
-    type State = &'r mut ();
+impl<'r> FromSlice<'r> for FastaRecord<'r> {
+    type State = &'r mut FastaState;
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        parser_state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        if rb.is_empty() {
+        if !eof && rb.is_empty() {
+            // TODO: also check if it's just some whitespace?
+            return Err(EtError::new("No FASTA could be parsed").incomplete());
+        } else if eof && rb.is_empty() {
             return Ok(false);
         }
         if rb[0] != b'>' {
-            return Err(EtError::new("Valid FASTA records start with '>'", rb));
+            return Err("Valid FASTA records start with '>'".into());
         }
-        let (header_range, seq_start) = loop {
-            if let Some(p) = memchr(b'\n', &rb[..]) {
-                if p > 0 && rb[p - 1] == b'\r' {
-                    // strip out the \r too if this is a \r\n ending
-                    break (1..p - 1, p + 1);
-                } else {
-                    break (1..p, p + 1);
-                }
-            } else if rb.eof() {
-                return Err(EtError::new("Incomplete record", rb));
+        let seq_start = if let Some(p) = memchr(b'\n', rb) {
+            if p > 0 && rb[p - 1] == b'\r' {
+                // strip out the \r too if this is a \r\n ending
+                parser_state.header_end = p - 1;
+                p + 1
+            } else {
+                parser_state.header_end = p;
+                p + 1
             }
-            rb.refill()?;
-        };
-        let mut seq_newlines: Vec<usize> = Vec::new();
-        let (seq_range, rec_end) = loop {
-            let mut found_end = false;
-            for raw_pos in memchr_iter(b'\n', &rb[seq_start..]) {
-                let pos = seq_start + raw_pos;
-                if pos > 0 && rb[pos - 1] == b'\r' {
-                    seq_newlines.push(raw_pos - 1);
-                }
-                seq_newlines.push(raw_pos);
-                if pos + 1 < rb.len() && rb[pos + 1] == b'>' {
-                    found_end = true;
-                    break;
-                }
-            }
-            if found_end {
-                // found_end only happens if we added a newline
-                // so the pop is safe to unwrap
-                let mut endpos = seq_newlines.pop().unwrap();
-                let rec_end = seq_start + endpos + 1;
-
-                // remove trailing consecutive newlines (e.g. \r\n)
-                // from the end
-                while endpos > 0 && seq_newlines.last() == Some(endpos - 1).as_ref() {
-                    endpos = seq_newlines.pop().unwrap();
-                }
-                break (seq_start..seq_start + endpos, rec_end);
-            } else if rb.eof() {
-                // at eof; just return the end
-                break (seq_start..rb.len(), rb.len());
-            };
-            // need more data
-            rb.refill()?;
-            // TODO: we probably don't need to reset this if we track our
-            // current position
-            seq_newlines.truncate(0);
+        } else {
+            return Err(EtError::new("Incomplete header").incomplete());
         };
 
-        let record = rb.extract::<&[u8]>(rec_end)?;
-        self.id = alloc::str::from_utf8(&record[header_range])?;
-        let raw_sequence = &record[seq_range];
-        self.sequence = if seq_newlines.is_empty() {
+        if let Some(p) = memchr(b'>', &rb[seq_start..]) {
+            if p == 0 || rb.get(seq_start + p - 1) != Some(&b'\n') {
+                return Err("Unexpected '>' found".into());
+            }
+            if rb.get(seq_start + p - 2) == Some(&b'\r') {
+                parser_state.seq = (seq_start, seq_start + p - 2);
+            } else {
+                parser_state.seq = (seq_start, seq_start + p - 1);
+            }
+            *consumed += seq_start + p;
+        } else if eof {
+            parser_state.seq = (seq_start, rb.len());
+            // at eof; just return the end
+            *consumed += rb.len();
+        } else {
+            return Err(EtError::new("Sequence needs more data").incomplete());
+        }
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+        self.id = alloc::str::from_utf8(&rb[1..state.header_end])?;
+        let raw_sequence = &rb[state.seq.0..state.seq.1];
+        let mut seq_newlines = memchr_iter(b'\n', raw_sequence).peekable();
+        self.sequence = if seq_newlines.peek().is_none() {
             raw_sequence.into()
         } else {
-            let mut new_buf = Vec::with_capacity(raw_sequence.len() - seq_newlines.len());
+            let mut new_buf = Vec::with_capacity(raw_sequence.len());
             let mut start = 0;
             for pos in seq_newlines {
-                new_buf.extend_from_slice(&raw_sequence[start..pos]);
+                if pos >= 1 && raw_sequence.get(pos - 1) == Some(&b'\r') {
+                    new_buf.extend_from_slice(&raw_sequence[start..pos - 1]);
+                } else {
+                    new_buf.extend_from_slice(&raw_sequence[start..pos]);
+                }
                 start = pos + 1;
             }
             new_buf.extend_from_slice(&raw_sequence[start..]);
             new_buf.into()
         };
-
-        Ok(true)
+        Ok(())
     }
 }
 
-impl_reader!(FastaReader, FastaRecord, (), ());
+impl_reader!(FastaReader, FastaRecord, FastaState, ());
 
 #[cfg(test)]
 mod tests {
     use alloc::borrow::Cow;
 
     use super::*;
-    use crate::buffer::ReadBuffer;
 
     #[test]
     fn test_fasta_reading() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\n>id2\nTGCA";
-        let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReader::new(rb, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, ())?;
 
         let mut ix = 0;
         while let Some(FastaRecord { id, sequence }) = pt.next()? {
@@ -142,8 +143,11 @@ mod tests {
     #[test]
     fn test_fasta_short() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id";
-        let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReader::new(rb, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        assert!(pt.next().is_err());
+
+        const TEST_FASTA_2: &[u8] = b">\n>";
+        let mut pt = FastaReader::new(TEST_FASTA_2, ())?;
         assert!(pt.next().is_err());
 
         Ok(())
@@ -152,8 +156,7 @@ mod tests {
     #[test]
     fn test_fasta_multiline() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\nAAAA\n>id2\nTGCA";
-        let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReader::new(rb, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, ())?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "id");
@@ -170,8 +173,7 @@ mod tests {
     #[test]
     fn test_fasta_multiline_extra_newlines() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\r\nACGT\r\nAAAA\r\n>id2\r\nTGCA\r\n";
-        let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReader::new(rb, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, ())?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "id");
@@ -188,8 +190,7 @@ mod tests {
     #[test]
     fn test_fasta_empty_fields() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">hd\n\n>\n\n";
-        let rb = ReadBuffer::from_slice(TEST_FASTA);
-        let mut pt = FastaReader::new(rb, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, ())?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "hd");

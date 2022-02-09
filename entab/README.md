@@ -6,13 +6,12 @@ decompression, file type inference, and parsers for different file types.
 
 To parse the IDs out of a FASTA file:
 ```rust
+
 //! use std::fs::File;
-//! use entab::buffer::ReadBuffer;
 //! use entab::readers::fasta::{FastaReader, FastaRecord};
 //!
-//! let file = Box::new(File::open("./tests/data/sequence.fasta")?);
-//! let buffer = ReadBuffer::new(file)?;
-//! let mut reader = FastaReader::new(buffer, ())?;
+//! let file = File::open("./tests/data/sequence.fasta")?;
+//! let mut reader = FastaReader::new(file, ())?;
 //! while let Some(FastaRecord { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }

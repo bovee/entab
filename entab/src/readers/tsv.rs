@@ -2,12 +2,13 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::convert::TryInto;
 use core::mem;
 
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::{FromBuffer, NewLine};
+use crate::parsers::{extract_opt, NewLine};
 use crate::readers::RecordReader;
 use crate::record::Value;
 use crate::EtError;
@@ -63,12 +64,19 @@ pub struct TsvReader<'r> {
 
 impl<'r> TsvReader<'r> {
     /// Create a new TsvReader
-    pub fn new(mut rb: ReadBuffer<'r>, params: (u8, u8)) -> Result<Self, EtError> {
+    pub fn new<B>(data: B, params: (u8, u8)) -> Result<Self, EtError>
+    where
+        B: TryInto<ReadBuffer<'r>>,
+        EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
+    {
+        let mut rb = data.try_into()?;
         let (delim_char, quote_char) = params;
-        let header = if let Some(NewLine(h)) = NewLine::get(&mut rb, ())? {
+        let con = &mut 0;
+        let header = if let Some(NewLine(h)) = extract_opt::<NewLine>(rb.as_ref(), rb.eof, con, 0)?
+        {
             h
         } else {
-            return Err(EtError::new("could not read headers from TSV", &rb));
+            return Err("could not read headers from TSV".into());
         };
         // prefill with something impossible so we can tell how big
         let mut buffer = vec!["\t"; 32];
@@ -80,6 +88,7 @@ impl<'r> TsvReader<'r> {
             .collect();
         let n_headers = headers.len();
 
+        rb.consumed += *con;
         Ok(TsvReader {
             rb,
             headers,
@@ -92,7 +101,9 @@ impl<'r> TsvReader<'r> {
     /// Return the next record from the TSV file
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
-        let line = if let Some(NewLine(l)) = NewLine::get(&mut self.rb, ())? {
+        let con = &mut 0;
+        let buffer = &self.rb.as_ref()[self.rb.consumed..];
+        let line = if let Some(NewLine(l)) = extract_opt::<NewLine>(buffer, self.rb.eof, con, 0)? {
             l
         } else {
             return Ok(None);
@@ -110,6 +121,7 @@ impl<'r> TsvReader<'r> {
             .map_err(|e| e.add_context(&self.rb))?;
         }
 
+        self.rb.consumed += *con;
         self.rb.record_pos += 1;
         // we pass along the headers too since they can be variable for tsvs
         Ok(Some(self.cur_line.as_ref()))
@@ -137,13 +149,11 @@ impl<'r> RecordReader for TsvReader<'r> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::buffer::ReadBuffer;
 
     #[test]
     fn test_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
-        let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReader::new(rb, (b'\t', b'"'))?;
+        let mut pt = TsvReader::new(TEST_TEXT, (b'\t', b'"'))?;
 
         assert_eq!(&pt.headers(), &["header"]);
         let mut ix = 0;
@@ -162,8 +172,7 @@ mod test {
     #[test]
     fn test_two_size_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
-        let rb = ReadBuffer::from_slice(TEST_TEXT);
-        let mut pt = TsvReader::new(rb, (b'\t', b'"'))?;
+        let mut pt = TsvReader::new(TEST_TEXT, (b'\t', b'"'))?;
 
         assert_eq!(&pt.headers(), &["header", "col1"]);
         let mut ix = 0;

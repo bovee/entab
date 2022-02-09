@@ -4,8 +4,7 @@ use std::io::Read;
 
 use flate2::read::ZlibDecoder;
 
-use crate::buffer::ReadBuffer;
-use crate::parsers::{Endian, FromBuffer, FromSlice};
+use crate::parsers::{extract, Endian, FromSlice, Skip};
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -143,34 +142,56 @@ impl<'r> StateMetadata<'r> for PngState {
     }
 }
 
-impl<'r> FromBuffer<'r> for PngState {
+impl<'r> FromSlice<'r> for PngState {
     type State = ();
 
-    fn from_buffer(
-        &mut self,
-        rb: &'r mut ReadBuffer,
-        _state: Self::State,
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        if rb.extract::<&[u8]>(8)? != b"\x89PNG\r\n\x1A\n" {
-            return Err(EtError::new("Invalid PNG magic", rb));
+        let con = &mut 0;
+        if extract::<&[u8]>(rb, con, 8)? != b"\x89PNG\r\n\x1A\n" {
+            return Err("Invalid PNG magic".into());
         }
-        if rb.extract::<&[u8]>(8)? != b"\x00\x00\x00\x0DIHDR" {
-            return Err(EtError::new("Invalid PNG header", rb));
+        if extract::<&[u8]>(rb, con, 8)? != b"\x00\x00\x00\x0DIHDR" {
+            return Err("Invalid PNG header".into());
         }
-        self.width = rb.extract::<u32>(Endian::Big)? as usize;
-        self.height = rb.extract::<u32>(Endian::Big)? as usize;
-        self.bit_depth = rb.extract(Endian::Big)?;
-        self.color_type = PngColorType::from_byte(rb.extract(Endian::Big)?)?;
+        // skip width/height/etc for now
+        let _ = extract::<Skip>(rb, con, 10)?;
         // skip the compression, filter, and interlace bytes
-        if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG compression must be type 0", rb));
+        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+            return Err("PNG compression must be type 0".into());
         }
-        if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG filtering must be type 0", rb));
+        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+            return Err("PNG filtering must be type 0".into());
         }
-        if rb.extract::<u8>(Endian::Big)? != 0 {
-            return Err(EtError::new("PNG interlacing not supported yet", rb));
+        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+            return Err("PNG interlacing not supported yet".into());
         }
+
+        loop {
+            let _ = extract::<&[u8]>(rb, con, 4)?;
+            let chunk_size = extract::<u32>(rb, con, Endian::Big)? as usize;
+            let chunk_header = extract::<&[u8]>(rb, con, 4)?;
+            if &chunk_header == b"IEND" {
+                break;
+            }
+            let _ = extract::<&[u8]>(rb, con, chunk_size)?;
+        }
+        *consumed += *con;
+
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+        let con = &mut 16;
+        self.width = extract::<u32>(rb, con, Endian::Big)? as usize;
+        self.height = extract::<u32>(rb, con, Endian::Big)? as usize;
+        self.bit_depth = extract(rb, con, Endian::Big)?;
+        self.color_type = PngColorType::from_byte(extract(rb, con, Endian::Big)?)?;
+        *con += 3;
 
         // parse through the entire file beforehand; because the data is compressed into multiple
         // chunks and those chunks have to be concatenated before decompression, this makes
@@ -179,17 +200,17 @@ impl<'r> FromBuffer<'r> for PngState {
         let mut compressed_data = Vec::new();
         loop {
             // throw away the checksum from the previous chunk
-            let _ = rb.extract::<&[u8]>(4)?;
+            let _ = extract::<&[u8]>(rb, con, 4)?;
             // now read the header for the current chunk
-            let chunk_header = rb.extract::<&[u8]>(8)?;
-            let chunk_size = u32::out_of(&chunk_header[..4], Endian::Big)? as usize;
-            match &chunk_header[4..] {
+            let chunk_size = extract::<u32>(rb, con, Endian::Big)? as usize;
+            let chunk_header = extract::<&[u8]>(rb, con, 4)?;
+            match chunk_header {
                 b"PLTE" => {
                     let mut raw_palette = Vec::new();
                     for _ in 0..chunk_size / 3 {
-                        let r: u8 = rb.extract(Endian::Big)?;
-                        let g: u8 = rb.extract(Endian::Big)?;
-                        let b: u8 = rb.extract(Endian::Big)?;
+                        let r: u8 = extract(rb, con, Endian::Big)?;
+                        let g: u8 = extract(rb, con, Endian::Big)?;
+                        let b: u8 = extract(rb, con, Endian::Big)?;
                         raw_palette.push((
                             257 * u16::from(r),
                             257 * u16::from(g),
@@ -200,24 +221,23 @@ impl<'r> FromBuffer<'r> for PngState {
                 }
                 b"IDAT" => {
                     // append all the IDAT chunks together
-                    compressed_data.extend_from_slice(rb.extract(chunk_size)?);
+                    compressed_data.extend_from_slice(extract(rb, con, chunk_size)?);
                 }
                 b"IEND" => {
                     break;
                 }
                 _ => {
                     // just skip any other kinds of chunks
-                    let _ = rb.extract::<&[u8]>(chunk_size)?;
+                    let _ = extract::<&[u8]>(rb, con, chunk_size)?;
                 }
             }
         }
-        let mut image_data = Vec::new();
-        let _ = ZlibDecoder::new(&compressed_data[..]).read_to_end(&mut image_data)?;
-        self.image_data = image_data;
-
-        self.cur_x = 0;
+        let _ = ZlibDecoder::new(&compressed_data[..]).read_to_end(&mut self.image_data)?;
+        // initialize x to MAX to sentinel we haven't started yet
+        self.cur_x = usize::MAX;
         self.cur_y = 0;
-        Ok(true)
+
+        Ok(())
     }
 }
 
@@ -236,7 +256,7 @@ impl_record!(PngRecord: x, y, red, green, blue, alpha);
 
 fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16, EtError> {
     if n_bits == 16 {
-        u16::out_of(&data[pos * 2..], Endian::Big)
+        extract::<u16>(&data[pos * 2..], &mut 0, Endian::Big)
     } else {
         let shift = n_bits * (pos % (8 / n_bits));
         let mask = (2u16.pow(n_bits as u32) - 1) as u8;
@@ -252,16 +272,38 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
     }
 }
 
-impl<'r> FromBuffer<'r> for PngRecord {
+impl<'r> FromSlice<'r> for PngRecord {
     type State = &'r mut PngState;
 
-    fn from_buffer(&mut self, rb: &'r mut ReadBuffer, state: Self::State) -> Result<bool, EtError> {
+    fn parse(
+        _rb: &[u8],
+        _eof: bool,
+        _consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if state.cur_x == usize::MAX {
+            state.cur_x = 0;
+        } else {
+            state.cur_x += 1;
+        }
+        if state.cur_x == state.width {
+            state.cur_x = 0;
+            state.cur_y += 1;
+        }
+
+        // halt if we're outside the dimensions
         if state.cur_y >= state.height {
             return Ok(false);
         }
+        // unscramble the line if we're just starting it
         if state.cur_x == 0 {
             state.unfilter_line(state.cur_y)?;
         }
+
+        Ok(true)
+    }
+
+    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
         let bd = usize::from(state.bit_depth);
 
         let line = &state.image_data
@@ -272,15 +314,12 @@ impl<'r> FromBuffer<'r> for PngRecord {
                 let palette_pos = get_bits(line, pos, bd, false)? as usize;
                 if let Some(palette) = &state.palette {
                     if palette_pos >= palette.len() {
-                        return Err(EtError::new(
-                            "Color index was outside palette dimensions",
-                            rb,
-                        ));
+                        return Err("Color index was outside palette dimensions".into());
                     }
                     let (red, green, blue) = palette[palette_pos];
                     (red, green, blue, u16::MAX)
                 } else {
-                    return Err(EtError::new("No palette was provided", rb));
+                    return Err("No palette was provided".into());
                 }
             }
             PngColorType::Grayscale => {
@@ -306,20 +345,15 @@ impl<'r> FromBuffer<'r> for PngRecord {
                 (red, green, blue, alpha)
             }
         };
-
-        let (x, y) = (state.cur_x as u32, state.cur_y as u32);
-        state.cur_x += 1;
-        if state.cur_x == state.width {
-            state.cur_x = 0;
-            state.cur_y += 1;
-        }
-        self.x = x;
-        self.y = y;
         self.red = red;
         self.green = green;
         self.blue = blue;
         self.alpha = alpha;
-        Ok(true)
+
+        let (x, y) = (state.cur_x as u32, state.cur_y as u32);
+        self.x = x;
+        self.y = y;
+        Ok(())
     }
 }
 
@@ -328,11 +362,12 @@ impl_reader!(PngReader, PngRecord, PngState, ());
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::readers::RecordReader;
 
     #[test]
     fn test_png_reader() -> Result<(), EtError> {
-        let rb = ReadBuffer::from_slice(include_bytes!("../../tests/data/bmp_24.png"));
+        let rb: &[u8] = &include_bytes!("../../tests/data/bmp_24.png")[..];
         let mut reader = PngReader::new(rb, ())?;
         let _ = reader.metadata();
 
@@ -356,8 +391,7 @@ mod tests {
             0xB0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
 
-        let rb = ReadBuffer::from_slice(TEST_IMAGE);
-        let mut reader = PngReader::new(rb, ())?;
+        let mut reader = PngReader::new(TEST_IMAGE, ())?;
         let _ = reader.metadata();
         let pixel = reader.next()?.expect("first pixel exists");
         assert_eq!(pixel.x, 0);
