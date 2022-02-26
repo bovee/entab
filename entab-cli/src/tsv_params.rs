@@ -1,6 +1,8 @@
+use std::convert::Into;
+use std::io::Write;
+
 use entab::error::EtError;
 use entab::record::Value;
-use std::io::Write;
 
 use memchr::{memchr, memchr_iter};
 
@@ -39,20 +41,20 @@ impl Default for TsvParams {
 }
 
 impl TsvParams {
-    pub fn write_str<'a, W>(&self, string: &'a [u8], mut writer: W) -> Result<(), EtError>
+    pub fn write_str<W>(&self, string: &'_ [u8], mut writer: W) -> Result<(), EtError>
     where
         W: Write,
     {
-        let first = match memchr(self.main_delimiter, &string) {
+        let first = match memchr(self.main_delimiter, string) {
             Some(break_loc) => break_loc,
             None => {
-                return writer.write_all(string).map_err(|e| e.into());
+                return writer.write_all(string).map_err(Into::into);
             }
         };
         if let TsvEscapeStyle::Quote(quote_char) = self.escape_style {
             writer.write_all(&[quote_char])?;
             writer.write_all(string)?;
-            return writer.write_all(&[quote_char]).map_err(|e| e.into());
+            return writer.write_all(&[quote_char]).map_err(Into::into);
         };
         writer.write_all(&string[..first])?;
         if let TsvEscapeStyle::Escape(escape_char) = self.escape_style {
@@ -62,7 +64,7 @@ impl TsvParams {
         }
         let mut old_pos = 1;
         for pos in memchr_iter(self.main_delimiter, &string[first + 1..]) {
-            writer.write_all(&string[first + old_pos..first + pos + 1])?;
+            writer.write_all(&string[first + old_pos..=first + pos])?;
             if let TsvEscapeStyle::Escape(escape_char) = self.escape_style {
                 writer.write_all(&[escape_char, self.main_delimiter])?;
             } else if let TsvEscapeStyle::Replace(replace_char) = self.escape_style {

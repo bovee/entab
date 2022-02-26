@@ -3,7 +3,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, str};
-use core::convert::TryInto;
+use core::convert::{TryFrom, TryInto};
 use core::default::Default;
 
 use chrono::{NaiveDate, NaiveTime};
@@ -39,9 +39,8 @@ impl<'r> FromSlice<'r> for FcsHeaderKeyValue<'r> {
                     break i + 1;
                 } else if !eof {
                     return Err(EtError::from("Incomplete FCS header").incomplete());
-                } else {
-                    return Err("FCS header ended abruptly".into());
                 }
+                return Err("FCS header ended abruptly".into());
             }
             if rb[i] == *delim && temp != None {
                 if rb[i + 1] == *delim {
@@ -59,9 +58,8 @@ impl<'r> FromSlice<'r> for FcsHeaderKeyValue<'r> {
                     // in Applied Biosystems files).
                     *key_end = i;
                     break i + 1;
-                } else {
-                    temp = Some(i);
                 }
+                temp = Some(i);
             }
             i += 1;
         };
@@ -88,7 +86,7 @@ struct FcsParam {
     long_name: String,
 }
 
-/// State of an FcsReader.
+/// State of an `FcsReader`.
 ///
 /// Note that the state is primarily derived from the TEXT segment of the file.
 #[derive(Clone, Debug, Default)]
@@ -118,8 +116,8 @@ impl<'r> FromSlice<'r> for FcsState {
         }
 
         // get the offsets to the different data
-        let text_start = str_to_int(extract::<&[u8]>(rb, con, 8)?)? as usize;
-        let text_end = str_to_int(extract::<&[u8]>(rb, con, 8)?)? as usize;
+        let text_start = usize::try_from(str_to_int(extract::<&[u8]>(rb, con, 8)?)?)?;
+        let text_end = usize::try_from(str_to_int(extract::<&[u8]>(rb, con, 8)?)?)?;
         if text_end < text_start {
             return Err("Invalid end from text segment".into());
         }
@@ -158,7 +156,7 @@ impl<'r> FromSlice<'r> for FcsState {
             return Err("Invalid end from data segment".into());
         }
         // get anything between the end of the text segment and the start of the data segment
-        let _ = extract::<Skip>(rb, con, (data_start as usize) - *con)?;
+        let _ = extract::<Skip>(rb, con, usize::try_from(data_start)? - *con)?;
 
         *consumed += *con;
         Ok(true)
@@ -180,8 +178,8 @@ impl<'r> FromSlice<'r> for FcsState {
         let mut metadata = BTreeMap::new();
 
         // get the offsets to the different data
-        let text_start = str_to_int(extract::<&[u8]>(rb, con, 8)?)? as usize;
-        let text_end = str_to_int(extract::<&[u8]>(rb, con, 8)?)? as usize;
+        let text_start = usize::try_from(str_to_int(extract::<&[u8]>(rb, con, 8)?)?)?;
+        let text_end = usize::try_from(str_to_int(extract::<&[u8]>(rb, con, 8)?)?)?;
         let mut data_start = str_to_int(extract::<&[u8]>(rb, con, 8)?)?;
         let mut data_end = str_to_int(extract::<&[u8]>(rb, con, 8)?)?;
         if text_start < 58 {
@@ -219,15 +217,14 @@ impl<'r> FromSlice<'r> for FcsState {
                         next_data = Some(next_value);
                     }
                 }
-                ("$BYTEORD", "4,3,2,1") => endian = Endian::Big,
-                ("$BYTEORD", "2,1") => endian = Endian::Big,
+                ("$BYTEORD", "4,3,2,1" | "2, 1") => endian = Endian::Big,
                 ("$DATATYPE", "A") => data_type = 'A',
                 ("$DATATYPE", "D") => data_type = 'D',
                 ("$DATATYPE", "F") => data_type = 'F',
                 ("$DATATYPE", "I") => data_type = 'I',
                 ("$DATATYPE", v) => return Err(format!("Unknown FCS $DATATYPE {}", v).into()),
                 ("$MODE", "L") => {}
-                ("$MODE", "C") | ("$MODE", "U") => {
+                ("$MODE", "C" | "U") => {
                     return Err("FCS histograms not yet supported ($MODE=C/U)".into())
                 }
                 ("$MODE", v) => return Err(format!("Unknown FCS $MODE {}", v).into()),
@@ -239,7 +236,7 @@ impl<'r> FromSlice<'r> for FcsState {
                         .trim()
                         .split(':')
                         .take(3)
-                        .map(|i| i.to_owned())
+                        .map(ToOwned::to_owned)
                         .collect::<Vec<String>>()
                         .join(":");
                     if let Ok(t) = NaiveTime::parse_from_str(&hms, "%H:%M:%S") {
@@ -247,7 +244,7 @@ impl<'r> FromSlice<'r> for FcsState {
                     }
                 }
                 ("$CELLS", v) => {
-                    let _ = metadata.insert("specimen".into(), v.to_string().into());
+                    drop(metadata.insert("specimen".into(), v.to_string().into()));
                 }
                 ("$DATE", v) => {
                     // "DD-MM-YYYY"
@@ -267,32 +264,32 @@ impl<'r> FromSlice<'r> for FcsState {
                     }
                 }
                 ("$INST", v) => {
-                    let _ = metadata.insert("instrument".into(), v.to_string().into());
+                    drop(metadata.insert("instrument".into(), v.to_string().into()));
                 }
                 ("$OP", v) => {
-                    let _ = metadata.insert("operator".into(), v.to_string().into());
+                    drop(metadata.insert("operator".into(), v.to_string().into()));
                 }
                 ("$PROJ", v) => {
-                    let _ = metadata.insert("project".into(), v.to_string().into());
+                    drop(metadata.insert("project".into(), v.to_string().into()));
                 }
                 ("$SMNO", v) => {
-                    let _ = metadata.insert("specimen_number".into(), v.to_string().into());
+                    drop(metadata.insert("specimen_number".into(), v.to_string().into()));
                 }
                 ("$SRC", v) => {
-                    let _ = metadata.insert("specimen_source".into(), v.to_string().into());
+                    drop(metadata.insert("specimen_source".into(), v.to_string().into()));
                 }
                 ("$PAR", v) => {
                     let n_params = v.trim().parse()?;
                     if n_params < params.len() {
                         return Err(format!("Declared number of params ({}) is less than the observed number of params ({})", n_params, params.len()).into());
                     }
-                    params.resize_with(n_params, FcsParam::default)
+                    params.resize_with(n_params, FcsParam::default);
                 }
                 (k, v) if k.starts_with("$P") && k.ends_with(&['B', 'N', 'R', 'S'][..]) => {
                     let mut i: usize = k[2..k.len() - 1].parse()?;
                     i -= 1; // params are numbered from 1
                     if i >= params.len() {
-                        params.resize_with(i + 1, FcsParam::default)
+                        params.resize_with(i + 1, FcsParam::default);
                     }
                     if k.ends_with('B') {
                         if v == "*" {
@@ -316,7 +313,7 @@ impl<'r> FromSlice<'r> for FcsState {
                 _ => {}
             }
         }
-        let _ = metadata.insert("date".into(), date.and_time(time).into());
+        drop(metadata.insert("date".into(), date.and_time(time).into()));
 
         // check that the datatypes and params match up
         for p in &params {
@@ -349,10 +346,10 @@ impl<'r> FromSlice<'r> for FcsState {
 ///
 /// Because the fields of a FCS record are variable, this reader only
 /// implements the `next_record` interface and doesn't have its own
-/// specialize FcsRecord.
+/// specialize `FcsRecord`.
 ///
 /// For a more detailed specification of the FCS format, see:
-/// https://www.bioconductor.org/packages/release/bioc/vignettes/flowCore/inst/doc/fcs3.html
+/// <https://www.bioconductor.org/packages/release/bioc/vignettes/flowCore/inst/doc/fcs3.html>
 #[derive(Debug)]
 pub struct FcsReader<'r> {
     rb: ReadBuffer<'r>,
@@ -360,14 +357,14 @@ pub struct FcsReader<'r> {
 }
 
 impl<'r> FcsReader<'r> {
-    /// Create a new FcsReader from the ReadBuffer provided.
-    pub fn new<B>(data: B, _params: ()) -> Result<Self, EtError>
+    /// Create a new `FcsReader` from the `ReadBuffer` provided.
+    pub fn new<B>(data: B, params: ()) -> Result<Self, EtError>
     where
         B: TryInto<ReadBuffer<'r>>,
         EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
     {
         let mut rb = data.try_into()?;
-        if let Some(state) = rb.next::<FcsState>(_params)? {
+        if let Some(state) = rb.next::<FcsState>(params)? {
             Ok(FcsReader { rb, state })
         } else {
             Err("Could not read FCS headers".into())
@@ -431,7 +428,7 @@ impl<'r> RecordReader for FcsReader<'r> {
                     }
                 }
                 _ => panic!("Data type is in an unknown state"),
-            })
+            });
         }
         self.state.n_events_left -= 1;
         self.rb.record_pos += 1;

@@ -60,7 +60,10 @@ where
     })
 }
 
-/// Set up a state and a ReadBuffer for parsing
+/// Set up a state and a `ReadBuffer` for parsing.
+///
+/// EXPERIMENTAL: To be used to support setup for multi-threading parsing.
+#[doc(hidden)]
 pub fn init_state<'r, S, B, P>(data: B, params: Option<P>) -> Result<(ReadBuffer<'r>, S), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,
@@ -80,10 +83,10 @@ where
     }
 }
 
-/// The trait that maps over "generic" RecordReaders
+/// The trait that maps over "generic" `RecordReader`s
 ///
 /// Structs that implement this trait should also implement a `new` method that
-/// takes a ReadBuffer and a "state" for creation and a `next` method that
+/// takes a `ReadBuffer` and a "state" for creation and a `next` method that
 /// returns a "specialized" struct that can be turned into the "generic" struct
 /// via the `next_record` method.
 pub trait RecordReader: ::core::fmt::Debug {
@@ -116,6 +119,10 @@ macro_rules! impl_reader {
 
         impl<'r> $reader<'r> {
             /// Create a new instance of the reader
+            ///
+            /// # Errors
+            /// If data could not be turned into a `ReadBuffer` successfully or if the initial state
+            /// could not be extracted, returns an `EtError`.
             pub fn new<B>(data: B, params: $new_params) -> Result<Self, EtError> where
                 B: ::core::convert::TryInto<$crate::buffer::ReadBuffer<'r>>,
                 EtError: From<<B as ::core::convert::TryInto<$crate::buffer::ReadBuffer<'r>>>::Error>,
@@ -124,7 +131,7 @@ macro_rules! impl_reader {
                 // let record = <$record>::default(); // FIXME
                 match rb.next(params)? {
                     Some(state) => Ok($reader { rb, state }),
-                    None => panic!("State parsing should always be successful or error?"),
+                    None => Err(::alloc::format!("Could not initialize state {}", ::core::any::type_name::<$state>()) .into())
                 }
             }
 
@@ -132,6 +139,9 @@ macro_rules! impl_reader {
             ///
             /// To get the "generic" version, please use the `next_record`
             /// method from the `RecordReader` trait.
+            ///
+            /// # Errors
+            /// If a value could not be extracted, return an `EtError`.
             #[allow(clippy::should_implement_trait)]
             pub fn next(&mut self) -> Result<Option<$record>, EtError> {
                 self.rb.next::<$record>(&mut self.state)

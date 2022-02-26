@@ -6,7 +6,7 @@ use alloc::string::{FromUtf8Error, String, ToString};
 use alloc::vec::Vec;
 use core::convert::Infallible;
 use core::fmt;
-use core::num::{ParseFloatError, ParseIntError};
+use core::num::{ParseFloatError, ParseIntError, TryFromIntError};
 #[cfg(feature = "std")]
 use std::error::Error;
 #[cfg(feature = "std")]
@@ -46,7 +46,8 @@ pub struct EtError {
 }
 
 impl EtError {
-    /// Create a new EtError with a display message of `msg`
+    /// Create a new `EtError` with a display message of `msg`
+    #[must_use]
     pub fn new(msg: &'static str) -> Self {
         EtError {
             msg: Cow::Borrowed(msg),
@@ -57,15 +58,18 @@ impl EtError {
         }
     }
 
-    /// Create a new EtError indicating an incomplete parse state.
+    /// Marks the `EtError` as "incomplete"; a sentinel returned from a parser to indicate that
+    /// more data needs to be parsed.
+    #[must_use]
     pub fn incomplete(mut self) -> Self {
         self.incomplete = true;
         self
     }
 
-    /// Fill the positional error information from a ReadBuffer
+    /// Fill the positional error information from a `ReadBuffer`.
     ///
     /// Used to display e.g. where a parsing error in a file occured.
+    #[must_use]
     pub fn add_context(mut self, buffer: &ReadBuffer) -> Self {
         let buf_len = buffer.as_ref().len();
         let (context, context_pos) = match (buffer.consumed < 16, buf_len < buffer.consumed + 16) {
@@ -219,6 +223,18 @@ impl From<ParseFloatError> for EtError {
 
 impl From<ParseIntError> for EtError {
     fn from(error: ParseIntError) -> Self {
+        EtError {
+            msg: Cow::Owned(error.to_string()),
+            context: None,
+            incomplete: false,
+            #[cfg(feature = "std")]
+            orig_err: Some(Box::new(error)),
+        }
+    }
+}
+
+impl From<TryFromIntError> for EtError {
+    fn from(error: TryFromIntError) -> Self {
         EtError {
             msg: Cow::Owned(error.to_string()),
             context: None,

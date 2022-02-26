@@ -115,7 +115,7 @@ pub fn run() -> Result<(), EtError> {
         return Ok(());
     } else {
         writer.write_all(
-            &rec_reader
+            rec_reader
                 .headers()
                 .join(str::from_utf8(&[params.main_delimiter])?)
                 .as_bytes(),
@@ -126,7 +126,7 @@ pub fn run() -> Result<(), EtError> {
             params.write_value(&fields[0], &mut writer)?;
             for field in fields.iter().skip(1) {
                 writer.write_all(&[params.main_delimiter])?;
-                params.write_value(&field, &mut writer)?;
+                params.write_value(field, &mut writer)?;
             }
             writer.write_all(&params.line_delimiter)?;
         }

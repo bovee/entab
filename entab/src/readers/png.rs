@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use core::convert::TryFrom;
 use core::marker::Copy;
 use std::io::Read;
 
@@ -42,10 +43,9 @@ impl PngColorType {
         }
     }
 
-    fn pixel_size(&self) -> usize {
+    fn pixel_size(self) -> usize {
         match self {
-            PngColorType::Indexed => 1,
-            PngColorType::Grayscale => 1,
+            PngColorType::Indexed | PngColorType::Grayscale => 1,
             PngColorType::AlphaGrayscale => 2,
             PngColorType::Color => 3,
             PngColorType::AlphaColor => 4,
@@ -87,20 +87,20 @@ impl PngState {
             } else {
                 self.image_data[pos - line_len]
             };
-            self.image_data[pos] = match self.image_data[line_num * line_len] {
+            self.image_data[pos] = match self.image_data.get(line_num * line_len) {
                 // no filtering; skip
-                0 => self.image_data[pos],
+                Some(0) => self.image_data[pos],
                 // sub filtering
-                1 => self.image_data[pos].wrapping_add(left),
+                Some(1) => self.image_data[pos].wrapping_add(left),
                 // up filtering
-                2 => self.image_data[pos].wrapping_add(above),
+                Some(2) => self.image_data[pos].wrapping_add(above),
                 // average filtering
-                3 => {
-                    let average = (u16::from(left) + u16::from(above)) as u8 / 2;
+                Some(3) => {
+                    let average = ((u16::from(left) + u16::from(above)) / 2) as u8;
                     self.image_data[pos].wrapping_add(average)
                 }
                 // paeth filtering
-                4 => {
+                Some(4) => {
                     let immediate_left = if pos == line_num * line_len + 1 {
                         0
                     } else {
@@ -136,8 +136,8 @@ impl PngState {
 impl<'r> StateMetadata<'r> for PngState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         let mut metadata = BTreeMap::new();
-        let _ = metadata.insert("height".to_string(), (self.height as u64).into());
-        let _ = metadata.insert("width".to_string(), (self.width as u64).into());
+        drop(metadata.insert("height".to_string(), (self.height as u64).into()));
+        drop(metadata.insert("width".to_string(), (self.width as u64).into()));
         metadata
     }
 }
@@ -259,13 +259,15 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
         extract::<u16>(&data[pos * 2..], &mut 0, Endian::Big)
     } else {
         let shift = n_bits * (pos % (8 / n_bits));
-        let mask = (2u16.pow(n_bits as u32) - 1) as u8;
+        let mask = u8::try_from(2u16.pow(u32::try_from(n_bits)?) - 1)?;
 
         let d = data[n_bits * pos / 8];
         let value = mask & (d >> shift);
         if rescale {
             // rescale the value into the u16 space
-            Ok((u32::from(value) * 65535 / (2u32.pow(n_bits as u32) - 1)) as u16)
+            Ok(u16::try_from(
+                u32::from(value) * 65535 / (2u32.pow(u32::try_from(n_bits)?) - 1),
+            )?)
         } else {
             Ok(u16::from(value))
         }
@@ -350,9 +352,8 @@ impl<'r> FromSlice<'r> for PngRecord {
         self.blue = blue;
         self.alpha = alpha;
 
-        let (x, y) = (state.cur_x as u32, state.cur_y as u32);
-        self.x = x;
-        self.y = y;
+        self.x = u32::try_from(state.cur_x)?;
+        self.y = u32::try_from(state.cur_y)?;
         Ok(())
     }
 }

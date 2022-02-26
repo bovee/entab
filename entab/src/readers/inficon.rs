@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use core::convert::TryFrom;
 use core::marker::Copy;
 
 use crate::parsers::{extract, extract_opt, Endian, FromSlice, SeekPattern};
@@ -53,7 +54,7 @@ impl<'r> FromSlice<'r> for InficonState {
             for _ in 0..n_mzs {
                 let start_mz = extract::<u32>(rb, con, Endian::Little)?;
                 let end_mz = extract::<u32>(rb, con, Endian::Little)?;
-                if start_mz >= end_mz || end_mz >= 4e9 as u32 {
+                if start_mz >= end_mz || end_mz >= 4_000_000_000u32 {
                     // only malformed data should hit this
                     return Err("m/z range is too big or invalid".into());
                 }
@@ -86,7 +87,7 @@ impl<'r> FromSlice<'r> for InficonState {
             return Err("Data header was malformed".into());
         }
         let _ = extract::<&[u8]>(rb, con, 56)?;
-        *data_left = data_length as usize;
+        *data_left = usize::try_from(data_length)?;
         *consumed += *con;
         Ok(true)
     }

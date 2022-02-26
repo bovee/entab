@@ -77,16 +77,15 @@ impl<'r> FromSlice<'r> for MfcString<'r> {
 fn mzs_from_gas(gas: &str) -> Result<Vec<f64>, EtError> {
     Ok(match gas {
         "CO2" => vec![44., 45., 46.],
-        "CO" => vec![28., 29., 30.],
+        "CO" | "N2" => vec![28., 29., 30.],
         "H2" => vec![2., 3.],
-        "N2" => vec![28., 29., 30.],
         "SO2" => vec![64., 66.],
         "SO2,SO-SO2 Ext,SO" => vec![48., 49., 50., 64., 65., 66.],
         i => return Err(format!("Gas type {} not supported yet", i).into()),
     })
 }
 
-/// The current state of the ThermoDxfReader
+/// The current state of the `ThermoDxfReader`
 #[derive(Debug)]
 pub struct ThermoDxfState {
     first: bool,
@@ -213,7 +212,7 @@ impl<'r> FromSlice<'r> for ThermoDxfRecord {
 
 impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfState, ());
 
-/// The current state of the ThermoCfReader
+/// The current state of the `ThermoCfReader`
 #[derive(Debug, Default)]
 pub struct ThermoCfState {
     n_scans_left: usize,

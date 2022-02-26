@@ -72,7 +72,7 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
         if n_wvs_left == 0 {
             let _ = extract::<&[u8]>(rb, con, 4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = (extract::<u32>(rb, con, Endian::Little)? as f64) / 60000.;
+            state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Little)?) / 60000.;
             let wv_start: u16 = extract(rb, con, Endian::Little)?;
             let wv_end: u16 = extract(rb, con, Endian::Little)?;
             let wv_step: u16 = extract(rb, con, Endian::Little)?;

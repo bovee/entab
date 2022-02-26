@@ -51,32 +51,32 @@ pub struct ChemstationMetadata {
 impl<'r> From<&ChemstationMetadata> for BTreeMap<String, Value<'r>> {
     fn from(metadata: &ChemstationMetadata) -> Self {
         let mut map = BTreeMap::new();
-        let _ = map.insert("start_time".to_string(), metadata.start_time.into());
-        let _ = map.insert("end_time".to_string(), metadata.end_time.into());
-        let _ = map.insert(
+        drop(map.insert("start_time".to_string(), metadata.start_time.into()));
+        drop(map.insert("end_time".to_string(), metadata.end_time.into()));
+        drop(map.insert(
             "signal_name".to_string(),
             metadata.signal_name.clone().into(),
-        );
-        let _ = map.insert(
+        ));
+        drop(map.insert(
             "offset_correction".to_string(),
             metadata.offset_correction.into(),
-        );
-        let _ = map.insert(
+        ));
+        drop(map.insert(
             "mult_correction".to_string(),
             metadata.mult_correction.into(),
-        );
-        let _ = map.insert("sequence".to_string(), metadata.sequence.into());
-        let _ = map.insert("vial".to_string(), metadata.vial.into());
-        let _ = map.insert("replicate".to_string(), metadata.replicate.into());
-        let _ = map.insert("sample".to_string(), metadata.sample.clone().into());
-        let _ = map.insert(
+        ));
+        drop(map.insert("sequence".to_string(), metadata.sequence.into()));
+        drop(map.insert("vial".to_string(), metadata.vial.into()));
+        drop(map.insert("replicate".to_string(), metadata.replicate.into()));
+        drop(map.insert("sample".to_string(), metadata.sample.clone().into()));
+        drop(map.insert(
             "description".to_string(),
             metadata.description.clone().into(),
-        );
-        let _ = map.insert("operator".to_string(), metadata.operator.clone().into());
-        let _ = map.insert("run_date".to_string(), metadata.run_date.into());
-        let _ = map.insert("instrument".to_string(), metadata.instrument.clone().into());
-        let _ = map.insert("method".to_string(), metadata.method.clone().into());
+        ));
+        drop(map.insert("operator".to_string(), metadata.operator.clone().into()));
+        drop(map.insert("run_date".to_string(), metadata.run_date.into()));
+        drop(map.insert("instrument".to_string(), metadata.instrument.clone().into()));
+        drop(map.insert("method".to_string(), metadata.method.clone().into()));
         map
     }
 }
@@ -468,7 +468,7 @@ impl<'r> FromSlice<'r> for ChemstationMwdRecord<'r> {
         let mut n_wvs_left = state.n_wvs_left;
         if n_wvs_left == 0 {
             // mask out the top nibble because it's always 0b0001 (i hope?)
-            n_wvs_left = usize::from(extract::<u16>(rb, con, Endian::Big)?) & 0b111111111111;
+            n_wvs_left = usize::from(extract::<u16>(rb, con, Endian::Big)?) & 0b1111_1111_1111;
             if n_wvs_left == 0 {
                 // TODO: consume the rest of the file so this can't accidentally repeat?
                 return Ok(false);
@@ -569,7 +569,7 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
         if n_wvs_left == 0 {
             let _ = extract::<&[u8]>(rb, con, 4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = (extract::<u32>(rb, con, Endian::Little)? as f64) / 60000.;
+            state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Little)?) / 60000.;
             let wv_start: u16 = extract(rb, con, Endian::Little)?;
             let wv_end: u16 = extract(rb, con, Endian::Little)?;
             let wv_step: u16 = extract(rb, con, Endian::Little)?;

@@ -35,7 +35,10 @@ pub struct ReadBuffer<'r> {
 }
 
 impl<'r> ReadBuffer<'r> {
-    /// Create a new buffer and associated ParserState.
+    /// Create a new buffer from a boxed `Read` trait.
+    ///
+    /// # Errors
+    /// This will fail if there's an error reading into the buffer to initialize it.
     #[cfg(feature = "std")]
     pub fn from_reader(
         mut reader: Box<dyn Read + 'r>,
@@ -55,10 +58,11 @@ impl<'r> ReadBuffer<'r> {
         })
     }
 
-    /// Refill the buffer from the reader and update the associated ParserState.
+    /// Refill the buffer from the reader.
     ///
-    /// If the buffer was successfully refilled return `true` and if the buffer could not be refilled
-    /// (because it had previously reached EOF) return `false`.
+    /// # Errors
+    /// This will fail if there's an error retrieving data from the reader.
+    #[doc(hidden)]
     #[cfg(feature = "std")]
     pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
         if self.end {
@@ -108,6 +112,7 @@ impl<'r> ReadBuffer<'r> {
     }
 
     /// Refill implementation for no_std
+    #[doc(hidden)]
     #[cfg(not(feature = "std"))]
     pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
         if self.end {
@@ -119,7 +124,13 @@ impl<'r> ReadBuffer<'r> {
         Ok(Some(&self.buffer[self.consumed..]))
     }
 
-    /// Uses the state to extract a record from the buffer
+    /// Uses the state to extract a record from the buffer.
+    ///
+    /// EXPERIMENTAL: To be used to support setup for multi-threading parsing.
+    ///
+    /// # Errors
+    /// Most commonly if the parser failed, but potentially also if the buffer could not be
+    /// refilled.
     #[inline]
     pub fn next<'n, T>(
         &'n mut self,
@@ -159,6 +170,7 @@ impl<'r> ReadBuffer<'r> {
     }
 
     /// Uses the state to extract a record from the buffer
+    #[doc(hidden)]
     #[inline]
     pub fn next_no_refill<'n, T>(
         &'n mut self,

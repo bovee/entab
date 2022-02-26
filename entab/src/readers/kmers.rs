@@ -28,7 +28,7 @@ pub struct FastqKmerReader<'r> {
 }
 
 impl<'r> FastqKmerReader<'r> {
-    /// Create a new FastqKmerReader
+    /// Create a new `FastqKmerReader`
     pub fn new(rb: ReadBuffer<'r>, k: u8) -> Result<Self, EtError> {
         // TODO: add a quality mask?
         let fastq_reader = FastqReader::new(rb, ())?;

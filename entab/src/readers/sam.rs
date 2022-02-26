@@ -2,6 +2,7 @@ use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 use core::marker::Copy;
 
 use crate::parsers::{extract, extract_opt, unsafe_access_state, Endian, FromSlice, NewLine, Skip};
@@ -9,7 +10,7 @@ use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
-/// The internal state of the BamReader.
+/// The internal state of the `BamReader`.
 #[derive(Debug, Default)]
 pub struct BamState {
     references: Vec<(String, usize)>,
@@ -51,7 +52,7 @@ impl<'r> FromSlice<'r> for BamState {
         let header_len = extract::<u32>(rb, con, Endian::Little)? as usize;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        let _ = extract::<Skip>(rb, con, header_len);
+        drop(extract::<Skip>(rb, con, header_len));
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(rb, con, Endian::Little)? as usize;
@@ -61,7 +62,7 @@ impl<'r> FromSlice<'r> for BamState {
             let name_len = extract::<u32>(rb, con, Endian::Little)? as usize;
             let mut raw_ref_name = extract::<&[u8]>(rb, con, name_len)?;
             if raw_ref_name.last() == Some(&b'\x00') {
-                raw_ref_name = &raw_ref_name[..name_len - 1]
+                raw_ref_name = &raw_ref_name[..name_len - 1];
             };
             let ref_name = String::from(alloc::str::from_utf8(raw_ref_name)?);
             let ref_len = extract::<u32>(rb, con, Endian::Little)? as usize;
@@ -126,9 +127,8 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         if rb.is_empty() {
             if eof {
                 return Ok(false);
-            } else {
-                return Err(EtError::new("BAM file is incomplete").incomplete());
             }
+            return Err(EtError::new("BAM file is incomplete").incomplete());
         }
         // now read the record itself
         let con = &mut 0;
@@ -149,16 +149,16 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         let raw_ref_name_id: i32 = extract(rb, con, Endian::Little)?;
         self.ref_name = if raw_ref_name_id < 0 {
             ""
-        } else if raw_ref_name_id as usize >= state.references.len() {
+        } else if usize::try_from(raw_ref_name_id)? >= state.references.len() {
             return Err("Invalid reference sequence ID".into());
         } else {
-            &unsafe_access_state(state).references[raw_ref_name_id as usize].0
+            &unsafe_access_state(state).references[usize::try_from(raw_ref_name_id)?].0
         };
         let raw_pos: i32 = extract(rb, con, Endian::Little)?;
         self.pos = if raw_pos == -1 {
             None
         } else {
-            Some(raw_pos as u64)
+            Some(u64::try_from(raw_pos)?)
         };
         let query_name_len = usize::from(extract::<u8>(rb, con, Endian::Little)?);
         let raw_mapq: u8 = extract(rb, con, Endian::Little)?;
@@ -175,16 +175,16 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         let raw_rnext_id: i32 = extract(rb, con, Endian::Little)?;
         self.rnext = if raw_rnext_id < 0 {
             ""
-        } else if raw_rnext_id as usize >= state.references.len() {
+        } else if usize::try_from(raw_rnext_id)? >= state.references.len() {
             return Err("Invalid next reference sequence ID".into());
         } else {
-            &unsafe_access_state(state).references[raw_rnext_id as usize].0
+            &unsafe_access_state(state).references[usize::try_from(raw_rnext_id)?].0
         };
         let raw_pnext: i32 = extract(rb, con, Endian::Little)?;
         self.pnext = if raw_pnext == -1 {
             None
         } else {
-            Some(raw_pnext as u32)
+            Some(u32::try_from(raw_pnext)?)
         };
         self.tlen = extract::<i32>(rb, con, Endian::Little)?;
 
@@ -197,7 +197,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         }
         let mut query_name = &data[..start];
         if query_name.last() == Some(&0) {
-            query_name = &query_name[..query_name_len - 1]
+            query_name = &query_name[..query_name_len - 1];
         }
         self.query_name = alloc::str::from_utf8(query_name)?;
 
@@ -215,7 +215,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         for idx in 0..seq_len {
             let byte = data[start + (idx / 2)];
             let byte = usize::from(if idx % 2 == 0 { byte >> 4 } else { byte & 15 });
-            self.seq[idx] = b"=ACMGRSVTWYHKDBN"[byte]
+            self.seq[idx] = b"=ACMGRSVTWYHKDBN"[byte];
         }
         start += (seq_len + 1) / 2;
         self.qual = if data[start] == 255 {
@@ -232,7 +232,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
 
 impl_reader!(BamReader, BamRecord, BamState, ());
 
-/// The internal state of the SamReader.
+/// The internal state of the `SamReader`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SamState {}
 

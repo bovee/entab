@@ -17,8 +17,11 @@ pub trait FromSlice<'b>: Sized + Default {
     /// Given a slice and state, determine how much of the slice needs to be parsed to return a
     /// value and update `consumed` with that amount. If no value can be parsed, return Ok(false),
     /// otherwise return Ok(true) if a value can be parsed.
+    ///
+    /// # Errors
+    /// If the parser fails or if there's not enough data in the buffer, an `EtError` will be returned.
     fn parse(
-        _buf: &[u8],
+        _buffer: &[u8],
         _eof: bool,
         _consumed: &mut usize,
         _state: &mut Self::State,
@@ -28,13 +31,19 @@ pub trait FromSlice<'b>: Sized + Default {
 
     /// Given a slice and state, update Self by reading the information about the current record
     /// out.
-    fn get(&mut self, _buf: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
+    ///
+    /// # Errors
+    /// If buffer can not be interpreted into `Self`, return `EtError`.
+    fn get(&mut self, _buffer: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
 }
 
 /// Pull a `T` out of the slice, updating state appropriately and incrementing `consumed` to
 /// account for bytes used.
+///
+/// # Errors
+/// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
 pub fn extract<'r, T>(
     slice: &'r [u8],
@@ -56,6 +65,9 @@ where
 
 /// Pull a `T` out of the slice, updating state appropriately and incrementing `consumed` to
 /// account for bytes used.
+///
+/// # Errors
+/// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
 pub fn extract_opt<'r, T>(
     slice: &'r [u8],
@@ -75,14 +87,16 @@ where
     Ok(Some(record))
 }
 
-/// Access long-lived fields in Self::State by bending the lifetime rules.
+/// Access long-lived fields in `Self::State` by bending the lifetime rules.
 ///
 /// This should only be used for fields on a state object that are essentially immutable; if a
 /// field is changed by successive `parse` calls, then this method will result in undefined
 /// behavior and bads things could happen.
 #[inline]
 pub(crate) fn unsafe_access_state<'a, 'r, T>(state: &'a &'r mut T) -> &'r T {
-    unsafe { *core::mem::transmute::<&'a &'r mut T, &'a &'r T>(state) }
+    // this is equivalent to `*transmute::<&'a &'r mut T, &'a &'r T>(state)`
+    let state_ptr: *const &mut T = state;
+    unsafe { *state_ptr.cast::<&T>() }
 }
 
 /// The endianness of a number used to extract such a number.
@@ -194,9 +208,8 @@ impl<'r> FromSlice<'r> for NewLine<'r> {
         if buf.is_empty() {
             if eof {
                 return Ok(false);
-            } else {
-                return Err(EtError::new("Could not extract a new line").incomplete());
             }
+            return Err(EtError::new("Could not extract a new line").incomplete());
         }
         // find the newline
         let (end, to_consume) = if let Some(e) = memchr(b'\n', buf) {

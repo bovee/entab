@@ -30,9 +30,8 @@ fn split<'a>(
             if let Some(next) = memchr(quote, &line[cur_pos + 1..]) {
                 if line[next + 1] != delim {
                     return Err("quotes end mid-token".into());
-                } else {
-                    cur_pos += next;
                 }
+                cur_pos += next;
             } else {
                 return Err("unclosed delimiter".into());
             }
@@ -63,7 +62,7 @@ pub struct TsvReader<'r> {
 }
 
 impl<'r> TsvReader<'r> {
-    /// Create a new TsvReader
+    /// Create a new `TsvReader`
     pub fn new<B>(data: B, params: (u8, u8)) -> Result<Self, EtError>
     where
         B: TryInto<ReadBuffer<'r>>,
