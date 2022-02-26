@@ -3,7 +3,6 @@ mod raw_io_wrapper;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
@@ -110,10 +109,8 @@ impl Reader {
             }
         };
         let (reader, filetype, _) = decompress(stream).map_err(to_py)?;
-        let buffer = ReadBuffer::new(reader).map_err(to_py)?;
-
         let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name());
-        let reader = get_reader(parser_name, buffer).map_err(to_py)?;
+        let reader = get_reader(parser_name, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
 
@@ -123,7 +120,10 @@ impl Reader {
             .map(|h| h.replace(" ", "_").replace("-", "_"))
             .collect();
         let collections = PyModule::import(py, "collections")?;
-        let record_class = collections.getattr("namedtuple")?.call1(("Record", headers))?.into();
+        let record_class = collections
+            .getattr("namedtuple")?
+            .call1(("Record", headers))?
+            .into();
 
         Ok(Reader {
             parser: parser_name.to_string(),

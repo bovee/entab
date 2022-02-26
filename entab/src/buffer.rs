@@ -20,7 +20,7 @@ pub const BUFFER_SIZE: usize = 10_000;
 /// Buffers Read to provide something that can be used for parsing
 pub struct ReadBuffer<'r> {
     #[cfg(feature = "std")]
-    reader: Box<dyn Read>,
+    reader: Box<dyn Read + 'r>,
     buffer: Cow<'r, [u8]>,
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
     pub reader_pos: u64,
@@ -38,7 +38,7 @@ impl<'r> ReadBuffer<'r> {
     /// Create a new buffer and associated ParserState.
     #[cfg(feature = "std")]
     pub fn from_reader(
-        mut reader: Box<dyn Read>,
+        mut reader: Box<dyn Read + 'r>,
         buffer_size: Option<usize>,
     ) -> Result<Self, EtError> {
         let mut buffer = vec![0; buffer_size.unwrap_or(BUFFER_SIZE)];
@@ -207,10 +207,10 @@ impl<'r> ::core::fmt::Debug for ReadBuffer<'r> {
 }
 
 #[cfg(feature = "std")]
-impl<'r> TryFrom<Box<dyn Read>> for ReadBuffer<'r> {
+impl<'r> TryFrom<Box<dyn Read + 'r>> for ReadBuffer<'r> {
     type Error = EtError;
 
-    fn try_from(reader: Box<dyn Read>) -> Result<Self, Self::Error> {
+    fn try_from(reader: Box<dyn Read + 'r>) -> Result<Self, Self::Error> {
         ReadBuffer::from_reader(reader, None)
     }
 }

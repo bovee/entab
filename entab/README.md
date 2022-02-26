@@ -6,7 +6,6 @@ decompression, file type inference, and parsers for different file types.
 
 To parse the IDs out of a FASTA file:
 ```rust
-
 //! use std::fs::File;
 //! use entab::readers::fasta::{FastaReader, FastaRecord};
 //!

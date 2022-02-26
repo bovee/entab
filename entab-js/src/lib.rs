@@ -3,7 +3,6 @@ mod utils;
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read};
 
-use entab_base::buffer::ReadBuffer;
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
@@ -44,10 +43,9 @@ impl Reader {
         let stream: Box<dyn Read> = Box::new(Cursor::new(data));
 
         let (reader, filetype, _) = decompress(stream).map_err(to_js)?;
-        let buffer = ReadBuffer::new(reader).map_err(to_js)?;
 
         let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name().to_string());
-        let reader = get_reader(&parser_name, buffer).map_err(to_js)?;
+        let reader = get_reader(&parser_name, reader).map_err(to_js)?;
         let headers = reader.headers();
         Ok(Reader {
             parser: parser_name.to_string(),

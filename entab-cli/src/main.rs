@@ -1,5 +1,6 @@
 mod tsv_params;
 
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
 use std::str;
@@ -75,17 +76,17 @@ pub fn run() -> Result<(), EtError> {
             {
                 let file = File::open(i)?;
                 mmap = unsafe { Mmap::map(&file)? };
-                (ReadBuffer::from_slice(&mmap), filetype, compression)
+                (ReadBuffer::from(mmap.as_ref()), filetype, compression)
             }
             #[cfg(not(feature = "mmap"))]
-            (ReadBuffer::new(reader)?, filetype, compression)
+            (ReadBuffer::try_from(reader)?, filetype, compression)
         } else {
-            (ReadBuffer::new(reader)?, filetype, compression)
+            (ReadBuffer::try_from(reader)?, filetype, compression)
         }
     } else {
         let locked_stdin = stdin.lock();
         let (reader, filetype, compression) = decompress(Box::new(locked_stdin))?;
-        (ReadBuffer::new(reader)?, filetype, compression)
+        (ReadBuffer::try_from(reader)?, filetype, compression)
     };
     let parser = matches
         .value_of("parser")
