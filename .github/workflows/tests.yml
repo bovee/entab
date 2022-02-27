@@ -12,13 +12,38 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
+
+    - name: Install nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+
+    - name: Install tarpaulin
+      uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-tarpaulin
+        version: latest
+        use-tool-cache: true
+
     - name: Build
       run: cargo build
+
     - name: Run tests
       run: cargo test
+
     - name: Run no_std tests
       working-directory: ./entab
       run: cargo test --no-default-features
+
+    - name: Coverage
+      working-directory: ./entab
+      run: cargo +nightly tarpaulin --all --timeout 600 --out Xml -- --test-threads 1
+
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: true
