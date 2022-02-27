@@ -7,7 +7,7 @@ use std::str;
 
 use clap::{crate_authors, crate_version, App, Arg};
 #[cfg(feature = "mmap")]
-use memmap::Mmap;
+use memmap2::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;

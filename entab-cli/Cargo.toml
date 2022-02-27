@@ -13,11 +13,11 @@ categories = ["command-line-utilities", "parsing", "science"]
 clap = { version = "3.0.14", features = ["cargo"] }
 entab = { path = "../entab", version = "0.2.2" }
 memchr = "2.4"
-memmap = { version = "0.7", optional = true }
+memmap2 = { version = "0.5.3", optional = true }
 
 [features]
 default = ["mmap"]
-mmap = ["memmap"]
+mmap = ["memmap2"]
 
 [[bin]]
 name = "entab"
