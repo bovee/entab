@@ -9,7 +9,7 @@ use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
 use pyo3::prelude::*;
-use pyo3::types::{PyDateTime, PyDict, PyList, PyTuple};
+use pyo3::types::{PyDict, PyList, PyTuple};
 use pyo3::{create_exception, exceptions};
 
 use crate::raw_io_wrapper::RawIoWrapper;
@@ -27,8 +27,12 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
         Value::Null => py.None().as_ref(py).into(),
         Value::Boolean(b) => b.to_object(py),
         Value::Datetime(d) => {
-            let timestamp = d.timestamp_millis() as f64 / 1000.;
-            PyDateTime::from_timestamp(py, timestamp, None)?.to_object(py)
+            // return an ISO 8601 formatted string
+            d.format("%+").to_string().to_object(py)
+            // TODO: it would be nice to use Python's built-in datetime, but that doesn't appear to
+            // be abi3-compatible right now
+//            let timestamp = d.timestamp_millis() as f64 / 1000.;
+//            pyo3::types::PyDateTime::from_timestamp(py, timestamp, None)?.to_object(py)
         }
         Value::Float(v) => v.to_object(py),
         Value::Integer(v) => v.to_object(py),

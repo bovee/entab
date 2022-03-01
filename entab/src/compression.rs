@@ -1,17 +1,17 @@
 use alloc::boxed::Box;
 use std::io::Read;
 
-#[cfg(any(feature = "compression", feature = "compression_manylinux"))]
+#[cfg(feature = "compression")]
 use bzip2::read::BzDecoder;
 use flate2::read::MultiGzDecoder;
 #[cfg(feature = "compression")]
 use xz2::read::XzDecoder;
-#[cfg(any(feature = "compression", feature = "compression_manylinux"))]
+#[cfg(feature = "compression")]
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 #[cfg(not(feature = "compression"))]
 pub use fake_compression::XzDecoder;
-#[cfg(not(any(feature = "compression", feature = "compression_manylinux")))]
+#[cfg(not(feature = "compression"))]
 pub use fake_compression::{BzDecoder, ZstdDecoder};
 
 use crate::filetype::{sniff_reader_filetype, FileType};
@@ -68,7 +68,7 @@ mod tests {
     }
 }
 
-#[cfg(not(all(feature = "compression", feature = "compression_manylinux")))]
+#[cfg(not(feature = "compression"))]
 #[allow(dead_code, unreachable_pub)]
 mod fake_compression {
     use std::io::Read;

@@ -27,7 +27,6 @@ criterion = "0.3"
 [features]
 default = ["compression", "std"]
 compression = ["bzip2", "xz2", "zstd"]
-compression_manylinux = ["bzip2", "zstd"]
 std = ["chrono/std", "serde/std"]
 
 [[bench]]

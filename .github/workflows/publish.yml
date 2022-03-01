@@ -1,0 +1,94 @@
+nam: 'Publish new versions'
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+
+jobs:
+  rust:
+    name: Publish to crates.io
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Publish to Crates
+        run: cargo publish --token ${CRATES_API_TOKEN}
+        env:
+          CRATES_API_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
+  python:
+    name: Publish to PyPI
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64
+          - os: ubuntu-latest
+            target: armv7
+          - os: macos-latest
+            target: x64
+          - os: windows-latest
+            target: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.6
+          architecture: x64
+
+      - name: build the wheels
+        uses: messense/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: auto
+          args: --release --out dist --universal2 --no-sdist -m entab-py/Cargo.toml --cargo-extra-args=--features=maturin
+
+      - name: upload the wheels
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install --upgrade twine
+          twine upload --skip-existing *
+
+    name: Publish to NPM
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+
+      - name: install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: build the package
+        run: wasm-pack build --release ./entab-js/
+
+      - name: fix the package name
+        run: sed -i.bak "s/entab-js/entab/" entab-js/pkg/package.json
+      - run: rm ./entab-js/pkg/package.json.bak
+
+      - name: publish to npm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
+        run: wasm-pack publish --access public ./entab-js/
+
