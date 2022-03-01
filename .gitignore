@@ -2,6 +2,7 @@ target/
 **/*.rs.bk
 Cargo.lock
 bin/
+dist/
 pkg/
 wasm-pack.log
 venv/

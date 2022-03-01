@@ -1,4 +1,4 @@
-nam: 'Publish new versions'
+name: 'Publish new versions'
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 jobs:
   rust:
     name: Publish to crates.io
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -19,13 +20,15 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Publish to Crates
-        run: cargo publish --token ${CRATES_API_TOKEN}
+      - name: Publish package to Crates
+        run: cargo publish --manifest-path entab/Cargo.toml --token ${CRATES_API_TOKEN}
         env:
           CRATES_API_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
+
   python:
     name: Publish to PyPI
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -56,17 +59,19 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist --universal2 --no-sdist -m entab-py/Cargo.toml --cargo-extra-args=--features=maturin
+          args: --release --out dist --no-sdist -m entab-py/Cargo.toml --cargo-extra-args=--features=maturin
 
       - name: upload the wheels
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           pip install --upgrade twine
-          twine upload --skip-existing *
+          twine upload --skip-existing dist/*
 
+  javascript:
     name: Publish to NPM
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
@@ -75,6 +80,10 @@ jobs:
           profile: minimal
           toolchain: stable
           default: true
+
+      - uses: actions/setup-node@v2
+        with:
+          registry-url: 'https://registry.npmjs.org'
 
       - name: install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -88,7 +97,6 @@ jobs:
 
       - name: publish to npm
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
-        run: wasm-pack publish --access public ./entab-js/
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
+        run: npm publish --access public ./entab-js/pkg/
 
