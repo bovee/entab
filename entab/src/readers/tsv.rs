@@ -117,7 +117,7 @@ impl<'r> TsvReader<'r> {
                 self.delim_char,
                 self.quote_char,
             )
-            .map_err(|e| e.add_context(&self.rb))?;
+            .map_err(|e| e.add_context_from_readbuffer(&self.rb))?;
         }
 
         self.rb.consumed += *con;

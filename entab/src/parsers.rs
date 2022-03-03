@@ -45,7 +45,7 @@ pub trait FromSlice<'b>: Sized + Default {
 /// # Errors
 /// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
-pub fn extract<'r, T>(
+pub(crate) fn extract<'r, T>(
     slice: &'r [u8],
     consumed: &mut usize,
     state: <T as FromSlice<'r>>::State,
@@ -69,7 +69,7 @@ where
 /// # Errors
 /// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
-pub fn extract_opt<'r, T>(
+pub(crate) fn extract_opt<'r, T>(
     slice: &'r [u8],
     eof: bool,
     consumed: &mut usize,

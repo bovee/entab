@@ -66,34 +66,40 @@ impl EtError {
         self
     }
 
-    /// Fill the positional error information from a `ReadBuffer`.
+    /// Fill the positional error information from a ReadBuffer directly.
+    #[must_use]
+    pub fn add_context_from_readbuffer(self, buffer: &ReadBuffer) -> Self {
+        self.add_context(buffer.as_ref(), buffer.consumed, buffer.record_pos, buffer.reader_pos)
+    }
+
+    /// Fill the positional error information on the error.
     ///
     /// Used to display e.g. where a parsing error in a file occured.
     #[must_use]
-    pub fn add_context(mut self, buffer: &ReadBuffer) -> Self {
-        let buf_len = buffer.as_ref().len();
-        let (context, context_pos) = match (buffer.consumed < 16, buf_len < buffer.consumed + 16) {
-            (true, true) => (buffer.as_ref().to_vec(), buffer.consumed),
+    pub fn add_context(mut self, buffer: &[u8], consumed: usize, record_pos: u64, reader_pos: u64) -> Self {
+        let buf_len = buffer.len();
+        let (context, context_pos) = match (consumed < 16, buf_len < consumed + 16) {
+            (true, true) => (buffer.to_vec(), consumed),
             (true, false) => (
-                (&buffer.as_ref()[..buffer.consumed + 16]).to_vec(),
-                buffer.consumed,
+                (&buffer[..consumed + 16]).to_vec(),
+                consumed,
             ),
             (false, true) => {
-                if buffer.consumed < buf_len {
-                    ((&buffer.as_ref()[buffer.consumed - 16..]).to_vec(), 16)
+                if consumed < buf_len {
+                    ((&buffer[consumed - 16..]).to_vec(), 16)
                 } else {
                     (Vec::new(), 0)
                 }
             }
             (false, false) => (
-                (&buffer.as_ref()[buffer.consumed - 16..buffer.consumed + 16]).to_vec(),
+                (&buffer[consumed - 16..consumed + 16]).to_vec(),
                 16,
             ),
         };
 
         self.context = Some(EtErrorContext {
-            record: buffer.record_pos,
-            byte: buffer.reader_pos + buffer.consumed as u64,
+            record: record_pos,
+            byte: reader_pos + consumed as u64,
             context,
             context_pos,
         });
@@ -254,7 +260,7 @@ mod tests {
     #[test]
     fn test_context_display() {
         let buf: ReadBuffer = b"1234567890ABCDEF"[..].into();
-        let err = EtError::new("Test").add_context(&buf);
+        let err = EtError::new("Test").add_context_from_readbuffer(&buf);
         let msg = format!("{}", err);
         assert_eq!(
             msg,
@@ -266,7 +272,7 @@ mod tests {
 
         let mut buf: ReadBuffer = b"1234567890ABCDEF"[..].into();
         buf.consumed += 10;
-        let err = EtError::new("Test").add_context(&buf);
+        let err = EtError::new("Test").add_context_from_readbuffer(&buf);
         let msg = format!("{}", err);
         assert_eq!(
             msg,

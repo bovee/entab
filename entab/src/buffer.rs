@@ -12,6 +12,8 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 
 use crate::parsers::FromSlice;
+#[cfg(feature = "std")]
+use crate::chunk::BufferChunk;
 use crate::EtError;
 
 /// Default buffer size
@@ -62,11 +64,10 @@ impl<'r> ReadBuffer<'r> {
     ///
     /// # Errors
     /// This will fail if there's an error retrieving data from the reader.
-    #[doc(hidden)]
     #[cfg(feature = "std")]
-    pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
+    fn refill(&mut self) -> Result<bool, EtError> {
         if self.end {
-            return Ok(None);
+            return Ok(false);
         } else if self.eof {
             self.end = true;
         }
@@ -100,7 +101,7 @@ impl<'r> ReadBuffer<'r> {
         let amt_read = self
             .reader
             .read(&mut buffer[len..])
-            .map_err(|e| EtError::from(e).add_context(self))?;
+            .map_err(|e| EtError::from(e).add_context_from_readbuffer(self))?;
         buffer.truncate(len + amt_read);
         self.consumed = 0;
         swap(&mut Cow::Owned(buffer), &mut self.buffer);
@@ -108,25 +109,22 @@ impl<'r> ReadBuffer<'r> {
             self.eof = true;
         }
 
-        Ok(Some(&self.buffer[self.consumed..]))
+        Ok(true)
     }
 
     /// Refill implementation for no_std
-    #[doc(hidden)]
     #[cfg(not(feature = "std"))]
-    pub fn refill(&mut self) -> Result<Option<&[u8]>, EtError> {
+    fn refill(&mut self) -> Result<bool, EtError> {
         if self.end {
-            return Ok(None);
+            return Ok(false);
         } else if self.eof {
             self.end = true;
         }
         self.eof = true;
-        Ok(Some(&self.buffer[self.consumed..]))
+        Ok(true)
     }
 
     /// Uses the state to extract a record from the buffer.
-    ///
-    /// EXPERIMENTAL: To be used to support setup for multi-threading parsing.
     ///
     /// # Errors
     /// Most commonly if the parser failed, but potentially also if the buffer could not be
@@ -154,54 +152,40 @@ impl<'r> ReadBuffer<'r> {
                 Ok(false) => return Ok(None),
                 Err(e) => {
                     if !e.incomplete || self.eof {
-                        return Err(e.add_context(self));
+                        return Err(e.add_context_from_readbuffer(self));
                     }
                 }
             }
-            if self.refill()?.is_none() {
+            if !self.refill()? {
                 return Ok(None);
             }
             consumed = 0;
         }
         let mut record = T::default();
         T::get(&mut record, &self.buffer[consumed..self.consumed], &state)
-            .map_err(|e| e.add_context(self))?;
+            .map_err(|e| e.add_context_from_readbuffer(self))?;
         Ok(Some(record))
     }
 
-    /// Uses the state to extract a record from the buffer
+    /// Extract a chunk from the buffer for further parsing
     #[doc(hidden)]
     #[inline]
-    pub fn next_no_refill<'n, T>(
-        &'n mut self,
-        mut state: <T as FromSlice<'n>>::State,
-    ) -> Result<Option<T>, EtError>
-    where
-        T: FromSlice<'n> + 'n,
+    #[cfg(feature = "std")]
+    pub fn next_chunk(&mut self) -> Result<Option<(&[u8], BufferChunk)>, EtError>
     {
-        let consumed = self.consumed;
-        match T::parse(
-            &self.buffer[consumed..],
-            self.eof,
-            &mut self.consumed,
-            &mut state,
-        ) {
-            Ok(true) => {
-                self.record_pos += 1;
-                let mut record = T::default();
-                T::get(&mut record, &self.buffer[consumed..self.consumed], &state)
-                    .map_err(|e| e.add_context(self))?;
-                Ok(Some(record))
-            }
-            Ok(false) => Ok(None),
-            Err(e) => {
-                if !e.incomplete || self.eof {
-                    Err(e.add_context(self))
-                } else {
-                    Ok(None)
-                }
-            }
+        if !self.refill()? {
+            return Ok(None);
         }
+        Ok(Some((&self.buffer, BufferChunk::new(self.consumed, self.eof, self.record_pos, self.reader_pos))))
+    }
+
+    /// Update the `ReadBuffer` from the chunk after it's been parsed
+    #[doc(hidden)]
+    #[inline]
+    #[cfg(feature = "std")]
+    pub fn update_from_chunk(&mut self, chunk: BufferChunk) {
+        self.consumed = chunk.consumed;
+        self.record_pos = chunk.record_pos;
     }
 }
 

@@ -58,6 +58,8 @@ extern crate alloc;
 
 /// The buffer interface that underlies the file readers
 pub mod buffer;
+/// Part of a buffer used to parse records across threads
+pub mod chunk;
 /// Generic file decompression
 #[cfg(feature = "std")]
 pub mod compression;
@@ -66,7 +68,7 @@ pub mod error;
 /// File format inference
 pub mod filetype;
 /// Lightweight parsers to read records out of buffers
-pub mod parsers;
+mod parsers;
 /// Parsers for specific file formats
 pub mod readers;
 /// Record and abstract record reading
