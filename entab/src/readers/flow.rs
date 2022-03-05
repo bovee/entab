@@ -34,7 +34,9 @@ impl<'r> FromSlice<'r> for FcsHeaderKeyValue<'r> {
                 return Ok(false);
             }
             if i + 2 >= rb.len() {
-                if temp != None && rb[i + 1] == *delim {
+                if i + 1 >= rb.len() {
+                    return Err(EtError::from("Incomplete key in FCS header").incomplete());
+                } else if temp != None && rb[i + 1] == *delim {
                     *key_end = temp.unwrap();
                     break i + 1;
                 } else if !eof {
@@ -154,8 +156,13 @@ impl<'r> FromSlice<'r> for FcsState {
         }
         if data_end < data_start {
             return Err("Invalid end from data segment".into());
+        } else if data_start < text_end as u64 {
+            return Err("Data segment can not start before text segment ends".into());
         }
         // get anything between the end of the text segment and the start of the data segment
+        if usize::try_from(data_start)? < *con {
+            return Err(EtError::from("Ran out of data before data segment started").incomplete());
+        }
         let _ = extract::<Skip>(rb, con, usize::try_from(data_start)? - *con)?;
 
         *consumed += *con;
@@ -518,8 +525,18 @@ mod tests {
 
     #[test]
     fn test_fcs_bad_fuzzes() -> Result<(), EtError> {
-        let rb: &[u8] = b"FCS3.1  \n\n\n0\n\n\n\n\n\n0\n\n\n\n\n\n\n \n\n\n0\n\n\n\n \n\n\n0\n\nCS3.1  \n\n\n0\n\n\n\n\n;";
-        assert!(FcsReader::new(rb, ()).is_err());
+        let test_data: &[u8] = b"FCS3.1  \n\n\n0\n\n\n\n\n\n0\n\n\n\n\n\n\n \n\n\n0\n\n\n\n \n\n\n0\n\nCS3.1  \n\n\n0\n\n\n\n\n;";
+        assert!(FcsReader::new(test_data, ()).is_err());
+
+        let test_data: &[u8] = b"FCS3.1  \n0\t\t\t\t\t\t77777777777777777777777777777777\t\x1a@@\x1a{\n\x1a\t00vyyy\t\t0\t0\t77777yy\tyyyyyyyy\0\0\0\0\0\0\0\0\0\0\0\0\0\x0000\t\t0\t0:\0\0\x05\x1a\n{\t17777yy\t\x1a\n{\t17777777777yy\t";
+        assert!(FcsReader::new(test_data, ()).is_err());
+
+        let test_data: &[u8] = b"FCS3.1  \n0\t\t\t\t\t\t7777\t\t\t\t\t\t00000000007777777777\0\0\x007777y\t0\tH\0\0\0\0\0\x007777777\t\t\ty7777777\t\t\tyyy\t0\tH\0\0\0\0\x007777777\t\t\0\x00777777yy\t0\tH\0\0\0\0\0\x007777777\t\t";
+        assert!(FcsReader::new(test_data, ()).is_err());
+
+        let test_data: &[u8] = b"FCS3.1  \n0\t\t\t\t\t\t7777\t\t\t\t\t\t00000077777707777yyyy77777\t0000006692\x1a\t0\x01\0\0\0-\0D`\0\x000\t\t*\tyyyy77777\t777\0\0-\0D`\0\x000\t\t*\tyyyy77777\t77777\t77777\t77777\t";
+        assert!(FcsReader::new(test_data, ()).is_err());
+
         Ok(())
     }
 }

@@ -22,3 +22,9 @@ members = ["."]
 [[bin]]
 name = "reader"
 path = "fuzz_targets/reader.rs"
+
+[[bin]]
+name = "inficon"
+path = "fuzz_targets/inficon.rs"
+test = false
+doc = false

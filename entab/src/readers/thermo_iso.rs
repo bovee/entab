@@ -188,6 +188,10 @@ impl<'r> FromSlice<'r> for ThermoDxfRecord {
 
             let bytes_data = extract::<u32>(rb, con, Endian::Little)? as usize;
             state.n_scans_left = bytes_data / (4 + 8 * state.mzs.len());
+            if state.n_scans_left == 0 {
+                // this was caught by fuzzing; not sure if real files have this issue
+                return Err("File specified an invalid data length".into());
+            }
             state.cur_mz_idx = 0;
         }
         state.n_scans_left -= 1;
@@ -354,6 +358,11 @@ mod tests {
         ];
         let mut reader = ThermoDxfReader::new(&test_data[..], ())?;
         assert!(reader.next().is_err());
+
+        let test_data = [255, 255, 5, 0, 32, 67, 82, 97, 119, 68, 97, 116, 97, 61, 116, 97, 10, 35, 41, 2, 67, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 116, 180, 17];
+        let mut reader = ThermoDxfReader::new(&test_data[..], ())?;
+        assert!(reader.next().is_err());
+
         Ok(())
     }
 

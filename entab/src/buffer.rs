@@ -253,38 +253,28 @@ mod test {
     use crate::EtError;
 
     use super::ReadBuffer;
-    //
-    //     #[cfg(feature = "std")]
-    //     #[test]
-    //     fn test_buffer() -> Result<(), EtError> {
-    //         let reader = Box::new(Cursor::new(b"123456"));
-    //         let mut rb = ReadBuffer::new(reader)?;
-    //
-    //         assert_eq!(&rb[..], b"123456");
-    //         let _ = rb.consume(3);
-    //         assert_eq!(&rb[..], b"456");
-    //         Ok(())
-    //     }
-    //
-    //     #[cfg(feature = "std")]
-    //     #[test]
-    //     fn test_buffer_small() -> Result<(), EtError> {
-    //         let reader = Box::new(Cursor::new(b"123456"));
-    //         let mut rb = ReadBuffer::with_capacity(3, reader)?;
-    //
-    //         assert_eq!(&rb[..], b"123");
-    //         assert_eq!(rb.consume(3), b"123");
-    //         assert_eq!(&rb[..], b"");
-    //
-    //         rb.refill()?;
-    //         assert_eq!(&rb[..], b"456");
-    //         Ok(())
-    //     }
-
+    
     #[cfg(feature = "std")]
     #[test]
+    fn test_buffer_small() -> Result<(), EtError> {
+        let reader = Box::new(Cursor::new(b"123456"));
+        let rb = ReadBuffer::from_reader(reader, None)?;
+        // the default buffer size should always be above 6 or something's gone really wrong
+        assert_eq!(&rb.as_ref()[rb.consumed..], b"123456");
+
+        let reader = Box::new(Cursor::new(b"123456"));
+        let mut rb = ReadBuffer::from_reader(reader, Some(3))?;
+    
+        assert_eq!(&rb.as_ref()[rb.consumed..], b"123");
+        rb.consumed += 3;
+        assert!(rb.refill()?);
+        assert_eq!(&rb.as_ref()[rb.consumed..], b"456");
+        Ok(())
+    }
+
+    #[test]
     fn test_read_lines() -> Result<(), EtError> {
-        let mut rb = ReadBuffer::from_reader(Box::new(Cursor::new(b"1\n2\n3")), None)?;
+        let mut rb = ReadBuffer::from(&b"1\n2\n3"[..]);
 
         let mut ix = 0;
         while let Some(NewLine(line)) = rb.next(0)? {
@@ -334,15 +324,15 @@ mod test {
         assert_eq!(&buffer.as_ref()[buffer.consumed..], b"123\nEND");
         Ok(())
     }
-    //
-    //     #[cfg(feature = "std")]
-    //     #[test]
-    //     fn test_expansion() -> Result<(), EtError> {
-    //         let reader = Box::new(Cursor::new(b"1234567890"));
-    //         let mut rb = ReadBuffer::with_capacity(2, reader)?;
-    //         assert!(rb.len() == 2);
-    //         let _ = rb.refill();
-    //         assert!(rb.len() >= 4);
-    //         Ok(())
-    //     }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_expansion() -> Result<(), EtError> {
+        let reader = Box::new(Cursor::new(b"1234567890"));
+        let mut rb = ReadBuffer::from_reader(reader, Some(2))?;
+        assert!(rb.as_ref().len() == 2);
+        let _ = rb.refill();
+        assert!(rb.as_ref().len() >= 4);
+        Ok(())
+    }
 }

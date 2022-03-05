@@ -75,7 +75,13 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
             state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Little)?) / 60000.;
             let wv_start: u16 = extract(rb, con, Endian::Little)?;
             let wv_end: u16 = extract(rb, con, Endian::Little)?;
+            if wv_start > wv_end {
+                return Err("Invalid wavelength start and end".into());
+            }
             let wv_step: u16 = extract(rb, con, Endian::Little)?;
+            if wv_step == 0 {
+                return Err("Invalid wavelength step".into());
+            }
 
             n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
@@ -133,8 +139,8 @@ mod tests {
 
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
-        let rb: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationUvReader::new(rb, ())?;
+        let test_data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
+        let mut reader = ChemstationUvReader::new(test_data, ())?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
         let ChemstationUvRecord {

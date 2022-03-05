@@ -382,6 +382,21 @@ mod tests {
     }
 
     #[test]
+    fn test_indexed_png() -> Result<(), EtError> {
+        let rb: &[u8] = &include_bytes!("../../tests/data/bmp_indexed.png")[..];
+        let mut reader = PngReader::new(rb, ())?;
+        let _ = reader.metadata();
+
+        let mut n_recs = 0;
+        while reader.next()?.is_some() {
+            n_recs += 1;
+        }
+        // 200x200 image
+        assert_eq!(n_recs, 40000);
+        Ok(())
+    }
+
+    #[test]
     fn test_minimal_png() -> Result<(), EtError> {
         // data from https://en.wikipedia.org/wiki/Portable_Network_Graphics
         const TEST_IMAGE: &[u8] = &[
