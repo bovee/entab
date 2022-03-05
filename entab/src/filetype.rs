@@ -170,7 +170,10 @@ impl FileType {
             "bzip" => &[FileType::Bzip],
             "xz" => &[FileType::Lzma],
             "zstd" => &[FileType::Zstd],
-            "ch" => &[FileType::AgilentChemstationFid, FileType::AgilentChemstationMwd],
+            "ch" => &[
+                FileType::AgilentChemstationFid,
+                FileType::AgilentChemstationMwd,
+            ],
             "ms" => &[FileType::AgilentChemstationMs],
             "uv" => &[FileType::AgilentChemstationUv],
             "bam" => &[FileType::Bam],
@@ -243,6 +246,7 @@ impl FileType {
             FileType::DelimitedText(b',') => "csv",
             FileType::DelimitedText(b'\t') => "tsv",
             _ => return format!("unsupported/{:?}", self),
-        }.to_string()
+        }
+        .to_string()
     }
 }

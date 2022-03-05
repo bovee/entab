@@ -10,9 +10,9 @@ use entab::filetype::FileType;
 use entab::readers::agilent::chemstation::ChemstationMsReader;
 use entab::readers::fasta::FastaReader;
 use entab::readers::fastq::{FastqReader, FastqRecord, FastqState};
+use entab::readers::get_reader;
 use entab::readers::png::PngReader;
 use entab::readers::sam::BamReader;
-use entab::readers::get_reader;
 
 fn benchmark_raw_readers(c: &mut Criterion) {
     let mut raw_readers = c.benchmark_group("raw readers");
@@ -52,7 +52,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
         b.iter(|| {
             let f = File::open("./tests/data/test.fastq").unwrap();
             let (mut rb, mut state) = init_state::<FastqState, _, _>(f, None).unwrap();
-            while let Some(FastqRecord { sequence, ..}) = rb.next(&mut state).unwrap() {
+            while let Some(FastqRecord { sequence, .. }) = rb.next(&mut state).unwrap() {
                 black_box(sequence);
             }
         })
@@ -65,13 +65,16 @@ fn benchmark_raw_readers(c: &mut Criterion) {
             while let Some((slice, mut chunk)) = rb.next_chunk().unwrap() {
                 let mut_state = Mutex::new(&mut state);
                 let chunk = rayon::scope(|s| {
-                    while let Some(FastqRecord { sequence, ..}) = chunk.next(slice, &mut_state).map_err(|e| e.to_string())? {
+                    while let Some(FastqRecord { sequence, .. }) =
+                        chunk.next(slice, &mut_state).map_err(|e| e.to_string())?
+                    {
                         s.spawn(move |_| {
                             black_box(sequence);
                         });
                     }
                     Ok::<_, String>(chunk)
-                }).unwrap();
+                })
+                .unwrap();
                 rb.update_from_chunk(chunk);
             }
         })

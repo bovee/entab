@@ -69,21 +69,29 @@ impl EtError {
     /// Fill the positional error information from a ReadBuffer directly.
     #[must_use]
     pub fn add_context_from_readbuffer(self, buffer: &ReadBuffer) -> Self {
-        self.add_context(buffer.as_ref(), buffer.consumed, buffer.record_pos, buffer.reader_pos)
+        self.add_context(
+            buffer.as_ref(),
+            buffer.consumed,
+            buffer.record_pos,
+            buffer.reader_pos,
+        )
     }
 
     /// Fill the positional error information on the error.
     ///
     /// Used to display e.g. where a parsing error in a file occured.
     #[must_use]
-    pub fn add_context(mut self, buffer: &[u8], consumed: usize, record_pos: u64, reader_pos: u64) -> Self {
+    pub fn add_context(
+        mut self,
+        buffer: &[u8],
+        consumed: usize,
+        record_pos: u64,
+        reader_pos: u64,
+    ) -> Self {
         let buf_len = buffer.len();
         let (context, context_pos) = match (consumed < 16, buf_len < consumed + 16) {
             (true, true) => (buffer.to_vec(), consumed),
-            (true, false) => (
-                (&buffer[..consumed + 16]).to_vec(),
-                consumed,
-            ),
+            (true, false) => ((&buffer[..consumed + 16]).to_vec(), consumed),
             (false, true) => {
                 if consumed < buf_len {
                     ((&buffer[consumed - 16..]).to_vec(), 16)
@@ -91,10 +99,7 @@ impl EtError {
                     (Vec::new(), 0)
                 }
             }
-            (false, false) => (
-                (&buffer[consumed - 16..consumed + 16]).to_vec(),
-                16,
-            ),
+            (false, false) => ((&buffer[consumed - 16..consumed + 16]).to_vec(), 16),
         };
 
         self.context = Some(EtErrorContext {

@@ -1,9 +1,9 @@
 use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
-use core::convert::{AsRef, From};
 #[cfg(feature = "std")]
 use core::convert::TryFrom;
+use core::convert::{AsRef, From};
 #[cfg(feature = "std")]
 use core::mem::swap;
 #[cfg(feature = "std")]
@@ -13,9 +13,9 @@ use std::fs::File;
 #[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
-use crate::parsers::FromSlice;
 #[cfg(feature = "std")]
 use crate::chunk::BufferChunk;
+use crate::parsers::FromSlice;
 use crate::EtError;
 
 /// Default buffer size
@@ -169,15 +169,17 @@ impl<'r> ReadBuffer<'r> {
     #[doc(hidden)]
     #[inline]
     #[cfg(feature = "std")]
-    pub fn next_chunk(&mut self) -> Result<Option<(&[u8], BufferChunk)>, EtError>
-    {
+    pub fn next_chunk(&mut self) -> Result<Option<(&[u8], BufferChunk)>, EtError> {
         if self.end {
             return Ok(None);
         }
         if !self.refill()? {
             self.end = true;
         }
-        Ok(Some((&self.buffer, BufferChunk::new(self.consumed, self.eof, self.record_pos, self.reader_pos))))
+        Ok(Some((
+            &self.buffer,
+            BufferChunk::new(self.consumed, self.eof, self.record_pos, self.reader_pos),
+        )))
     }
 
     /// Update the `ReadBuffer` from the chunk after it's been parsed
@@ -253,7 +255,7 @@ mod test {
     use crate::EtError;
 
     use super::ReadBuffer;
-    
+
     #[cfg(feature = "std")]
     #[test]
     fn test_buffer_small() -> Result<(), EtError> {
@@ -264,7 +266,7 @@ mod test {
 
         let reader = Box::new(Cursor::new(b"123456"));
         let mut rb = ReadBuffer::from_reader(reader, Some(3))?;
-    
+
         assert_eq!(&rb.as_ref()[rb.consumed..], b"123");
         rb.consumed += 3;
         assert!(rb.refill()?);

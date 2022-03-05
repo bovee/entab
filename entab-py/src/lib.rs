@@ -32,8 +32,8 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
             d.format("%+").to_string().to_object(py)
             // TODO: it would be nice to use Python's built-in datetime, but that doesn't appear to
             // be abi3-compatible right now
-//            let timestamp = d.timestamp_millis() as f64 / 1000.;
-//            pyo3::types::PyDateTime::from_timestamp(py, timestamp, None)?.to_object(py)
+            //            let timestamp = d.timestamp_millis() as f64 / 1000.;
+            //            pyo3::types::PyDateTime::from_timestamp(py, timestamp, None)?.to_object(py)
         }
         Value::Float(v) => v.to_object(py),
         Value::Integer(v) => v.to_object(py),
@@ -114,7 +114,9 @@ impl Reader {
             }
         };
         let (reader, filetype, _) = decompress(stream).map_err(to_py)?;
-        let filetype = parser.map(FileType::from_parser_name).unwrap_or_else(|| filetype);
+        let filetype = parser
+            .map(FileType::from_parser_name)
+            .unwrap_or_else(|| filetype);
         let reader = get_reader(filetype, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
@@ -201,7 +203,7 @@ mod tests {
         // headers are available
         let headers = reader.get_headers()?;
         assert_eq!(headers.len(), 2);
-        
+
         Ok(())
     }
 
@@ -214,13 +216,17 @@ mod tests {
         let module = PyModule::new(py, "entab").unwrap();
         entab(py, module)?;
         let locals = [("entab", module)].into_py_dict(py);
-    
-        py.run(r#"
+
+        py.run(
+            r#"
 reader = entab.Reader(data=">test\nACGT")
 assert reader.metadata == {}
 for record in reader:
     pass
-        "#, None, Some(locals))?;
+        "#,
+            None,
+            Some(locals),
+        )?;
 
         Ok(())
     }

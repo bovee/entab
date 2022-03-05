@@ -66,7 +66,7 @@ mod tests {
         let mut scratch = Vec::new();
 
         let num = PyFloat::new(py, 2.);
-        let mut wrapper = RawIoWrapper::new(num);        
+        let mut wrapper = RawIoWrapper::new(num);
         assert!(wrapper.read_to_end(&mut scratch).is_err());
 
         Ok(())
@@ -82,7 +82,7 @@ mod tests {
 
         let code = "io.StringIO('>test\\nACGT')";
         let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
-        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));        
+        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));
         assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
         assert_eq!(scratch, b">test\nACGT");
 
@@ -99,7 +99,7 @@ mod tests {
 
         let code = "io.StringIO('>seq\\nTGCAT')";
         let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
-        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));        
+        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));
         assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
         assert_eq!(scratch, b">seq\nTGCAT");
 

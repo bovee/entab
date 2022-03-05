@@ -52,11 +52,16 @@ impl BufferChunk {
             &mut self.consumed,
             &mut state,
         ) {
-            Ok(true) => {},
+            Ok(true) => {}
             Ok(false) => return Ok(None),
             Err(e) => {
                 if !e.incomplete || self.eof {
-                    return Err(e.add_context(buffer, self.consumed, self.record_pos, self.reader_pos));
+                    return Err(e.add_context(
+                        buffer,
+                        self.consumed,
+                        self.record_pos,
+                        self.reader_pos,
+                    ));
                 } else {
                     return Ok(None);
                 }
@@ -104,21 +109,21 @@ mod test {
     #[cfg(feature = "std")]
     use std::fs::File;
     #[cfg(feature = "std")]
-    use std::sync::Arc;
-    #[cfg(feature = "std")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(feature = "std")]
+    use std::sync::Arc;
 
     #[cfg(feature = "std")]
     use rayon;
 
     use crate::readers::fastq::{FastqRecord, FastqState};
-        
+
     #[test]
     fn test_chunked_read() -> Result<(), EtError> {
         let f: &[u8] = include_bytes!("../tests/data/test.fastq");
         let (mut rb, mut state) = init_state::<FastqState, _, _>(f, None).unwrap();
         let mut seq_len = 0;
-        while let Some(FastqRecord { sequence, ..}) = rb.next(&mut state)? {
+        while let Some(FastqRecord { sequence, .. }) = rb.next(&mut state)? {
             seq_len += sequence.len();
         }
         assert_eq!(seq_len, 250000);
@@ -134,7 +139,9 @@ mod test {
         while let Some((slice, mut chunk)) = rb.next_chunk()? {
             let mut_state = Mutex::new(&mut state);
             let chunk = rayon::scope(|s| {
-                while let Some(FastqRecord { sequence, ..}) = chunk.next(slice, &mut_state).map_err(|e| e.to_string())? {
+                while let Some(FastqRecord { sequence, .. }) =
+                    chunk.next(slice, &mut_state).map_err(|e| e.to_string())?
+                {
                     let sl = seq_len.clone();
                     s.spawn(move |_| {
                         let _ = sl.fetch_add(sequence.len(), Ordering::Relaxed);
@@ -149,4 +156,3 @@ mod test {
         Ok(())
     }
 }
-
