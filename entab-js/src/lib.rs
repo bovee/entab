@@ -49,7 +49,7 @@ impl Reader {
         let reader = get_reader(filetype, reader).map_err(to_js)?;
         let headers = reader.headers();
         Ok(Reader {
-            parser: format!("{:?}", filetype),
+            parser: filetype.to_parser_name(),
             headers,
             reader,
         })

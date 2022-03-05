@@ -57,7 +57,7 @@ fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
     let reader = get_reader(filetype, reader)?;
     let header_names = reader.headers().into();
     Ok(Reader {
-        parser: format!("{:?}", filetype),
+        parser: filetype.to_parser_name(),
         header_names,
         reader,
     }.into())

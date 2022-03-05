@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  coverage:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -31,14 +31,7 @@ jobs:
     - name: Build
       run: cargo build
 
-    - name: Run tests
-      run: cargo test
-
-    - name: Run no_std tests
-      working-directory: ./entab
-      run: cargo test --no-default-features
-
-    - name: Coverage
+    - name: Run tests with coverage
       working-directory: ./entab
       run: cargo +nightly tarpaulin --all --timeout 600 --out Xml -- --test-threads 1
 
@@ -47,3 +40,26 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: true
+
+  misc_tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install rust-toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Run no_std tests
+      working-directory: ./entab
+      run: cargo test --no-default-features
+
+    - name: Install wasm-pack
+      run: |
+        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        wasm-pack --version
+
+    - name: Run JS tests
+      working-directory: ./entab-js
+      run: wasm-pack test --headless --chrome

@@ -51,3 +51,58 @@ impl Read for RawIoWrapper {
         Ok(amt_read)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use pyo3::types::{IntoPyDict, PyFloat};
+
+    #[test]
+    fn test_io_wrapper_bad_type() -> Result<(), Error> {
+        pyo3::prepare_freethreaded_python();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let mut scratch = Vec::new();
+
+        let num = PyFloat::new(py, 2.);
+        let mut wrapper = RawIoWrapper::new(num);        
+        assert!(wrapper.read_to_end(&mut scratch).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_io_wrapper_stringio() -> Result<(), Error> {
+        pyo3::prepare_freethreaded_python();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let locals = [("io", py.import("io")?)].into_py_dict(py);
+        let mut scratch = Vec::new();
+
+        let code = "io.StringIO('>test\\nACGT')";
+        let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
+        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));        
+        assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
+        assert_eq!(scratch, b">test\nACGT");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_io_wrapper_bytesio() -> Result<(), Error> {
+        pyo3::prepare_freethreaded_python();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let locals = [("io", py.import("io")?)].into_py_dict(py);
+        let mut scratch = Vec::new();
+
+        let code = "io.StringIO('>seq\\nTGCAT')";
+        let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
+        let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));        
+        assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
+        assert_eq!(scratch, b">seq\nTGCAT");
+
+        Ok(())
+    }
+}

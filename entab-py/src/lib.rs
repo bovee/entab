@@ -114,8 +114,8 @@ impl Reader {
             }
         };
         let (reader, filetype, _) = decompress(stream).map_err(to_py)?;
-        let parser = parser.map(FileType::from_parser_name).unwrap_or_else(|| filetype);
-        let reader = get_reader(parser, reader).map_err(to_py)?;
+        let filetype = parser.map(FileType::from_parser_name).unwrap_or_else(|| filetype);
+        let reader = get_reader(filetype, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
 
@@ -131,7 +131,7 @@ impl Reader {
             .into();
 
         Ok(Reader {
-            parser: format!("{:?}", parser),
+            parser: filetype.to_parser_name(),
             record_class,
             reader,
         })
@@ -178,6 +178,8 @@ fn entab(_py: Python, m: &PyModule) -> PyResult<()> {
 mod tests {
     use super::*;
 
+    use pyo3::types::IntoPyDict;
+
     #[test]
     fn test_reader_creation() -> PyResult<()> {
         pyo3::prepare_freethreaded_python();
@@ -190,7 +192,36 @@ mod tests {
         // if data's passed in, it works
         let test_data = b">test\nACGT".to_object(py);
         let reader = Reader::new(Some(test_data.as_ref(py)), None, None)?;
-        assert_eq!(&reader.parser, "Fasta");
+        assert_eq!(&reader.parser, "fasta");
+
+        // metadata are available
+        let metadata = reader.get_metadata()?;
+        assert!(metadata.as_ref(py).downcast::<PyDict>().is_ok());
+
+        // headers are available
+        let headers = reader.get_headers()?;
+        assert_eq!(headers.len(), 2);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_reader_in_python() -> PyResult<()> {
+        pyo3::prepare_freethreaded_python();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+
+        let module = PyModule::new(py, "entab").unwrap();
+        entab(py, module)?;
+        let locals = [("entab", module)].into_py_dict(py);
+    
+        py.run(r#"
+reader = entab.Reader(data=">test\nACGT")
+assert reader.metadata == {}
+for record in reader:
+    pass
+        "#, None, Some(locals))?;
+
         Ok(())
     }
 }

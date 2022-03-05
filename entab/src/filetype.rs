@@ -1,5 +1,7 @@
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::{String, ToString};
 #[cfg(feature = "std")]
 use alloc::vec;
 use core::marker::Copy;
@@ -206,6 +208,7 @@ impl FileType {
             "chemstation_ms" => FileType::AgilentChemstationMs,
             "chemstation_mwd" => FileType::AgilentChemstationMwd,
             "chemstation_uv" => FileType::AgilentChemstationUv,
+            "csv" => FileType::DelimitedText(b','),
             "bam" => FileType::Bam,
             "fcs" => FileType::Facs,
             "fasta" => FileType::Fasta,
@@ -218,5 +221,28 @@ impl FileType {
             "tsv" => FileType::DelimitedText(b'\t'),
             _ => FileType::Unknown,
         }
+    }
+
+    /// Returns the "parser name" associated with this file type
+    #[must_use]
+    pub fn to_parser_name(&self) -> String {
+        match self {
+            FileType::AgilentChemstationFid => "chemstaton_fid",
+            FileType::AgilentChemstationMs => "chemstation_ms",
+            FileType::AgilentChemstationMwd => "chemstation_mwd",
+            FileType::AgilentChemstationUv => "chemstation_uv",
+            FileType::Bam => "bam",
+            FileType::Facs => "fcs",
+            FileType::Fasta => "fasta",
+            FileType::Fastq => "fastq",
+            FileType::InficonHapsite => "inficon",
+            FileType::Png => "png",
+            FileType::Sam => "sam",
+            FileType::ThermoCf => "thermo_cf",
+            FileType::ThermoDxf => "thermo_dxf",
+            FileType::DelimitedText(b',') => "csv",
+            FileType::DelimitedText(b'\t') => "tsv",
+            _ => return format!("unsupported/{:?}", self),
+        }.to_string()
     }
 }
