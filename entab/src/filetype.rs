@@ -96,8 +96,8 @@ pub enum FileType {
     Png,
     /// Generic scientific data format
     Hdf5,
-    /// Tab-seperated value format
-    Tsv,
+    /// Tab- or comma-seperated value format
+    DelimitedText(u8),
     /// Unknown file type
     Unknown,
 }
@@ -159,57 +159,64 @@ impl FileType {
     /// Return the list of possible file extensions a given file format
     /// could have.
     #[must_use]
-    pub fn extensions(&self) -> &[&str] {
-        match self {
-            FileType::Gzip => &["gz", "gzip"],
-            FileType::Bzip => &["bz", "bz2", "bzip"],
-            FileType::Lzma => &["xz"],
-            FileType::Zstd => &["zstd"],
-            FileType::AgilentChemstationFid => &["ch"],
-            FileType::AgilentChemstationMs => &["ms"],
-            FileType::AgilentChemstationMwd => &["ch"],
-            FileType::AgilentChemstationUv => &["uv"],
-            FileType::Bam => &["bam"],
-            FileType::BrukerBaf => &["baf"],
-            FileType::BrukerMsms => &["ami"],
-            FileType::Facs => &["fcs", "lmd"],
-            FileType::Fasta => &["fa", "fasta", "fna", "faa"],
-            FileType::Fastq => &["fq", "fastq"],
-            FileType::Hdf5 => &["hdf"],
-            FileType::MsRaw => &["raw"],
-            FileType::MzXml => &["mzxml"],
-            FileType::NetCdf => &["cdf"],
-            FileType::Png => &["png"],
-            FileType::InficonHapsite => &["hps"],
-            FileType::Sam => &["sam"],
-            FileType::Scf => &["scf"],
-            FileType::ThermoCf => &["cf"],
-            FileType::ThermoDxf => &["dxf"],
-            FileType::WatersAutospec => &["idx"],
-            FileType::Ztr => &["ztr"],
-            _ => &[""],
+    pub fn from_extension(ext: &str) -> &[Self] {
+        match ext {
+            "gz" => &[FileType::Gzip],
+            "gzip" => &[FileType::Gzip],
+            "bz" => &[FileType::Bzip],
+            "bz2" => &[FileType::Bzip],
+            "bzip" => &[FileType::Bzip],
+            "xz" => &[FileType::Lzma],
+            "zstd" => &[FileType::Zstd],
+            "ch" => &[FileType::AgilentChemstationFid, FileType::AgilentChemstationMwd],
+            "ms" => &[FileType::AgilentChemstationMs],
+            "uv" => &[FileType::AgilentChemstationUv],
+            "bam" => &[FileType::Bam],
+            "baf" => &[FileType::BrukerBaf],
+            "ami" => &[FileType::BrukerMsms],
+            "fcs" => &[FileType::Facs],
+            "lmd" => &[FileType::Facs],
+            "fa" => &[FileType::Fasta],
+            "faa" => &[FileType::Fasta],
+            "fasta" => &[FileType::Fasta],
+            "fna" => &[FileType::Fasta],
+            "faq" => &[FileType::Fastq],
+            "fastq" => &[FileType::Fastq],
+            "hdf" => &[FileType::Hdf5],
+            "raw" => &[FileType::MsRaw],
+            "mzxml" => &[FileType::MzXml],
+            "cdf" => &[FileType::NetCdf],
+            "png" => &[FileType::Png],
+            "hps" => &[FileType::InficonHapsite],
+            "sam" => &[FileType::Sam],
+            "scf" => &[FileType::Scf],
+            "cf" => &[FileType::ThermoCf],
+            "dxf" => &[FileType::ThermoDxf],
+            "idx" => &[FileType::WatersAutospec],
+            "ztr" => &[FileType::Ztr],
+            _ => &[FileType::Unknown],
         }
     }
 
     /// Returns the "best" parser for a given file
     #[must_use]
-    pub fn to_parser_name(&self) -> &str {
-        match self {
-            FileType::AgilentChemstationFid => "chemstation_fid",
-            FileType::AgilentChemstationMs => "chemstation_ms",
-            FileType::AgilentChemstationMwd => "chemstation_mwd",
-            FileType::AgilentChemstationUv => "chemstation_uv",
-            FileType::Bam => "bam",
-            FileType::Facs => "fcs",
-            FileType::Fasta => "fasta",
-            FileType::Fastq => "fastq",
-            FileType::InficonHapsite => "inficon",
-            FileType::Png => "png",
-            FileType::Sam => "sam",
-            FileType::ThermoCf => "thermo_cf",
-            FileType::ThermoDxf => "thermo_dxf",
-            FileType::Tsv => "tsv",
-            _ => "",
+    pub fn from_parser_name(parser_name: &str) -> Self {
+        match parser_name {
+            "chemstation_fid" => FileType::AgilentChemstationFid,
+            "chemstation_ms" => FileType::AgilentChemstationMs,
+            "chemstation_mwd" => FileType::AgilentChemstationMwd,
+            "chemstation_uv" => FileType::AgilentChemstationUv,
+            "bam" => FileType::Bam,
+            "fcs" => FileType::Facs,
+            "fasta" => FileType::Fasta,
+            "fastq" => FileType::Fastq,
+            "inficon" => FileType::InficonHapsite,
+            "png" => FileType::Png,
+            "sam" => FileType::Sam,
+            "thermo_cf" => FileType::ThermoCf,
+            "thermo_dxf" => FileType::ThermoDxf,
+            "tsv" => FileType::DelimitedText(b'\t'),
+            _ => FileType::Unknown,
         }
     }
 }

@@ -5,6 +5,7 @@ use std::io::{Cursor, Read};
 
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
+use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use js_sys::Array;
@@ -44,11 +45,11 @@ impl Reader {
 
         let (reader, filetype, _) = decompress(stream).map_err(to_js)?;
 
-        let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name().to_string());
-        let reader = get_reader(&parser_name, reader).map_err(to_js)?;
+        let filetype = parser.map(|p| FileType::from_parser_name(&p)).unwrap_or_else(|| filetype);
+        let reader = get_reader(filetype, reader).map_err(to_js)?;
         let headers = reader.headers();
         Ok(Reader {
-            parser: parser_name.to_string(),
+            parser: format!("{:?}", filetype),
             headers,
             reader,
         })

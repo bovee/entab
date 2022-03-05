@@ -42,10 +42,11 @@
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
+//! use entab::filetype::FileType;
 //! use entab::readers::get_reader;
 //!
 //! let file = File::open("./tests/data/sequence.fasta")?;
-//! let mut reader = get_reader("fasta", file)?;
+//! let mut reader = get_reader(FileType::Fasta, file)?;
 //! while let Some(record) = reader.next_record()? {
 //!     println!("{:?}", record[0]);
 //! }

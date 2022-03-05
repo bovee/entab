@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use crate::buffer::ReadBuffer;
+use crate::filetype::FileType;
 use crate::error::EtError;
 use crate::record::Value;
 
@@ -34,28 +35,28 @@ pub mod tsv;
 //pub mod xml;
 
 /// Turn `rb` into a Reader of type `parser_type`
-pub fn get_reader<'r, B>(parser_type: &str, data: B) -> Result<Box<dyn RecordReader + 'r>, EtError>
+pub fn get_reader<'r, B>(file_type: FileType, data: B) -> Result<Box<dyn RecordReader + 'r>, EtError>
 where
     B: TryInto<ReadBuffer<'r>>,
     EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
 {
-    Ok(match parser_type {
-        "bam" => Box::new(sam::BamReader::new(data, ())?),
-        "chemstation_fid" => Box::new(agilent::ChemstationFidReader::new(data, ())?),
-        "chemstation_ms" => Box::new(agilent::ChemstationMsReader::new(data, ())?),
-        "chemstation_mwd" => Box::new(agilent::ChemstationMwdReader::new(data, ())?),
-        "chemstation_uv" => Box::new(agilent::ChemstationUvReader::new(data, ())?),
-        "fasta" => Box::new(fasta::FastaReader::new(data, ())?),
-        "fastq" => Box::new(fastq::FastqReader::new(data, ())?),
-        "fcs" => Box::new(flow::FcsReader::new(data, ())?),
-        "inficon" => Box::new(inficon::InficonReader::new(data, (Vec::new(), 0))?),
+    Ok(match file_type {
+        FileType::Bam => Box::new(sam::BamReader::new(data, ())?),
+        FileType::AgilentChemstationFid => Box::new(agilent::ChemstationFidReader::new(data, ())?),
+        FileType::AgilentChemstationMs => Box::new(agilent::ChemstationMsReader::new(data, ())?),
+        FileType::AgilentChemstationMwd => Box::new(agilent::ChemstationMwdReader::new(data, ())?),
+        FileType::AgilentChemstationUv => Box::new(agilent::ChemstationUvReader::new(data, ())?),
+        FileType::Fasta => Box::new(fasta::FastaReader::new(data, ())?),
+        FileType::Fastq => Box::new(fastq::FastqReader::new(data, ())?),
+        FileType::Facs => Box::new(flow::FcsReader::new(data, ())?),
+        FileType::InficonHapsite => Box::new(inficon::InficonReader::new(data, (Vec::new(), 0))?),
         #[cfg(feature = "std")]
-        "png" => Box::new(png::PngReader::new(data, ())?),
-        "sam" => Box::new(sam::SamReader::new(data, ())?),
-        "thermo_cf" => Box::new(thermo_iso::ThermoCfReader::new(data, ())?),
-        "thermo_dxf" => Box::new(thermo_iso::ThermoDxfReader::new(data, ())?),
-        "tsv" => Box::new(tsv::TsvReader::new(data, (b'\t', b'"'))?),
-        _ => return Err(format!("No parser available for the filetype {}", parser_type).into()),
+        FileType::Png => Box::new(png::PngReader::new(data, ())?),
+        FileType::Sam => Box::new(sam::SamReader::new(data, ())?),
+        FileType::ThermoCf => Box::new(thermo_iso::ThermoCfReader::new(data, ())?),
+        FileType::ThermoDxf => Box::new(thermo_iso::ThermoDxfReader::new(data, ())?),
+        FileType::DelimitedText(d) => Box::new(tsv::TsvReader::new(data, (d, b'"'))?),
+        _ => return Err(format!("No parser available for the filetype {:?}", file_type).into()),
     })
 }
 

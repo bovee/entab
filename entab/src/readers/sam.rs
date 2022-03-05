@@ -392,6 +392,7 @@ impl_reader!(SamReader, SamRecord, SamState, ());
 mod tests {
     use super::*;
 
+    #[cfg(all(feature = "compression", feature = "std"))]
     use crate::buffer::ReadBuffer;
     use crate::readers::RecordReader;
 

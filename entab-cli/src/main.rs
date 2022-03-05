@@ -11,6 +11,7 @@ use memmap2::Mmap;
 
 use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
+use entab::filetype::FileType;
 use entab::readers::get_reader;
 use entab::EtError;
 
@@ -90,7 +91,8 @@ pub fn run() -> Result<(), EtError> {
     };
     let parser = matches
         .value_of("parser")
-        .unwrap_or_else(|| filetype.to_parser_name());
+        .map(FileType::from_parser_name)
+        .unwrap_or_else(|| filetype);
     let mut rec_reader = get_reader(parser, rb)?;
     // TODO: allow user to set these
     let params = TsvParams::default();

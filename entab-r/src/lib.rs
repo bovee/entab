@@ -5,6 +5,7 @@ use std::io::Read;
 
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
+use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use extendr_api::{append, append_lang, append_with_name, class_symbol, extendr, extendr_module, lang, make_lang, Robj};
@@ -48,15 +49,15 @@ fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
     let stream: Box<dyn Read> = Box::new(File::open(filename)?);
     let (reader, filetype, _) = decompress(stream)?;
 
-    let parser_name = if parser == "" {
-        filetype.to_parser_name()
+    let filetype = if parser == "" {
+        filetype
     } else {
-        parser
+        FileType::from_parser_name(parser)
     };
-    let reader = get_reader(parser_name, reader)?;
+    let reader = get_reader(filetype, reader)?;
     let header_names = reader.headers().into();
     Ok(Reader {
-        parser: parser_name.to_string(),
+        parser: format!("{:?}", filetype),
         header_names,
         reader,
     }.into())

@@ -6,6 +6,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use entab::buffer::ReadBuffer;
 use entab::chunk::init_state;
 use entab::compression::decompress;
+use entab::filetype::FileType;
 use entab::readers::agilent::chemstation::ChemstationMsReader;
 use entab::readers::fasta::FastaReader;
 use entab::readers::fastq::{FastqReader, FastqRecord, FastqState};
@@ -106,7 +107,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("generic chemstation reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS").unwrap();
-            let mut reader = get_reader("chemstation_ms", f).unwrap();
+            let mut reader = get_reader(FileType::AgilentChemstationMs, f).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -116,7 +117,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("generic fastq reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/test.fastq").unwrap();
-            let mut reader = get_reader("fastq", f).unwrap();
+            let mut reader = get_reader(FileType::Fastq, f).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -126,7 +127,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("flow reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs").unwrap();
-            let mut reader = get_reader("fcs", f).unwrap();
+            let mut reader = get_reader(FileType::Facs, f).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -136,7 +137,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("png reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/bmp_24.png").unwrap();
-            let mut reader = get_reader("png", f).unwrap();
+            let mut reader = get_reader(FileType::Png, f).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }

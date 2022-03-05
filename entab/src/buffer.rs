@@ -1,7 +1,9 @@
 use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use alloc::boxed::Box;
-use core::convert::{AsRef, From, TryFrom};
+use core::convert::{AsRef, From};
+#[cfg(feature = "std")]
+use core::convert::TryFrom;
 #[cfg(feature = "std")]
 use core::mem::swap;
 #[cfg(feature = "std")]
@@ -66,10 +68,8 @@ impl<'r> ReadBuffer<'r> {
     /// This will fail if there's an error retrieving data from the reader.
     #[cfg(feature = "std")]
     fn refill(&mut self) -> Result<bool, EtError> {
-        if self.end {
+        if self.eof {
             return Ok(false);
-        } else if self.eof {
-            self.end = true;
         }
 
         // pull the buffer out; if self.buffer's Borrowed then eof should
@@ -115,10 +115,8 @@ impl<'r> ReadBuffer<'r> {
     /// Refill implementation for no_std
     #[cfg(not(feature = "std"))]
     fn refill(&mut self) -> Result<bool, EtError> {
-        if self.end {
+        if self.eof {
             return Ok(false);
-        } else if self.eof {
-            self.end = true;
         }
         self.eof = true;
         Ok(true)
@@ -173,8 +171,11 @@ impl<'r> ReadBuffer<'r> {
     #[cfg(feature = "std")]
     pub fn next_chunk(&mut self) -> Result<Option<(&[u8], BufferChunk)>, EtError>
     {
-        if !self.refill()? {
+        if self.end {
             return Ok(None);
+        }
+        if !self.refill()? {
+            self.end = true;
         }
         Ok(Some((&self.buffer, BufferChunk::new(self.consumed, self.eof, self.record_pos, self.reader_pos))))
     }
@@ -243,8 +244,8 @@ impl<'r> AsRef<[u8]> for ReadBuffer<'r> {
 
 #[cfg(test)]
 mod test {
-    //     #[cfg(feature = "std")]
-    //     use alloc::boxed::Box;
+    #[cfg(feature = "std")]
+    use alloc::boxed::Box;
     #[cfg(feature = "std")]
     use std::io::Cursor;
 

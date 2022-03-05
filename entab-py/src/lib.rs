@@ -5,6 +5,7 @@ use std::io::{Cursor, Read};
 
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
+use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
@@ -113,8 +114,8 @@ impl Reader {
             }
         };
         let (reader, filetype, _) = decompress(stream).map_err(to_py)?;
-        let parser_name = parser.unwrap_or_else(|| filetype.to_parser_name());
-        let reader = get_reader(parser_name, reader).map_err(to_py)?;
+        let parser = parser.map(FileType::from_parser_name).unwrap_or_else(|| filetype);
+        let reader = get_reader(parser, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
 
@@ -130,7 +131,7 @@ impl Reader {
             .into();
 
         Ok(Reader {
-            parser: parser_name.to_string(),
+            parser: format!("{:?}", parser),
             record_class,
             reader,
         })
@@ -189,7 +190,7 @@ mod tests {
         // if data's passed in, it works
         let test_data = b">test\nACGT".to_object(py);
         let reader = Reader::new(Some(test_data.as_ref(py)), None, None)?;
-        assert_eq!(&reader.parser, "fasta");
+        assert_eq!(&reader.parser, "Fasta");
         Ok(())
     }
 }
