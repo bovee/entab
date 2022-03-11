@@ -20,19 +20,17 @@ pub mod fastq;
 pub mod flow;
 /// Reader for Inficon Hapsite MS formats
 pub mod inficon;
-/// Reader for FASTA/FASTQ formats that parse into "kmers"
-pub mod kmers;
 /// Reader for PNG image format
 #[cfg(feature = "std")]
 pub mod png;
 /// Reader for BAM/SAM bioinformatics formats
 pub mod sam;
-/// Readers for Thermo mass spectral isotopic formats
-pub mod thermo_iso;
+/// Readers for Thermo formats
+pub mod thermo;
 /// Readers for tab-seperated text format
 pub mod tsv;
 /// Reader for generic XML
-//pub mod xml;
+// pub mod xml;
 
 /// Turn `rb` into a Reader of type `parser_type`
 pub fn get_reader<'r, B>(
@@ -56,8 +54,8 @@ where
         #[cfg(feature = "std")]
         FileType::Png => Box::new(png::PngReader::new(data, ())?),
         FileType::Sam => Box::new(sam::SamReader::new(data, ())?),
-        FileType::ThermoCf => Box::new(thermo_iso::ThermoCfReader::new(data, ())?),
-        FileType::ThermoDxf => Box::new(thermo_iso::ThermoDxfReader::new(data, ())?),
+        FileType::ThermoCf => Box::new(thermo::thermo_iso::ThermoCfReader::new(data, ())?),
+        FileType::ThermoDxf => Box::new(thermo::thermo_iso::ThermoDxfReader::new(data, ())?),
         FileType::DelimitedText(d) => Box::new(tsv::TsvReader::new(data, (d, b'"'))?),
         _ => return Err(format!("No parser available for the filetype {:?}", file_type).into()),
     })
@@ -94,7 +92,6 @@ macro_rules! impl_reader {
         pub struct $reader<'r> {
             rb: $crate::buffer::ReadBuffer<'r>,
             state: $state,
-            // record: $record,  // FIXME
         }
 
         impl<'r> $reader<'r> {
@@ -108,7 +105,6 @@ macro_rules! impl_reader {
                 EtError: From<<B as ::core::convert::TryInto<$crate::buffer::ReadBuffer<'r>>>::Error>,
             {
                 let mut rb = data.try_into()?;
-                // let record = <$record>::default(); // FIXME
                 match rb.next(params)? {
                     Some(state) => Ok($reader { rb, state }),
                     None => Err(::alloc::format!("Could not initialize state {}", ::core::any::type_name::<$state>()) .into())
@@ -126,21 +122,6 @@ macro_rules! impl_reader {
             pub fn next(&mut self) -> Result<Option<$record>, EtError> {
                 self.rb.next::<$record>(&mut self.state)
             }
-
-            // TODO: get the lifetimes working for this
-            // /// Return the specialized version of this record.
-            // ///
-            // /// To get the "generic" version, please use the `next_record`
-            // /// method from the `RecordReader` trait.
-            // #[allow(clippy::should_implement_trait)]
-            // pub fn next_into(&mut self, record: &'r mut $record) -> Result<bool, EtError> {
-            //     self.rb.record_pos += 1;
-            //     Ok(if record.from_buffer(&mut self.rb, &mut self.state)? {
-            //         true
-            //     } else {
-            //         false
-            //     })
-            // }
         }
 
         impl<'r> $crate::readers::RecordReader for $reader<'r> {
@@ -157,8 +138,8 @@ macro_rules! impl_reader {
 
             /// The headers for this Reader.
             fn headers(&self) -> ::alloc::vec::Vec<::alloc::string::String> {
-                use $crate::record::RecordHeader;
-                <$record>::header()
+                use $crate::alloc::string::ToString;
+                self.state.header().iter().map(|s| s.to_string()).collect()
             }
 
             /// The metadata for this Reader.

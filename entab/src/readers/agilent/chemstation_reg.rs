@@ -18,7 +18,7 @@ fn decode_iso_8859(raw: &[u8]) -> Result<String, EtError> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ChemstationRegState {}
 
-impl<'r> StateMetadata<'r> for ChemstationRegState {}
+impl StateMetadata for ChemstationRegState {}
 
 impl<'r> FromSlice<'r> for ChemstationRegState {
     type State = ();

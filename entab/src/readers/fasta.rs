@@ -1,3 +1,4 @@
+use alloc::vec;
 use alloc::vec::Vec;
 
 use memchr::{memchr, memchr_iter};
@@ -18,6 +19,8 @@ pub struct FastaRecord<'r> {
     pub sequence: Cow<'r, [u8]>,
 }
 
+impl_record!(FastaRecord<'r>: id, sequence);
+
 /// The current state of FASTA parsing
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FastaState {
@@ -25,13 +28,15 @@ pub struct FastaState {
     seq: (usize, usize),
 }
 
-impl<'r> StateMetadata<'r> for FastaState {}
+impl StateMetadata for FastaState {
+    fn header(&self) -> Vec<&str> {
+        vec!["id", "sequence"]
+    }
+}
 
 impl<'r> FromSlice<'r> for FastaState {
     type State = ();
 }
-
-impl_record!(FastaRecord<'r>: id, sequence);
 
 impl<'r> FromSlice<'r> for FastaRecord<'r> {
     type State = &'r mut FastaState;

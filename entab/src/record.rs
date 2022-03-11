@@ -8,27 +8,25 @@ use serde::{Serialize, Serializer};
 
 use crate::error::EtError;
 
-/// For a given "raw" record struct, the header fields in that struct.
-///
-/// Primarily used to generate the corresponding header list for the
-/// `Vec<Value>`s generated in the `RecordReader` trait.
-pub trait RecordHeader {
-    /// The header for the associated struct
-    fn header() -> Vec<String>;
-}
-
 /// For a given state struct, the metadata associated with that struct.
 ///
 /// Primarily used to generate the corresponding metadata in the
 /// `RecordReader` trait.
-pub trait StateMetadata<'r> {
-    /// The header for the associated struct
-    fn metadata(&'r self) -> BTreeMap<String, Value<'r>> {
+pub trait StateMetadata {
+    /// Metadata about the current state of the parser
+    fn metadata(&self) -> BTreeMap<String, Value> {
         BTreeMap::new()
     }
+
+    /// The fields in the associated struct
+    fn header(&self) -> Vec<&str>;
 }
 
-impl<'r> StateMetadata<'r> for () {}
+impl StateMetadata for () {
+    fn header(&self) -> Vec<&str> {
+        Vec::new()
+    }
+}
 
 /// Autogenerates the conversion from a struct into the matching `Vec` of
 /// headers and the corresponding `Vec` of `Value`s to allow decomposing
@@ -37,13 +35,6 @@ impl<'r> StateMetadata<'r> for () {}
 #[macro_export]
 macro_rules! impl_record {
     ($type:ty : $($key:ident),* ) => {
-        impl<'r> $crate::record::RecordHeader for $type {
-            fn header() -> ::alloc::vec::Vec<::alloc::string::String> {
-                use ::alloc::string::ToString;
-                ::alloc::vec![$(stringify!($key).to_string(),)*]
-            }
-        }
-
         impl<'r> From<$type> for ::alloc::vec::Vec<$crate::record::Value<'r>> {
             fn from(record: $type) -> Self {
                 ::alloc::vec![$(record.$key.into(),)*]
@@ -202,6 +193,16 @@ impl<'a> From<&'a [String]> for Value<'a> {
         for v in value {
             let bv: &str = v.as_ref();
             rec.push(bv.into());
+        }
+        Value::List(rec)
+    }
+}
+
+impl<'a> From<Vec<String>> for Value<'a> {
+    fn from(value: Vec<String>) -> Self {
+        let mut rec = Vec::with_capacity(value.len());
+        for v in value {
+            rec.push(v.into());
         }
         Value::List(rec)
     }

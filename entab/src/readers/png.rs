@@ -133,12 +133,16 @@ impl PngState {
     }
 }
 
-impl<'r> StateMetadata<'r> for PngState {
+impl StateMetadata for PngState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         let mut metadata = BTreeMap::new();
         drop(metadata.insert("height".to_string(), (self.height as u64).into()));
         drop(metadata.insert("width".to_string(), (self.width as u64).into()));
         metadata
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["x", "y", "red", "green", "blue", "alpha"]
     }
 }
 
@@ -256,7 +260,7 @@ impl_record!(PngRecord: x, y, red, green, blue, alpha);
 
 fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16, EtError> {
     if n_bits == 16 {
-        extract::<u16>(&data[pos * 2..], &mut 0, Endian::Big)
+        u16::extract(&data[pos * 2..], Endian::Big)
     } else {
         let shift = n_bits * (pos % (8 / n_bits));
         let mask = u8::try_from(2u16.pow(u32::try_from(n_bits)?) - 1)?;

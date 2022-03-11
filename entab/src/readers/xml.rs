@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use memchr::{memchr, memchr3_iter};
 
-use crate::parsers::{extract, unsafe_access_state, FromSlice};
+use crate::parsers::{extract, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -150,9 +150,10 @@ impl<'r> FromSlice<'r> for XmlText<'r> {
 pub struct XmlState {
     // token_counts: Vec<BTreeMap<String, usize>>,
     stack: Vec<String>,
+    is_text: bool,
 }
 
-impl<'r> StateMetadata<'r> for XmlState {}
+impl StateMetadata for XmlState {}
 
 impl<'r> FromSlice<'r> for XmlState {
     type State = ();
@@ -161,7 +162,7 @@ impl<'r> FromSlice<'r> for XmlState {
 /// A single record from an XML stream
 #[derive(Clone, Debug, Default)]
 pub struct XmlRecord<'r> {
-    tags: &'r [String],
+    tags: Vec<String>,
     text: &'r str,
     // TODO
     // attributes: BTreeMap<String>
@@ -179,7 +180,7 @@ impl<'r> FromSlice<'r> for XmlRecord<'r> {
             }
         }
         let con = &mut 0;
-        let text = if rb[0] == b'<' {
+        if rb[0] == b'<' {
             // it's a tag
             let tag = extract::<XmlTag>(rb, con, ())?;
             match tag.tag_type {
@@ -205,12 +206,15 @@ impl<'r> FromSlice<'r> for XmlRecord<'r> {
                 // TODO: we need to return the tag stack with this tag on it
                 XmlTagType::SelfClose => {}
             }
-            ""
+            state.is_text = false;
         } else {
-            // it's text
-            let text = extract::<XmlText>(rb, con, ())?;
-            text.0
-        };
+            // it's text; parse the length out
+            if XmlText::parse(rb, eof, con, &mut ())? {
+                state.is_text = true;
+            } else {
+                return Ok(false);
+            }
+        }
         *consumed += *con;
 
         Ok(true)
@@ -221,11 +225,12 @@ impl<'r> FromSlice<'r> for XmlRecord<'r> {
         rb: &'r [u8],
         state: &Self::State,
     ) -> Result<(), EtError> {
-        self.text = text;
-        // FIXME: this is actually fairly unsafe because `stack` changes per iteration so `tags` is
-        // going to not be stable if the reference to XmlRecord is saved for longer than one
-        // iteration.
-        self.tags = &unsafe_access_state(state).stack;
+        self.text = if state.is_text {
+            from_utf8(rb)?
+        } else {
+            ""
+        };
+        self.tags = state.stack.clone();
         Ok(())
     }
 }

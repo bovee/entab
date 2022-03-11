@@ -16,7 +16,23 @@ pub struct BamState {
     references: Vec<(String, usize)>,
 }
 
-impl<'r> StateMetadata<'r> for BamState {}
+impl StateMetadata for BamState {
+    fn header(&self) -> Vec<&str> {
+        vec![
+            "query_name",
+            "ref_name",
+            "pos",
+            "mapq",
+            "cigar",
+            "rnext",
+            "pnext",
+            "tlen",
+            "seq",
+            "qual",
+            "extra",
+        ]
+    }
+}
 
 impl<'r> FromSlice<'r> for BamState {
     type State = ();
@@ -236,7 +252,24 @@ impl_reader!(BamReader, BamRecord, BamState, ());
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SamState {}
 
-impl<'r> StateMetadata<'r> for SamState {}
+impl StateMetadata for SamState {
+    fn header(&self) -> Vec<&str> {
+        vec![
+            "query_name",
+            "flag",
+            "ref_name",
+            "pos",
+            "mapq",
+            "cigar",
+            "rnext",
+            "pnext",
+            "tlen",
+            "seq",
+            "qual",
+            "extra",
+        ]
+    }
+}
 
 impl<'r> FromSlice<'r> for SamState {
     type State = ();

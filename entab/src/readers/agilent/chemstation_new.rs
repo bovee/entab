@@ -1,3 +1,5 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use core::marker::Copy;
 
 use crate::parsers::{extract, Endian, FromSlice};
@@ -17,7 +19,11 @@ pub struct ChemstationUvState {
     wv_step: f64,
 }
 
-impl<'r> StateMetadata<'r> for ChemstationUvState {}
+impl StateMetadata for ChemstationUvState {
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "wavelength", "intensity"]
+    }
+}
 
 impl<'r> FromSlice<'r> for ChemstationUvState {
     type State = ();

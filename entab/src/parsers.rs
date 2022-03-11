@@ -37,6 +37,17 @@ pub trait FromSlice<'b>: Sized + Default {
     fn get(&mut self, _buffer: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
+
+    /// Essentially the same as `extract` below, but doesn't update the state or consume any space.
+    ///
+    /// Use only for simple types with defined sizes like u8, i32, &[u8], etc. Using this with more
+    /// complex types that rely upon updating `state` in between reads will cause bad and confusing
+    /// things to happen!
+    fn extract(buffer: &'b [u8], state: Self::State) -> Result<Self, EtError> {
+        let mut val = Self::default();
+        Self::get(&mut val, buffer, &state)?;
+        Ok(val)
+    }
 }
 
 /// Pull a `T` out of the slice, updating state appropriately and incrementing `consumed` to

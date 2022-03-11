@@ -3,15 +3,14 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, str};
-use core::convert::{TryFrom, TryInto};
+use core::convert::TryFrom;
 use core::default::Default;
 
 use chrono::{NaiveDate, NaiveTime};
 
-use crate::buffer::ReadBuffer;
+use crate::impl_reader;
 use crate::parsers::{extract, extract_opt, Endian, FromSlice, Skip};
-use crate::readers::RecordReader;
-use crate::record::Value;
+use crate::record::{StateMetadata, Value};
 use crate::EtError;
 
 /// A single key-value pair from the text segment of an FCS file.
@@ -99,6 +98,21 @@ pub struct FcsState {
     next_data: Option<usize>,
     n_events_left: usize,
     metadata: BTreeMap<String, Value<'static>>,
+}
+
+impl StateMetadata for FcsState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        self.metadata.clone()
+    }
+
+    /// The fields in the associated struct
+    fn header(&self) -> Vec<&str> {
+        let mut headers = Vec::new();
+        for param in &self.params {
+            headers.push(param.short_name.as_ref());
+        }
+        headers
+    }
 }
 
 impl<'r> FromSlice<'r> for FcsState {
@@ -349,79 +363,91 @@ impl<'r> FromSlice<'r> for FcsState {
     }
 }
 
-/// A reader for Flow Cytometry Standard (FCS) data.
+/// A record from a FCS file.
 ///
-/// Because the fields of a FCS record are variable, this reader only
-/// implements the `next_record` interface and doesn't have its own
-/// specialize `FcsRecord`.
+/// Because the fields of a FCS record are variable, this stores them
+/// as two sets of `Vec`s.
 ///
 /// For a more detailed specification of the FCS format, see:
 /// <https://www.bioconductor.org/packages/release/bioc/vignettes/flowCore/inst/doc/fcs3.html>
-#[derive(Debug)]
-pub struct FcsReader<'r> {
-    rb: ReadBuffer<'r>,
-    state: FcsState,
+#[derive(Debug, Default)]
+pub struct FcsRecord<'r> {
+    /// A list of the values for the current FCS scan. See the associated state for their names.
+    pub values: Vec<Value<'r>>,
 }
 
-impl<'r> FcsReader<'r> {
-    /// Create a new `FcsReader` from the `ReadBuffer` provided.
-    pub fn new<B>(data: B, params: ()) -> Result<Self, EtError>
-    where
-        B: TryInto<ReadBuffer<'r>>,
-        EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
-    {
-        let mut rb = data.try_into()?;
-        if let Some(state) = rb.next::<FcsState>(params)? {
-            Ok(FcsReader { rb, state })
-        } else {
-            Err("Could not read FCS headers".into())
-        }
-    }
-}
+impl<'r> FromSlice<'r> for FcsRecord<'r> {
+    type State = &'r mut FcsState;
 
-impl<'r> RecordReader for FcsReader<'r> {
-    fn headers(&self) -> Vec<String> {
-        let mut headers = Vec::new();
-        for param in &self.state.params {
-            headers.push(param.short_name.clone());
-        }
-        headers
-    }
-
-    fn metadata(&self) -> BTreeMap<String, Value> {
-        self.state.metadata.clone()
-    }
-
-    fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError> {
-        let con = &mut 0;
-        if self.state.n_events_left == 0 {
-            if let Some(next_data) = self.state.next_data {
-                let _ = extract::<Skip>(self.rb.as_ref(), con, next_data - self.rb.consumed)?;
-                self.state = extract(self.rb.as_ref(), con, ())?;
+    fn parse(
+        rb: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if state.n_events_left == 0 {
+            if let Some(next_data) = state.next_data {
+                let con = &mut 0;
+                let _ = extract::<Skip>(rb.as_ref(), con, next_data - *consumed)?;
+                if !FcsState::parse(rb, eof, consumed, &mut ())? {
+                    return Ok(false);
+                }
+                FcsState::get(state, rb, &mut ())?;
+                *consumed += *con;
             } else {
-                return Ok(None);
+                return Ok(false);
             }
         }
 
-        let mut record = Vec::with_capacity(self.state.params.len());
+        let mut data_size: usize = 0;
+        for param in &state.params {
+            data_size += match state.data_type {
+                'A' if param.size > 0 => param.size as usize,
+                'A' if param.size < 0 => {
+                    return Err("Delimited-ASCII number datatypes are not yet supported".into());
+                }
+                'D' => 8,
+                'F' => 4,
+                'I' => {
+                    if param.size % 8 != 0 {
+                        return Err(format!("Unknown param size {}", param.size).into());
+                    }
+                    param.size as usize / 8
+                }
+                _ => panic!("Data type is in an unknown state"),
+            };
+        }
+        if data_size > rb.len() {
+            return Err(EtError::from("Record was incomplete").incomplete());
+        }
+        state.n_events_left -= 1;
+        *consumed += data_size;
+        Ok(true)
+    }
+
+    fn get(&mut self, buf: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+        if self.values.len() != state.params.len() {
+            self.values.resize(state.params.len(), Value::Null);
+        }
         // TODO: need to handle incompletes here
-        for param in &self.state.params {
-            record.push(match self.state.data_type {
+        let con = &mut 0;
+        for (ix, param) in state.params.iter().enumerate() {
+            self.values[ix] = match state.data_type {
                 'A' if param.size > 0 => {
-                    let n = extract::<&[u8]>(self.rb.as_ref(), con, param.size as usize)?;
+                    let n = extract::<&[u8]>(buf, con, param.size as usize)?;
                     str::from_utf8(n)?.trim().parse::<f64>()?.into()
                 }
                 'A' if param.size < 0 => {
                     return Err("Delimited-ASCII number datatypes are not yet supported".into());
                 }
-                'D' => extract::<f64>(self.rb.as_ref(), con, self.state.endian)?.into(),
-                'F' => extract::<f32>(self.rb.as_ref(), con, self.state.endian)?.into(),
+                'D' => extract::<f64>(buf, con, state.endian)?.into(),
+                'F' => extract::<f32>(buf, con, state.endian)?.into(),
                 'I' => {
                     let value: u64 = match param.size {
-                        8 => extract::<u8>(self.rb.as_ref(), con, self.state.endian)?.into(),
-                        16 => extract::<u16>(self.rb.as_ref(), con, self.state.endian)?.into(),
-                        32 => extract::<u32>(self.rb.as_ref(), con, self.state.endian)?.into(),
-                        64 => extract::<u64>(self.rb.as_ref(), con, self.state.endian)?,
+                        8 => extract::<u8>(buf, con, state.endian)?.into(),
+                        16 => extract::<u16>(buf, con, state.endian)?.into(),
+                        32 => extract::<u32>(buf, con, state.endian)?.into(),
+                        64 => extract::<u64>(buf, con, state.endian)?,
                         x => return Err(format!("Unknown param size {}", x).into()),
                     };
                     if value > param.range && param.range > 0 {
@@ -435,17 +461,24 @@ impl<'r> RecordReader for FcsReader<'r> {
                     }
                 }
                 _ => panic!("Data type is in an unknown state"),
-            });
+            };
         }
-        self.state.n_events_left -= 1;
-        self.rb.record_pos += 1;
-        Ok(Some(record))
+        Ok(())
     }
 }
+
+impl<'r> From<FcsRecord<'r>> for Vec<Value<'r>> {
+    fn from(record: FcsRecord<'r>) -> Self {
+        record.values
+    }
+}
+
+impl_reader!(FcsReader, FcsRecord, FcsState, ());
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readers::RecordReader;
 
     #[test]
     fn test_fcs_header_kv_parser() -> Result<(), EtError> {
@@ -496,13 +529,11 @@ mod tests {
             ]
         );
 
-        let record = reader
-            .next_record()?
-            .expect("Reader returns at least one value");
-        assert_eq!(record.len(), 11);
+        let record = reader.next()?.expect("Reader returns at least one value");
+        assert_eq!(record.values.len(), 11);
 
         let mut n_recs = 1;
-        while let Some(_) = reader.next_record()? {
+        while let Some(_) = reader.next()? {
             n_recs += 1;
         }
         assert_eq!(n_recs, 14945);

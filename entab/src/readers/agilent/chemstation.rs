@@ -9,7 +9,7 @@ use chrono::NaiveDateTime;
 
 use crate::parsers::{extract, unsafe_access_state, Endian, FromSlice};
 use crate::readers::agilent::read_agilent_header;
-use crate::record::{RecordHeader, StateMetadata, Value};
+use crate::record::{StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
@@ -87,11 +87,11 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
             EtError::from("Chemstation header needs to be at least 648 bytes long").incomplete(),
         );
     }
-    let start_time = f64::from(extract::<i32>(&header[282..], &mut 0, Endian::Big)?) / 60000.;
-    let end_time = f64::from(extract::<i32>(&header[286..], &mut 0, Endian::Big)?) / 60000.;
+    let start_time = f64::from(i32::extract(&header[282..], Endian::Big)?) / 60000.;
+    let end_time = f64::from(i32::extract(&header[286..], Endian::Big)?) / 60000.;
 
-    let offset_correction = extract::<f64>(&header[636..], &mut 0, Endian::Big)?;
-    let mult_correction = extract::<f64>(&header[644..], &mut 0, Endian::Big)?;
+    let offset_correction = f64::extract(&header[636..], Endian::Big)?;
+    let mult_correction = f64::extract(&header[644..], Endian::Big)?;
 
     let signal_name_len = usize::from(header[596]);
     if signal_name_len > 40 {
@@ -157,9 +157,9 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
         .to_string();
 
     // not sure how robust the following are
-    let sequence = extract::<u16>(&header[252..], &mut 0, Endian::Big)?;
-    let vial = extract::<u16>(&header[254..], &mut 0, Endian::Big)?;
-    let replicate = extract::<u16>(&header[256..], &mut 0, Endian::Big)?;
+    let sequence = u16::extract(&header[252..], Endian::Big)?;
+    let vial = u16::extract(&header[254..], Endian::Big)?;
+    let replicate = u16::extract(&header[256..], Endian::Big)?;
 
     Ok(ChemstationMetadata {
         start_time,
@@ -189,9 +189,13 @@ pub struct ChemstationFidState {
     metadata: ChemstationMetadata,
 }
 
-impl<'r> StateMetadata<'r> for ChemstationFidState {
+impl StateMetadata for ChemstationFidState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         (&self.metadata).into()
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "intensity"]
     }
 }
 
@@ -284,9 +288,13 @@ pub struct ChemstationMsState {
     metadata: ChemstationMetadata,
 }
 
-impl<'r> StateMetadata<'r> for ChemstationMsState {
+impl StateMetadata for ChemstationMsState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         (&self.metadata).into()
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "mz", "intensity"]
     }
 }
 
@@ -305,7 +313,7 @@ impl<'r> FromSlice<'r> for ChemstationMsState {
 
     fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
         let metadata = get_metadata(rb)?;
-        let n_scans = extract::<u32>(&rb[278..], &mut 0, Endian::Big)? as usize;
+        let n_scans = u32::extract(&rb[278..], Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
         self.metadata = metadata;
@@ -398,9 +406,13 @@ pub struct ChemstationMwdState {
     metadata: ChemstationMetadata,
 }
 
-impl<'r> StateMetadata<'r> for ChemstationMwdState {
+impl StateMetadata for ChemstationMwdState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         (&self.metadata).into()
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "signal", "intensity"]
     }
 }
 
@@ -439,16 +451,6 @@ pub struct ChemstationMwdRecord<'r> {
     pub time: f64,
     /// The intensity recorded
     pub intensity: f64,
-}
-
-impl<'r> RecordHeader for ChemstationMwdRecord<'r> {
-    fn header() -> Vec<String> {
-        vec![
-            "time".to_string(),
-            "signal".to_string(),
-            "intensity".to_string(),
-        ]
-    }
 }
 
 impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
@@ -523,7 +525,11 @@ pub struct ChemstationUvState {
     wv_step: f64,
 }
 
-impl<'r> StateMetadata<'r> for ChemstationUvState {}
+impl StateMetadata for ChemstationUvState {
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "wavelength", "intensity"]
+    }
+}
 
 impl<'r> FromSlice<'r> for ChemstationUvState {
     type State = ();
@@ -539,7 +545,7 @@ impl<'r> FromSlice<'r> for ChemstationUvState {
     }
 
     fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let n_scans = extract::<u32>(&rb[278..], &mut 0, Endian::Big)? as usize;
+        let n_scans = u32::extract(&rb[278..], Endian::Big)? as usize;
 
         // TODO: get other metadata
         self.n_scans_left = n_scans;

@@ -111,7 +111,11 @@ impl Default for ThermoDxfState {
     }
 }
 
-impl<'r> StateMetadata<'r> for ThermoDxfState {}
+impl StateMetadata for ThermoDxfState {
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "mz", "intensity"]
+    }
+}
 
 impl<'r> FromSlice<'r> for ThermoDxfState {
     type State = ();
@@ -227,7 +231,11 @@ pub struct ThermoCfState {
     cur_intensity: f64,
 }
 
-impl<'r> StateMetadata<'r> for ThermoCfState {}
+impl StateMetadata for ThermoCfState {
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "mz", "intensity"]
+    }
+}
 
 impl<'r> FromSlice<'r> for ThermoCfState {
     type State = ();
@@ -331,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_thermo_dxf_reader() -> Result<(), EtError> {
-        let rb: &[u8] = include_bytes!("../../tests/data/b3_alkanes.dxf");
+        let rb: &[u8] = include_bytes!("../../../tests/data/b3_alkanes.dxf");
         let mut reader = ThermoDxfReader::new(rb, ())?;
         let _ = reader.metadata();
         if let Some(ThermoDxfRecord {
@@ -373,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_thermo_cf_reader() -> Result<(), EtError> {
-        let rb: &[u8] = include_bytes!("../../tests/data/test-0000.cf");
+        let rb: &[u8] = include_bytes!("../../../tests/data/test-0000.cf");
         let mut reader = ThermoCfReader::new(rb, ())?;
         let _ = reader.metadata();
         if let Some(ThermoCfRecord {

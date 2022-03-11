@@ -14,7 +14,7 @@ pub use chemstation::{
 pub use chemstation_new::{ChemstationUvReader, ChemstationUvRecord};
 
 use crate::error::EtError;
-use crate::parsers::{extract, Endian, Skip};
+use crate::parsers::{extract, Endian, FromSlice, Skip};
 
 /// Read the header chunk for an Agilent file
 pub(crate) fn read_agilent_header(rb: &[u8], ms_format: bool) -> Result<usize, EtError> {
@@ -23,7 +23,7 @@ pub(crate) fn read_agilent_header(rb: &[u8], ms_format: bool) -> Result<usize, E
     }
 
     // figure out how big the header should be and then get it
-    let raw_header_size = extract::<u32>(&rb[264..268], &mut 0, Endian::Big)? as usize;
+    let raw_header_size = u32::extract(&rb[264..268], Endian::Big)? as usize;
     if raw_header_size == 0 {
         return Err("Invalid header length of 0".into());
     }

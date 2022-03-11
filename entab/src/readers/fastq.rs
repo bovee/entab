@@ -1,3 +1,5 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use memchr::memchr;
 
 use crate::parsers::FromSlice;
@@ -27,7 +29,11 @@ pub struct FastqState {
     qual: (usize, usize),
 }
 
-impl<'r> StateMetadata<'r> for FastqState {}
+impl StateMetadata for FastqState {
+    fn header(&self) -> Vec<&str> {
+        vec!["id", "sequence", "quality"]
+    }
+}
 
 impl<'r> FromSlice<'r> for FastqState {
     type State = ();

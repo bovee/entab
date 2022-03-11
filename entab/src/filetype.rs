@@ -79,7 +79,7 @@ pub enum FileType {
     /// Inficon mass spectrometry format
     InficonHapsite,
     /// Thermo/Bruker mass spectrometry format
-    MsRaw,
+    ThermoRaw,
     /// Thermo isotope mass spectrometry format
     ThermoCf,
     /// Thermo isotope mass spectrometry format
@@ -117,7 +117,7 @@ impl FileType {
                 b"\x89HDF\r\n\x1A\n" => return FileType::Hdf5,
                 b"\x04\x03\x02\x01SPAH" => return FileType::InficonHapsite,
                 b"\xAEZTR\x0D\x0A\x1A\x0A" => return FileType::Ztr,
-                b"\x01\xA1F\x00i\x00n\x00" => return FileType::MsRaw,
+                b"\x01\xA1F\x00i\x00n\x00" => return FileType::ThermoRaw,
                 _ => {}
             }
         }
@@ -188,7 +188,7 @@ impl FileType {
             "faq" => &[FileType::Fastq],
             "fastq" => &[FileType::Fastq],
             "hdf" => &[FileType::Hdf5],
-            "raw" => &[FileType::MsRaw],
+            "raw" => &[FileType::ThermoRaw],
             "mzxml" => &[FileType::MzXml],
             "cdf" => &[FileType::NetCdf],
             "png" => &[FileType::Png],

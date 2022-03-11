@@ -20,7 +20,11 @@ pub struct InficonState {
     mzs_left: usize,
 }
 
-impl<'r> StateMetadata<'r> for InficonState {}
+impl StateMetadata for InficonState {
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "mz", "intensity"]
+    }
+}
 
 impl<'r> FromSlice<'r> for InficonState {
     type State = (Vec<Vec<f64>>, usize);
@@ -62,12 +66,9 @@ impl<'r> FromSlice<'r> for InficonState {
             for _ in 0..n_mzs {
                 let start_mz = extract::<u32>(rb, con, Endian::Little)?;
                 let end_mz = extract::<u32>(rb, con, Endian::Little)?;
-                if start_mz >= end_mz
-                    || end_mz - start_mz >= 200_000u32
-                    || end_mz > 4_000_000_000u32
-                {
+                if end_mz > 4_000_000_000u32 {
                     // only malformed data should hit this
-                    return Err("m/z range is too big or invalid".into());
+                    return Err("End of m/z range is invalid".into());
                 }
                 // then dwell time (u32; microseconds) and three more u32s
                 let _ = extract::<&[u8]>(rb, con, 16)?;
@@ -77,6 +78,9 @@ impl<'r> FromSlice<'r> for InficonState {
                     // this is a SIM
                     segment.push(f64::from(start_mz) / 100.);
                 } else {
+                    if start_mz >= end_mz || end_mz - start_mz >= 200_000u32 {
+                        return Err("m/z range is too big or invalid".into());
+                    }
                     // i_type = 1 appears to be "full scan mode"
                     let mut mz = start_mz;
                     while mz < end_mz + 1 {
@@ -129,7 +133,7 @@ impl<'r> FromSlice<'r> for InficonRecord {
         consumed: &mut usize,
         state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        if state.data_left > 0 {
+        if state.data_left == 0 {
             return Ok(false);
         }
         let con = &mut 0;
@@ -163,13 +167,13 @@ impl<'r> FromSlice<'r> for InficonRecord {
         }
         state.cur_intensity = f64::from(extract::<f32>(rb, con, Endian::Little)?);
         let cur_mz_segment = &state.mz_segments[state.cur_segment];
-        if cur_mz_segment.len() - state.mzs_left >= cur_mz_segment.len() {
+        if mzs_left > cur_mz_segment.len() {
             // i think this is probably more likely an error where mz_segments have 0 length, but I
             // don't know enough about the format above to know if we should error when we parse
             // the initial state instead of here.
             return Err("Invalid m/z segment".into());
         }
-        state.cur_mz = cur_mz_segment[cur_mz_segment.len() - state.mzs_left];
+        state.cur_mz = cur_mz_segment[cur_mz_segment.len() - mzs_left];
         state.mzs_left = mzs_left - 1;
         state.data_left = state.data_left.saturating_sub(*con);
         *consumed += *con;
@@ -453,7 +457,7 @@ mod test {
             0, 0, 4, 0, 49, 54, 0, 0, 0, 0, 0, 250, 0, 0, 0,
         ];
         let mut reader = InficonReader::new(&test_data[..], (Vec::new(), 0usize))?;
-        assert!(reader.next().is_err());
+        while reader.next()?.is_some() {}
 
         Ok(())
     }
