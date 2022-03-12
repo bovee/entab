@@ -113,7 +113,12 @@ impl<'r> FromSlice<'r> for FastaRecord<'r> {
     }
 }
 
-impl_reader!(FastaReader, FastaRecord, FastaState, ());
+impl_reader!(
+    FastaReader,
+    FastaRecord,
+    FastaState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

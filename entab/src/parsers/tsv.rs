@@ -8,7 +8,8 @@ use core::mem;
 use memchr::memchr;
 
 use crate::buffer::ReadBuffer;
-use crate::parsers::{extract_opt, NewLine};
+use crate::parsers::common::NewLine;
+use crate::parsers::extract_opt;
 use crate::readers::RecordReader;
 use crate::record::Value;
 use crate::EtError;

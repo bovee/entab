@@ -5,7 +5,8 @@ use alloc::vec::Vec;
 use core::convert::TryFrom;
 use core::marker::Copy;
 
-use crate::parsers::{extract, extract_opt, unsafe_access_state, Endian, FromSlice, NewLine, Skip};
+use crate::parsers::common::{NewLine, Skip};
+use crate::parsers::{extract, extract_opt, unsafe_access_state, Endian, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -246,7 +247,12 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
     }
 }
 
-impl_reader!(BamReader, BamRecord, BamState, ());
+impl_reader!(
+    BamReader,
+    BamRecord,
+    BamState,
+    ()
+);
 
 /// The internal state of the `SamReader`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -417,7 +423,12 @@ impl<'r> FromSlice<'r> for SamRecord<'r> {
     }
 }
 
-impl_reader!(SamReader, SamRecord, SamState, ());
+impl_reader!(
+    SamReader,
+    SamRecord,
+    SamState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

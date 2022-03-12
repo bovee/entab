@@ -7,12 +7,12 @@ use entab::buffer::ReadBuffer;
 use entab::chunk::init_state;
 use entab::compression::decompress;
 use entab::filetype::FileType;
-use entab::readers::agilent::chemstation::ChemstationMsReader;
-use entab::readers::fasta::FastaReader;
-use entab::readers::fastq::{FastqReader, FastqRecord, FastqState};
+use entab::parsers::agilent::chemstation::ChemstationMsReader;
+use entab::parsers::fasta::FastaReader;
+use entab::parsers::fastq::{FastqReader, FastqRecord, FastqState};
+use entab::parsers::png::PngReader;
+use entab::parsers::sam::BamReader;
 use entab::readers::get_reader;
-use entab::readers::png::PngReader;
-use entab::readers::sam::BamReader;
 
 fn benchmark_raw_readers(c: &mut Criterion) {
     let mut raw_readers = c.benchmark_group("raw readers");

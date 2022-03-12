@@ -9,7 +9,8 @@ use core::default::Default;
 use chrono::{NaiveDate, NaiveTime};
 
 use crate::impl_reader;
-use crate::parsers::{extract, extract_opt, Endian, FromSlice, Skip};
+use crate::parsers::common::Skip;
+use crate::parsers::{extract, extract_opt, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 
@@ -474,7 +475,7 @@ impl<'r> From<FcsRecord<'r>> for Vec<Value<'r>> {
 }
 
 impl_reader!(FcsReader, FcsRecord, FcsState, ());
-
+ 
 #[cfg(test)]
 mod tests {
     use super::*;

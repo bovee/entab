@@ -117,7 +117,12 @@ impl<'r> FromSlice<'r> for FastqRecord<'r> {
     }
 }
 
-impl_reader!(FastqReader, FastqRecord, FastqState, ());
+impl_reader!(
+    FastqReader,
+    FastqRecord,
+    FastqState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

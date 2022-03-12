@@ -116,7 +116,7 @@ mod test {
     #[cfg(feature = "std")]
     use rayon;
 
-    use crate::readers::fastq::{FastqRecord, FastqState};
+    use crate::parsers::fastq::{FastqRecord, FastqState};
 
     #[test]
     fn test_chunked_read() -> Result<(), EtError> {

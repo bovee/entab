@@ -8,13 +8,14 @@ pub mod chemstation_new;
 pub mod chemstation;
 
 pub use chemstation::{
-    ChemstationFidReader, ChemstationFidRecord, ChemstationMsReader, ChemstationMsRecord,
-    ChemstationMwdReader, ChemstationMwdRecord,
+    ChemstationFidRecord, ChemstationMsRecord,
+    ChemstationMwdRecord,
 };
-pub use chemstation_new::{ChemstationUvReader, ChemstationUvRecord};
+pub use chemstation_new::ChemstationNewUvRecord;
 
 use crate::error::EtError;
-use crate::parsers::{extract, Endian, FromSlice, Skip};
+use crate::parsers::common::Skip;
+use crate::parsers::{extract, Endian, FromSlice};
 
 /// Read the header chunk for an Agilent file
 pub(crate) fn read_agilent_header(rb: &[u8], ms_format: bool) -> Result<usize, EtError> {

@@ -251,7 +251,7 @@ mod test {
     #[cfg(feature = "std")]
     use std::io::Cursor;
 
-    use crate::parsers::{NewLine, SeekPattern};
+    use crate::parsers::common::{NewLine, SeekPattern};
     use crate::EtError;
 
     use super::ReadBuffer;

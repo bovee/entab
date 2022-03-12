@@ -21,7 +21,7 @@
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
-//! use entab::readers::fasta::{FastaReader, FastaRecord};
+//! use entab::parsers::fasta::{FastaReader, FastaRecord};
 //!
 //! let file = File::open("./tests/data/sequence.fasta")?;
 //! let mut reader = FastaReader::new(file, ())?;
@@ -69,7 +69,7 @@ pub mod error;
 /// File format inference
 pub mod filetype;
 /// Lightweight parsers to read records out of buffers
-mod parsers;
+pub mod parsers;
 /// Parsers for specific file formats
 pub mod readers;
 /// Record and abstract record reading

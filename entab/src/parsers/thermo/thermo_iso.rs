@@ -6,7 +6,8 @@ use alloc::vec::Vec;
 use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use core::marker::Copy;
 
-use crate::parsers::{extract, extract_opt, Endian, FromSlice, SeekPattern, Skip};
+use crate::parsers::common::{SeekPattern, Skip};
+use crate::parsers::{extract, extract_opt, Endian, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -218,7 +219,12 @@ impl<'r> FromSlice<'r> for ThermoDxfRecord {
     }
 }
 
-impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfState, ());
+impl_reader!(
+    ThermoDxfReader,
+    ThermoDxfRecord,
+    ThermoDxfState,
+    ()
+);
 
 /// The current state of the `ThermoCfReader`
 #[derive(Debug, Default)]
@@ -330,7 +336,12 @@ impl<'r> FromSlice<'r> for ThermoCfRecord {
     }
 }
 
-impl_reader!(ThermoCfReader, ThermoCfRecord, ThermoCfState, ());
+impl_reader!(
+    ThermoCfReader,
+    ThermoCfRecord,
+    ThermoCfState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

@@ -3,7 +3,8 @@ use alloc::{format, vec};
 use core::convert::TryFrom;
 use core::marker::Copy;
 
-use crate::parsers::{extract, extract_opt, Endian, FromSlice, SeekPattern};
+use crate::parsers::common::SeekPattern;
+use crate::parsers::{extract, extract_opt, Endian, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -189,10 +190,6 @@ impl<'r> FromSlice<'r> for InficonRecord {
 }
 
 impl_reader!(
-    /// A Reader for Inficon Hapsite data.
-    ///
-    /// This reader is currently untested on CI until we can find some test data
-    /// that can be publicly distributed.
     InficonReader,
     InficonRecord,
     InficonState,

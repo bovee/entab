@@ -7,8 +7,8 @@ use core::marker::Copy;
 
 use chrono::NaiveDateTime;
 
+use crate::parsers::agilent::read_agilent_header;
 use crate::parsers::{extract, unsafe_access_state, Endian, FromSlice};
-use crate::readers::agilent::read_agilent_header;
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -630,38 +630,6 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
     }
 }
 
-impl_reader!(
-    /// A reader for a Chemstation FID file
-    ChemstationFidReader,
-    ChemstationFidRecord,
-    ChemstationFidState,
-    ()
-);
-
-impl_reader!(
-    /// A reader for a Chemstation MS file
-    ChemstationMsReader,
-    ChemstationMsRecord,
-    ChemstationMsState,
-    ()
-);
-
-impl_reader!(
-    /// A reader for a Chemstation MWD file
-    ChemstationMwdReader,
-    ChemstationMwdRecord,
-    ChemstationMwdState,
-    ()
-);
-
-impl_reader!(
-    /// A reader for a Chemstation UV file
-    ChemstationUvReader,
-    ChemstationUvRecord,
-    ChemstationUvState,
-    ()
-);
-
 // scratch with offsets for info in different files
 
 // FID - 02 38 31 00 ("81") (missing 01 38 00 00)
@@ -710,6 +678,31 @@ impl_reader!(
 //  - 2574 - Method Name
 //  - 3093 - Units
 //   4096 - data start?
+
+impl_reader!(
+    ChemstationFidReader,
+    ChemstationFidRecord,
+    ChemstationFidState,
+    ()
+);
+impl_reader!(
+    ChemstationMsReader,
+    ChemstationMsRecord,
+    ChemstationMsState,
+    ()
+);
+impl_reader!(
+    ChemstationMwdReader,
+    ChemstationMwdRecord,
+    ChemstationMwdState,
+    ()
+);
+impl_reader!(
+    ChemstationUvReader,
+    ChemstationUvRecord,
+    ChemstationUvState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

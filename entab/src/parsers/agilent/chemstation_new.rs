@@ -2,15 +2,15 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::marker::Copy;
 
+use crate::parsers::agilent::read_agilent_header;
 use crate::parsers::{extract, Endian, FromSlice};
-use crate::readers::agilent::read_agilent_header;
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// Internal state for the ChemstationUv parser
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ChemstationUvState {
+pub struct ChemstationNewUvState {
     n_scans_left: usize,
     n_wvs_left: usize,
     cur_time: f64,
@@ -19,13 +19,13 @@ pub struct ChemstationUvState {
     wv_step: f64,
 }
 
-impl StateMetadata for ChemstationUvState {
+impl StateMetadata for ChemstationNewUvState {
     fn header(&self) -> Vec<&str> {
         vec!["time", "wavelength", "intensity"]
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationUvState {
+impl<'r> FromSlice<'r> for ChemstationNewUvState {
     type State = ();
 
     fn parse(
@@ -48,7 +48,7 @@ impl<'r> FromSlice<'r> for ChemstationUvState {
 
 /// A record from a ChemstationUv file
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ChemstationUvRecord {
+pub struct ChemstationNewUvRecord {
     /// The time recorded at
     pub time: f64,
     /// The wavelength recorded at
@@ -57,10 +57,10 @@ pub struct ChemstationUvRecord {
     pub intensity: f64,
 }
 
-impl_record!(ChemstationUvRecord: time, wavelength, intensity);
+impl_record!(ChemstationNewUvRecord: time, wavelength, intensity);
 
-impl<'r> FromSlice<'r> for ChemstationUvRecord {
-    type State = &'r mut ChemstationUvState;
+impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
+    type State = &'r mut ChemstationNewUvState;
 
     fn parse(
         rb: &[u8],
@@ -119,9 +119,9 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
 
 impl_reader!(
     /// A reader for a Chemstation UV file
-    ChemstationUvReader,
-    ChemstationUvRecord,
-    ChemstationUvState,
+    ChemstationNewUvReader,
+    ChemstationNewUvRecord,
+    ChemstationNewUvState,
     ()
 );
 
@@ -146,10 +146,10 @@ mod tests {
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
         let test_data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationUvReader::new(test_data, ())?;
+        let mut reader = ChemstationNewUvReader::new(test_data, ())?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
-        let ChemstationUvRecord {
+        let ChemstationNewUvRecord {
             time,
             wavelength,
             intensity,

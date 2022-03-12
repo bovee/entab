@@ -5,7 +5,8 @@ use std::io::Read;
 
 use flate2::read::ZlibDecoder;
 
-use crate::parsers::{extract, Endian, FromSlice, Skip};
+use crate::parsers::common::Skip;
+use crate::parsers::{extract, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
@@ -362,7 +363,12 @@ impl<'r> FromSlice<'r> for PngRecord {
     }
 }
 
-impl_reader!(PngReader, PngRecord, PngState, ());
+impl_reader!(
+    PngReader,
+    PngRecord,
+    PngState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {
