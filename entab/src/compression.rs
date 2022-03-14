@@ -66,6 +66,39 @@ mod tests {
         assert_eq!(stream.read_to_end(&mut buf)?, 1392);
         Ok(())
     }
+
+    #[test]
+    fn test_read_bzip2() -> Result<(), EtError> {
+        let f = File::open("tests/data/test.csv.bz2")?;
+
+        let (mut stream, _, compression) = decompress(Box::new(&f))?;
+        assert_eq!(compression, Some(FileType::Bzip));
+        let mut buf = Vec::new();
+        assert_eq!(stream.read_to_end(&mut buf)?, 48);
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_xz() -> Result<(), EtError> {
+        let f = File::open("tests/data/test.csv.xz")?;
+
+        let (mut stream, _, compression) = decompress(Box::new(&f))?;
+        assert_eq!(compression, Some(FileType::Lzma));
+        let mut buf = Vec::new();
+        assert_eq!(stream.read_to_end(&mut buf)?, 48);
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_zstd() -> Result<(), EtError> {
+        let f = File::open("tests/data/test.csv.zst")?;
+
+        let (mut stream, _, compression) = decompress(Box::new(&f))?;
+        assert_eq!(compression, Some(FileType::Zstd));
+        let mut buf = Vec::new();
+        assert_eq!(stream.read_to_end(&mut buf)?, 48);
+        Ok(())
+    }
 }
 
 #[cfg(not(feature = "compression"))]

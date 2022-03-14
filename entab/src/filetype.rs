@@ -130,7 +130,7 @@ impl FileType {
                 [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstationMs,
                 [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
                 [0x03, 0x31, 0x33, 0x31] => return FileType::AgilentChemstationUv,
-                [0xFD, 0x2F, 0xB5, 0x28] => return FileType::Zstd,
+                [0x28, 0xB5, 0x2F, 0xFD] => return FileType::Zstd,
                 [0xFF, 0xFF, 0x06 | 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
                         return FileType::ThermoCf;
@@ -230,7 +230,7 @@ impl FileType {
     #[must_use]
     pub fn to_parser_name(&self) -> String {
         match self {
-            FileType::AgilentChemstationFid => "chemstaton_fid",
+            FileType::AgilentChemstationFid => "chemstation_fid",
             FileType::AgilentChemstationMs => "chemstation_ms",
             FileType::AgilentChemstationMwd => "chemstation_mwd",
             FileType::AgilentChemstationUv => "chemstation_uv",
@@ -249,4 +249,35 @@ impl FileType {
         }
         .to_string()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parser_names() {
+        let filetypes = [
+            FileType::AgilentChemstationFid,
+            FileType::AgilentChemstationMs,
+            FileType::AgilentChemstationMwd,
+            FileType::AgilentChemstationUv,
+            FileType::Bam,
+            FileType::Facs,
+            FileType::Fasta,
+            FileType::Fastq,
+            FileType::InficonHapsite,
+            FileType::Png,
+            FileType::Sam,
+            FileType::ThermoCf,
+            FileType::ThermoDxf,
+            FileType::DelimitedText(b','),
+            FileType::DelimitedText(b'\t'),
+        ];
+        for ft in filetypes {
+            assert_eq!(FileType::from_parser_name(&ft.to_parser_name()), ft);
+        }
+    }
+
+
 }
