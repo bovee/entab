@@ -1,36 +1,7 @@
-#[cfg(feature = "std")]
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
-#[cfg(feature = "std")]
-use alloc::vec;
 use core::marker::Copy;
-#[cfg(feature = "std")]
-use std::io::{Cursor, Read};
 
-#[cfg(feature = "std")]
-use crate::buffer::BUFFER_SIZE;
-#[cfg(feature = "std")]
-use crate::EtError;
-
-/// Given a `Read` stream, guess what kind of file it is and return the
-/// original stream reset to the beginning.
-///
-/// # Errors
-/// If an error reading data from the `reader` occurs, an error will be returned.
-#[cfg(feature = "std")]
-pub fn sniff_reader_filetype<'a>(
-    mut reader: Box<dyn Read + 'a>,
-) -> Result<(Box<dyn Read + 'a>, FileType), EtError> {
-    let mut first = vec![0; BUFFER_SIZE];
-    let amt_read = reader.read(&mut first)?;
-    unsafe {
-        first.set_len(amt_read);
-    }
-
-    let file_type = FileType::from_magic(&first);
-    Ok((Box::new(Cursor::new(first).chain(reader)), file_type))
-}
 
 /// A file format.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -163,11 +134,8 @@ impl FileType {
     #[must_use]
     pub fn from_extension(ext: &str) -> &[Self] {
         match ext {
-            "gz" => &[FileType::Gzip],
-            "gzip" => &[FileType::Gzip],
-            "bz" => &[FileType::Bzip],
-            "bz2" => &[FileType::Bzip],
-            "bzip" => &[FileType::Bzip],
+            "gz" | "gzip" => &[FileType::Gzip],
+            "bz" | "bz2" | "bzip" => &[FileType::Bzip],
             "xz" => &[FileType::Lzma],
             "zstd" => &[FileType::Zstd],
             "ch" => &[
@@ -179,14 +147,9 @@ impl FileType {
             "bam" => &[FileType::Bam],
             "baf" => &[FileType::BrukerBaf],
             "ami" => &[FileType::BrukerMsms],
-            "fcs" => &[FileType::Facs],
-            "lmd" => &[FileType::Facs],
-            "fa" => &[FileType::Fasta],
-            "faa" => &[FileType::Fasta],
-            "fasta" => &[FileType::Fasta],
-            "fna" => &[FileType::Fasta],
-            "faq" => &[FileType::Fastq],
-            "fastq" => &[FileType::Fastq],
+            "fcs" | "lmd" => &[FileType::Facs],
+            "fa" | "faa" | "fasta" | "fna" => &[FileType::Fasta],
+            "faq" | "fastq" | "fq" => &[FileType::Fastq],
             "hdf" => &[FileType::Hdf5],
             "raw" => &[FileType::ThermoRaw],
             "mzxml" => &[FileType::MzXml],

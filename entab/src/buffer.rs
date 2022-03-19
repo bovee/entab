@@ -13,6 +13,7 @@ use std::fs::File;
 #[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
+use crate::filetype::FileType;
 use crate::parsers::FromSlice;
 use crate::EtError;
 
@@ -58,6 +59,18 @@ impl<'r> ReadBuffer<'r> {
             eof: false,
             end: false,
         })
+    }
+
+    /// Given a `ReadBuffer`, guess what kind of file it is.
+    ///
+    /// # Errors
+    /// If an error reading data from the `reader` occurs, an error will be returned.
+    pub fn sniff_filetype(&mut self) -> Result<FileType, EtError> {
+        // try to get more if the buffer is *really* short
+        if self.buffer.len() < 8 && !self.eof {
+            let _ = self.refill()?;
+        }
+        Ok(FileType::from_magic(&self.buffer))
     }
 
     /// Refill the buffer from the reader.
@@ -120,6 +133,13 @@ impl<'r> ReadBuffer<'r> {
         Ok(true)
     }
 
+    /// Converts this `ReadBuffer` into a `Box<Read>`.
+    #[cfg(feature = "std")]
+    #[must_use]
+    pub fn into_box_read(self) -> Box<dyn Read + 'r> {
+        Box::new(Cursor::new(self.buffer).chain(self.reader))
+    }
+
     /// Uses the state to extract a record from the buffer.
     ///
     /// # Errors
@@ -161,14 +181,26 @@ impl<'r> ReadBuffer<'r> {
         Ok(Some(record))
     }
 
-    /// Reads a record into an existing value
+    /// Reads a record into an existing value.
+    ///
+    /// # Errors
+    /// Errors for the same reasons as `next`.
     ///
     /// # Safety
-    /// Don't use a previous record after calling this again
+    /// Don't use a previous record after calling this again.
+    /// For example:
+    /// ```ignore
+    /// let x1: Record = Default::default();
+    /// let x2: Record = Default::default();
+    /// rb.next_into(&mut state, &mut x1)?;
+    /// rb.next_into(&mut state, &mut x2)?;
+    /// // x1 will now be in a bad state
+    /// ```
     #[inline]
+    #[doc(hidden)]
     pub unsafe fn next_into<'b: 's, 's, T>(
         &mut self,
-        mut state: &mut <T as FromSlice<'b, 's>>::State,
+        state: &mut <T as FromSlice<'b, 's>>::State,
         record: &mut T,
     ) -> Result<bool, EtError>
     where
@@ -196,10 +228,10 @@ impl<'r> ReadBuffer<'r> {
             }
         }
         let buffer = {
-            std::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer)
+            ::core::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer)
         };
         let cur_state = {
-            std::mem::transmute::<&mut <T as FromSlice<'b, 's>>::State, &'s mut <T as FromSlice<'b, 's>>::State>(&mut state)
+            ::core::mem::transmute::<&mut <T as FromSlice<'b, 's>>::State, &'s mut <T as FromSlice<'b, 's>>::State>(state)
         };
         self.record_pos += 1;
         T::get(record, &buffer[consumed..self.consumed], cur_state)
@@ -351,6 +383,25 @@ mod test {
         assert!(rb.as_ref().len() == 2);
         let _ = rb.refill();
         assert!(rb.as_ref().len() >= 4);
+        Ok(())
+    }
+
+    #[test]
+    fn test_next_into() -> Result<(), EtError> {
+        let mut rb = ReadBuffer::from(&b"1\n2\n3"[..]);
+
+        let mut ix = 0;
+        let mut line: NewLine = Default::default();
+        while unsafe { rb.next_into(&mut 0, &mut line)? } {
+            match ix {
+                0 => assert_eq!(&line.0, b"1"),
+                1 => assert_eq!(&line.0, b"2"),
+                2 => assert_eq!(&line.0, b"3"),
+                _ => panic!("Invalid index; buffer tried to read too far"),
+            }
+            ix += 1;
+        }
+        assert_eq!(ix, 3);
         Ok(())
     }
 }

@@ -1,6 +1,5 @@
 mod tsv_params;
 
-use std::convert::TryFrom;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io;
@@ -10,7 +9,6 @@ use clap::{crate_authors, crate_version, Arg, Command};
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
-use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
 use entab::filetype::FileType;
 use entab::readers::get_reader;
@@ -64,30 +62,23 @@ where
     #[cfg(feature = "mmap")]
     let mmap: Mmap;
 
-    let (rb, filetype, _) = if let Some(i) = matches.value_of("input") {
+    let (mut rb, _) = if let Some(i) = matches.value_of("input") {
         let file = File::open(i)?;
-        let (reader, filetype, compression) = decompress(Box::new(file))?;
-        if compression == None {
-            // if the file's decompressed already, re-open it as a mmap
-            #[cfg(feature = "mmap")]
-            {
-                let file = File::open(i)?;
-                mmap = unsafe { Mmap::map(&file)? };
-                (ReadBuffer::from(mmap.as_ref()), filetype, compression)
-            }
-            #[cfg(not(feature = "mmap"))]
-            (ReadBuffer::try_from(reader)?, filetype, compression)
-        } else {
-            (ReadBuffer::try_from(reader)?, filetype, compression)
+        #[cfg(feature = "mmap")]
+        {
+            mmap = unsafe { Mmap::map(&file)? };
+            decompress(mmap.as_ref())?
         }
+        #[cfg(not(feature = "mmap"))]
+        decompress(file)?
     } else {
-        let (reader, filetype, compression) = decompress(Box::new(stdin))?;
-        (ReadBuffer::try_from(reader)?, filetype, compression)
+        let buffer: Box<dyn io::Read> = Box::new(stdin);
+        decompress(buffer)?
     };
+    let filetype = rb.sniff_filetype()?;
     let parser = matches
         .value_of("parser")
-        .map(FileType::from_parser_name)
-        .unwrap_or_else(|| filetype);
+        .map_or_else(|| filetype, FileType::from_parser_name);
     let mut rec_reader = get_reader(parser, rb)?;
     // TODO: allow user to set these
     let params = TsvParams::default();
@@ -110,23 +101,22 @@ where
             writer.write_all(&params.line_delimiter)?;
         }
         return Ok(());
-    } else {
-        writer.write_all(
-            rec_reader
-                .headers()
-                .join(str::from_utf8(&[params.main_delimiter])?)
-                .as_bytes(),
-        )?;
-        writer.write_all(&params.line_delimiter)?;
+    }
+    writer.write_all(
+        rec_reader
+            .headers()
+            .join(str::from_utf8(&[params.main_delimiter])?)
+            .as_bytes(),
+    )?;
+    writer.write_all(&params.line_delimiter)?;
 
-        while let Some(fields) = rec_reader.next_record()? {
-            params.write_value(&fields[0], &mut writer)?;
-            for field in fields.iter().skip(1) {
-                writer.write_all(&[params.main_delimiter])?;
-                params.write_value(field, &mut writer)?;
-            }
-            writer.write_all(&params.line_delimiter)?;
+    while let Some(fields) = rec_reader.next_record()? {
+        params.write_value(&fields[0], &mut writer)?;
+        for field in fields.iter().skip(1) {
+            writer.write_all(&[params.main_delimiter])?;
+            params.write_value(field, &mut writer)?;
         }
+        writer.write_all(&params.line_delimiter)?;
     }
     writer.flush()?;
 

@@ -313,7 +313,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
 
     fn get(&mut self, buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         let metadata = get_metadata(buffer)?;
-        let n_scans = u32::extract(&buffer[278..], &mut Endian::Big)? as usize;
+        let n_scans = u32::extract(&buffer[278..], &Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
         self.metadata = metadata;
@@ -545,7 +545,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
     }
 
     fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let n_scans = u32::extract(&rb[278..], &mut Endian::Big)? as usize;
+        let n_scans = u32::extract(&rb[278..], &Endian::Big)? as usize;
 
         // TODO: get other metadata
         self.n_scans_left = n_scans;

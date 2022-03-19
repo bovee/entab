@@ -66,7 +66,7 @@ impl EtError {
         self
     }
 
-    /// Fill the positional error information from a ReadBuffer directly.
+    /// Fill the positional error information from a `ReadBuffer` directly.
     #[must_use]
     pub fn add_context_from_readbuffer(self, buffer: &ReadBuffer) -> Self {
         self.add_context(

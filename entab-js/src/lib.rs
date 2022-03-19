@@ -1,6 +1,8 @@
+#![allow(clippy::unused_unit)]
 mod utils;
 
 use std::collections::BTreeMap;
+use std::convert::AsRef;
 use std::io::{Cursor, Read};
 
 use entab_base::compression::decompress;
@@ -43,11 +45,11 @@ impl Reader {
         }
         let stream: Box<dyn Read> = Box::new(Cursor::new(data));
 
-        let (reader, filetype, _) = decompress(stream).map_err(to_js)?;
+        let (mut reader, _) = decompress(stream).map_err(to_js)?;
+        let filetype = reader.sniff_filetype().map_err(to_js)?;
 
         let filetype = parser
-            .map(|p| FileType::from_parser_name(&p))
-            .unwrap_or_else(|| filetype);
+            .map_or_else(|| filetype, |p| FileType::from_parser_name(&p));
         let reader = get_reader(filetype, reader).map_err(to_js)?;
         let headers = reader.headers();
         Ok(Reader {
@@ -86,7 +88,7 @@ impl Reader {
             let obj: BTreeMap<&str, Value> = self
                 .headers
                 .iter()
-                .map(|i| i.as_ref())
+                .map(AsRef::as_ref)
                 .zip(value.into_iter())
                 .collect();
             JsValue::from_serde(&NextRecord {

@@ -1,7 +1,6 @@
 mod util;
 
 use std::fs::File;
-use std::io::Read;
 
 use entab_base::compression::decompress;
 use entab_base::error::EtError;
@@ -46,11 +45,11 @@ struct Reader {
 }
 
 fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
-    let stream: Box<dyn Read> = Box::new(File::open(filename)?);
-    let (reader, filetype, _) = decompress(stream)?;
+    let file = File::open(filename)?;
+    let (mut reader, _) = decompress(file)?;
 
     let filetype = if parser == "" {
-        filetype
+        reader.sniff_filetype()?
     } else {
         FileType::from_parser_name(parser)
     };

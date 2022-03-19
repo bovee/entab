@@ -1,3 +1,4 @@
+#![allow(clippy::needless_option_as_deref)]
 mod raw_io_wrapper;
 
 use std::fs::File;
@@ -22,7 +23,7 @@ fn to_py(err: EtError) -> PyErr {
     // TODO: somehow bind err.byte and err.record in here too?
 }
 
-/// Map a Value into a PyObject
+/// Map a Value into a `PyObject`
 fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
     Ok(match value {
         Value::Null => py.None().as_ref(py).into(),
@@ -45,7 +46,7 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
             }
             list.to_object(py)
         }
-        _ => {
+        Value::Record(_) => {
             return Err(EntabError::new_err("record subelements unimplemented"));
         }
     })
@@ -113,10 +114,10 @@ impl Reader {
                 ))
             }
         };
-        let (reader, filetype, _) = decompress(stream).map_err(to_py)?;
+        let (mut reader, _) = decompress(stream).map_err(to_py)?;
+        let filetype = reader.sniff_filetype().map_err(to_py)?;
         let filetype = parser
-            .map(FileType::from_parser_name)
-            .unwrap_or_else(|| filetype);
+            .map_or_else(|| filetype, FileType::from_parser_name);
         let reader = get_reader(filetype, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();

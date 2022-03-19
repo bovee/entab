@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::module_name_repetitions)]
 #![deny(
     missing_debug_implementations,
     missing_docs,

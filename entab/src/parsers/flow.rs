@@ -389,11 +389,11 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
         if state.n_events_left == 0 {
             if let Some(next_data) = state.next_data {
                 let con = &mut 0;
-                let _ = extract::<Skip>(buf.as_ref(), con, &mut (next_data - *consumed))?;
+                let _ = extract::<Skip>(buf, con, &mut (next_data - *consumed))?;
                 if !FcsState::parse(buf, eof, consumed, &mut ())? {
                     return Ok(false);
                 }
-                FcsState::get(state, buf, &mut ())?;
+                FcsState::get(state, buf, &())?;
                 *consumed += *con;
             } else {
                 return Ok(false);

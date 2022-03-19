@@ -2,6 +2,7 @@ use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Serialize, Serializer};
@@ -137,8 +138,8 @@ impl<'a> From<i64> for Value<'a> {
 
 impl<'a> From<u64> for Value<'a> {
     fn from(x: u64) -> Self {
-        // there's probably a better solution here
-        Value::Integer(x as i64)
+        // there's probably a better solution here?
+        Value::Integer(i64::try_from(x).expect("u64 exceeded i64 memory limit"))
     }
 }
 

@@ -68,7 +68,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
         let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        let _ = extract::<Skip>(buffer, con, &mut header_len);
+        drop(extract::<Skip>(buffer, con, &mut header_len));
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
@@ -206,7 +206,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
 
         // now parse the variable length records
         let data = extract::<&[u8]>(rb, con, &mut (record_len - 32))?;
-        if query_name_len + n_cigar_op * 8 + (1.5 * seq_len as f32 + 1.).ceil() as usize
+        if query_name_len + n_cigar_op * 8 + (3 * seq_len + 2) / 2
             > data.len()
         {
             // there's not enough space for the query name, cigar, and sequence/quality?
@@ -424,7 +424,6 @@ mod tests {
     use super::*;
 
     #[cfg(all(feature = "compression", feature = "std"))]
-    use crate::buffer::ReadBuffer;
     use crate::readers::RecordReader;
 
     use core::include_bytes;
@@ -434,7 +433,8 @@ mod tests {
     fn test_sam_reader() -> Result<(), EtError> {
         let rb = include_bytes!("../../tests/data/test.sam");
         let mut reader = SamReader::new(&rb[..], None)?;
-        // let _ = reader.metadata(); // FIXME
+        #[cfg(all(feature = "compression", feature = "std"))]
+        let _ = reader.metadata();
         if let Some(SamRecord {
             query_name, seq, ..
         }) = reader.next()?
@@ -492,12 +492,11 @@ mod tests {
         use crate::filetype::FileType;
 
         let f = File::open("tests/data/test.bam")?;
-        let (stream, filetype, compress) = decompress(Box::new(f))?;
-        assert_eq!(filetype, FileType::Bam);
+        let (mut rb, compress) = decompress(f)?;
+        assert_eq!(rb.sniff_filetype()?, FileType::Bam);
         assert_eq!(compress, Some(FileType::Gzip));
-        let rb = ReadBuffer::from_reader(stream, None)?;
         let mut reader = BamReader::new(rb, None)?;
-        // let _ = reader.metadata();  // FIXME
+        let _ = reader.metadata();
 
         if let Some(BamRecord {
             query_name, seq, ..
