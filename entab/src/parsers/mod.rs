@@ -25,14 +25,14 @@ pub mod thermo;
 /// Readers for tab-seperated text format
 pub mod tsv;
 // /// Reader for generic XML
-//pub mod xml;
+// pub mod xml;
 
-/// The default implementation is `impl<'r> FromSlice<'r> for ()` to simplify implementations for
+/// The default implementation is `impl FromSlice for ()` to simplify implementations for
 /// e.g. state or other objects that don't read from the buffer.
-pub trait FromSlice<'b>: Sized + Default {
+pub trait FromSlice<'b: 's, 's>: Sized + Default {
     /// State is used to track information outside of the current slice scope that's used to create
     /// the value returned.
-    type State;
+    type State: Clone + core::fmt::Debug + Default + 's;
 
     /// Given a slice and state, determine how much of the slice needs to be parsed to return a
     /// value and update `consumed` with that amount. If no value can be parsed, return Ok(false),
@@ -54,7 +54,7 @@ pub trait FromSlice<'b>: Sized + Default {
     ///
     /// # Errors
     /// If buffer can not be interpreted into `Self`, return `EtError`.
-    fn get(&mut self, _buffer: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         Ok(())
     }
 
@@ -63,9 +63,13 @@ pub trait FromSlice<'b>: Sized + Default {
     /// Use only for simple types with defined sizes like u8, i32, &[u8], etc. Using this with more
     /// complex types that rely upon updating `state` in between reads will cause bad and confusing
     /// things to happen!
-    fn extract(buffer: &'b [u8], state: Self::State) -> Result<Self, EtError> {
+    fn extract(buffer: &'b [u8], state: &'s Self::State) -> Result<Self, EtError>
+    where
+        Self::State: 'static,
+        Self: 's,
+    {
         let mut val = Self::default();
-        Self::get(&mut val, buffer, &state)?;
+        Self::get(&mut val, buffer, state)?;
         Ok(val)
     }
 }
@@ -76,15 +80,15 @@ pub trait FromSlice<'b>: Sized + Default {
 /// # Errors
 /// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
-pub(crate) fn extract<'r, T>(
-    slice: &'r [u8],
+pub(crate) fn extract<'b: 's, 's, T>(
+    buffer: &'b [u8],
     consumed: &mut usize,
-    state: <T as FromSlice<'r>>::State,
+    state: &'s mut <T as FromSlice<'b, 's>>::State,
 ) -> Result<T, EtError>
 where
-    T: FromSlice<'r> + Default + 'r,
+    T: FromSlice<'b, 's> + Default,
 {
-    match extract_opt(slice, false, consumed, state)? {
+    match extract_opt(buffer, false, consumed, state)? {
         None => Err(format!(
             "Tried to extract {}, but parser indicated no more.",
             type_name::<T>()
@@ -100,34 +104,22 @@ where
 /// # Errors
 /// If an error extracting a value occured or if slice needs to be extended, return `EtError`.
 #[inline]
-pub(crate) fn extract_opt<'r, T>(
-    slice: &'r [u8],
+pub(crate) fn extract_opt<'b: 's, 's, T>(
+    buffer: &'b [u8],
     eof: bool,
     consumed: &mut usize,
-    mut state: <T as FromSlice<'r>>::State,
+    state: &'s mut <T as FromSlice<'b, 's>>::State,
 ) -> Result<Option<T>, EtError>
 where
-    T: FromSlice<'r> + Default + 'r,
+    T: FromSlice<'b, 's> + Default,
 {
     let start = *consumed;
-    if !T::parse(&slice[start..], eof, consumed, &mut state)? {
+    if !T::parse(&buffer[start..], eof, consumed, state)? {
         return Ok(None);
     }
     let mut record = T::default();
-    T::get(&mut record, &slice[start..*consumed], &state)?;
+    T::get(&mut record, &buffer[start..*consumed], state)?;
     Ok(Some(record))
-}
-
-/// Access long-lived fields in `Self::State` by bending the lifetime rules.
-///
-/// This should only be used for fields on a state object that are essentially immutable; if a
-/// field is changed by successive `parse` calls, then this method will result in undefined
-/// behavior and bads things could happen.
-#[inline]
-pub(crate) fn unsafe_access_state<'a, 'r, T>(state: &'a &'r mut T) -> &'r T {
-    // this is equivalent to `*transmute::<&'a &'r mut T, &'a &'r T>(state)`
-    let state_ptr: *const &mut T = state;
-    unsafe { *state_ptr.cast::<&T>() }
 }
 
 /// The endianness of a number used to extract such a number.

@@ -1,10 +1,8 @@
 use std::fs::File;
-use std::sync::Mutex;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use entab::buffer::ReadBuffer;
-use entab::chunk::init_state;
 use entab::compression::decompress;
 use entab::filetype::FileType;
 use entab::parsers::agilent::chemstation::ChemstationMsReader;
@@ -12,7 +10,8 @@ use entab::parsers::fasta::FastaReader;
 use entab::parsers::fastq::{FastqReader, FastqRecord, FastqState};
 use entab::parsers::png::PngReader;
 use entab::parsers::sam::BamReader;
-use entab::readers::get_reader;
+use entab::readers::{get_reader, init_state};
+
 
 fn benchmark_raw_readers(c: &mut Criterion) {
     let mut raw_readers = c.benchmark_group("raw readers");
@@ -21,7 +20,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
     raw_readers.bench_function("chemstation reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS").unwrap();
-            let mut reader = ChemstationMsReader::new(f, ()).unwrap();
+            let mut reader = ChemstationMsReader::new(f, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
             }
@@ -31,7 +30,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
     raw_readers.bench_function("fasta reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/sequence.fasta").unwrap();
-            let mut reader = FastaReader::new(f, ()).unwrap();
+            let mut reader = FastaReader::new(f, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
             }
@@ -41,41 +40,21 @@ fn benchmark_raw_readers(c: &mut Criterion) {
     raw_readers.bench_function("fastq reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/test.fastq").unwrap();
-            let mut reader = FastqReader::new(f, ()).unwrap();
+            let mut reader = FastqReader::new(f, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
             }
         })
     });
 
-    raw_readers.bench_function("fastq [chunk] reader", |b| {
+    raw_readers.bench_function("fastq [unsafe] reader", |b| {
         b.iter(|| {
-            let f = File::open("./tests/data/test.fastq").unwrap();
+            let f = File::open("tests/data/test.fastq").unwrap();
             let (mut rb, mut state) = init_state::<FastqState, _, _>(f, None).unwrap();
-            while let Some(FastqRecord { sequence, .. }) = rb.next(&mut state).unwrap() {
+            let mut record = FastqRecord::default();
+            while unsafe { rb.next_into(&mut state, &mut record).unwrap() } {
+                let FastqRecord { sequence, .. } = &record;
                 black_box(sequence);
-            }
-        })
-    });
-
-    raw_readers.bench_function("fastq [chunk - threaded] reader", |b| {
-        b.iter(|| {
-            let f = File::open("./tests/data/test.fastq").unwrap();
-            let (mut rb, mut state) = init_state::<FastqState, _, _>(f, None).unwrap();
-            while let Some((slice, mut chunk)) = rb.next_chunk().unwrap() {
-                let mut_state = Mutex::new(&mut state);
-                let chunk = rayon::scope(|s| {
-                    while let Some(FastqRecord { sequence, .. }) =
-                        chunk.next(slice, &mut_state).map_err(|e| e.to_string())?
-                    {
-                        s.spawn(move |_| {
-                            black_box(sequence);
-                        });
-                    }
-                    Ok::<_, String>(chunk)
-                })
-                .unwrap();
-                rb.update_from_chunk(chunk);
             }
         })
     });
@@ -83,7 +62,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
     raw_readers.bench_function("png reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/bmp_24.png").unwrap();
-            let mut reader = PngReader::new(f, ()).unwrap();
+            let mut reader = PngReader::new(f, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
             }
@@ -95,7 +74,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
             let f = File::open("tests/data/test.bam").unwrap();
             let (stream, _, _) = decompress(Box::new(f)).unwrap();
             let rb = ReadBuffer::from_reader(stream, None).unwrap();
-            let mut reader = BamReader::new(rb, ()).unwrap();
+            let mut reader = BamReader::new(rb, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
             }

@@ -147,7 +147,7 @@ impl StateMetadata for PngState {
     }
 }
 
-impl<'r> FromSlice<'r> for PngState {
+impl<'b: 's, 's> FromSlice<'b, 's> for PngState {
     type State = ();
 
     fn parse(
@@ -157,45 +157,45 @@ impl<'r> FromSlice<'r> for PngState {
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let con = &mut 0;
-        if extract::<&[u8]>(rb, con, 8)? != b"\x89PNG\r\n\x1A\n" {
+        if extract::<&[u8]>(rb, con, &mut 8)? != b"\x89PNG\r\n\x1A\n" {
             return Err("Invalid PNG magic".into());
         }
-        if extract::<&[u8]>(rb, con, 8)? != b"\x00\x00\x00\x0DIHDR" {
+        if extract::<&[u8]>(rb, con, &mut 8)? != b"\x00\x00\x00\x0DIHDR" {
             return Err("Invalid PNG header".into());
         }
         // skip width/height/etc for now
-        let _ = extract::<Skip>(rb, con, 10)?;
+        let _ = extract::<Skip>(rb, con, &mut 10)?;
         // skip the compression, filter, and interlace bytes
-        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+        if extract::<u8>(rb, con, &mut Endian::Big)? != 0 {
             return Err("PNG compression must be type 0".into());
         }
-        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+        if extract::<u8>(rb, con, &mut Endian::Big)? != 0 {
             return Err("PNG filtering must be type 0".into());
         }
-        if extract::<u8>(rb, con, Endian::Big)? != 0 {
+        if extract::<u8>(rb, con, &mut Endian::Big)? != 0 {
             return Err("PNG interlacing not supported yet".into());
         }
 
         loop {
-            let _ = extract::<&[u8]>(rb, con, 4)?;
-            let chunk_size = extract::<u32>(rb, con, Endian::Big)? as usize;
-            let chunk_header = extract::<&[u8]>(rb, con, 4)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 4)?;
+            let mut chunk_size = extract::<u32>(rb, con, &mut Endian::Big)? as usize;
+            let chunk_header = extract::<&[u8]>(rb, con, &mut 4)?;
             if &chunk_header == b"IEND" {
                 break;
             }
-            let _ = extract::<&[u8]>(rb, con, chunk_size)?;
+            let _ = extract::<&[u8]>(rb, con, &mut chunk_size)?;
         }
         *consumed += *con;
 
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         let con = &mut 16;
-        self.width = extract::<u32>(rb, con, Endian::Big)? as usize;
-        self.height = extract::<u32>(rb, con, Endian::Big)? as usize;
-        self.bit_depth = extract(rb, con, Endian::Big)?;
-        self.color_type = PngColorType::from_byte(extract(rb, con, Endian::Big)?)?;
+        self.width = extract::<u32>(rb, con, &mut Endian::Big)? as usize;
+        self.height = extract::<u32>(rb, con, &mut Endian::Big)? as usize;
+        self.bit_depth = extract(rb, con, &mut Endian::Big)?;
+        self.color_type = PngColorType::from_byte(extract(rb, con, &mut Endian::Big)?)?;
         *con += 3;
 
         // parse through the entire file beforehand; because the data is compressed into multiple
@@ -205,17 +205,17 @@ impl<'r> FromSlice<'r> for PngState {
         let mut compressed_data = Vec::new();
         loop {
             // throw away the checksum from the previous chunk
-            let _ = extract::<&[u8]>(rb, con, 4)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 4)?;
             // now read the header for the current chunk
-            let chunk_size = extract::<u32>(rb, con, Endian::Big)? as usize;
-            let chunk_header = extract::<&[u8]>(rb, con, 4)?;
+            let mut chunk_size = extract::<u32>(rb, con, &mut Endian::Big)? as usize;
+            let chunk_header = extract::<&[u8]>(rb, con, &mut 4)?;
             match chunk_header {
                 b"PLTE" => {
                     let mut raw_palette = Vec::new();
                     for _ in 0..chunk_size / 3 {
-                        let r: u8 = extract(rb, con, Endian::Big)?;
-                        let g: u8 = extract(rb, con, Endian::Big)?;
-                        let b: u8 = extract(rb, con, Endian::Big)?;
+                        let r: u8 = extract(rb, con, &mut Endian::Big)?;
+                        let g: u8 = extract(rb, con, &mut Endian::Big)?;
+                        let b: u8 = extract(rb, con, &mut Endian::Big)?;
                         raw_palette.push((
                             257 * u16::from(r),
                             257 * u16::from(g),
@@ -226,14 +226,14 @@ impl<'r> FromSlice<'r> for PngState {
                 }
                 b"IDAT" => {
                     // append all the IDAT chunks together
-                    compressed_data.extend_from_slice(extract(rb, con, chunk_size)?);
+                    compressed_data.extend_from_slice(extract(rb, con, &mut chunk_size)?);
                 }
                 b"IEND" => {
                     break;
                 }
                 _ => {
                     // just skip any other kinds of chunks
-                    let _ = extract::<&[u8]>(rb, con, chunk_size)?;
+                    let _ = extract::<&[u8]>(rb, con, &mut chunk_size)?;
                 }
             }
         }
@@ -261,7 +261,7 @@ impl_record!(PngRecord: x, y, red, green, blue, alpha);
 
 fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16, EtError> {
     if n_bits == 16 {
-        u16::extract(&data[pos * 2..], Endian::Big)
+        u16::extract(&data[pos * 2..], &Endian::Big)
     } else {
         let shift = n_bits * (pos % (8 / n_bits));
         let mask = u8::try_from(2u16.pow(u32::try_from(n_bits)?) - 1)?;
@@ -279,8 +279,8 @@ fn get_bits(data: &[u8], pos: usize, n_bits: usize, rescale: bool) -> Result<u16
     }
 }
 
-impl<'r> FromSlice<'r> for PngRecord {
-    type State = &'r mut PngState;
+impl<'b: 's, 's> FromSlice<'b, 's> for PngRecord {
+    type State = PngState;
 
     fn parse(
         _rb: &[u8],
@@ -310,7 +310,7 @@ impl<'r> FromSlice<'r> for PngRecord {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         let bd = usize::from(state.bit_depth);
 
         let line = &state.image_data
@@ -363,12 +363,7 @@ impl<'r> FromSlice<'r> for PngRecord {
     }
 }
 
-impl_reader!(
-    PngReader,
-    PngRecord,
-    PngState,
-    ()
-);
+impl_reader!(PngReader, PngRecord, PngRecord, PngState, ());
 
 #[cfg(test)]
 mod tests {
@@ -379,7 +374,7 @@ mod tests {
     #[test]
     fn test_png_reader() -> Result<(), EtError> {
         let rb: &[u8] = &include_bytes!("../../tests/data/bmp_24.png")[..];
-        let mut reader = PngReader::new(rb, ())?;
+        let mut reader = PngReader::new(rb, None)?;
         let _ = reader.metadata();
 
         let mut n_recs = 0;
@@ -394,7 +389,7 @@ mod tests {
     #[test]
     fn test_indexed_png() -> Result<(), EtError> {
         let rb: &[u8] = &include_bytes!("../../tests/data/bmp_indexed.png")[..];
-        let mut reader = PngReader::new(rb, ())?;
+        let mut reader = PngReader::new(rb, None)?;
         let _ = reader.metadata();
 
         let mut n_recs = 0;
@@ -417,7 +412,7 @@ mod tests {
             0xB0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
 
-        let mut reader = PngReader::new(TEST_IMAGE, ())?;
+        let mut reader = PngReader::new(TEST_IMAGE, None)?;
         let _ = reader.metadata();
         let pixel = reader.next()?.expect("first pixel exists");
         assert_eq!(pixel.x, 0);

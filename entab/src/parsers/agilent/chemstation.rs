@@ -8,14 +8,14 @@ use core::marker::Copy;
 use chrono::NaiveDateTime;
 
 use crate::parsers::agilent::read_agilent_header;
-use crate::parsers::{extract, unsafe_access_state, Endian, FromSlice};
+use crate::parsers::{extract, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 const CHEMSTATION_TIME_STEP: f64 = 0.2;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// Metadata consistly found in Chemstation file formats
 pub struct ChemstationMetadata {
     /// Time the run started (minutes)
@@ -87,11 +87,11 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
             EtError::from("Chemstation header needs to be at least 648 bytes long").incomplete(),
         );
     }
-    let start_time = f64::from(i32::extract(&header[282..], Endian::Big)?) / 60000.;
-    let end_time = f64::from(i32::extract(&header[286..], Endian::Big)?) / 60000.;
+    let start_time = f64::from(i32::extract(&header[282..], &Endian::Big)?) / 60000.;
+    let end_time = f64::from(i32::extract(&header[286..], &Endian::Big)?) / 60000.;
 
-    let offset_correction = f64::extract(&header[636..], Endian::Big)?;
-    let mult_correction = f64::extract(&header[644..], Endian::Big)?;
+    let offset_correction = f64::extract(&header[636..], &Endian::Big)?;
+    let mult_correction = f64::extract(&header[644..], &Endian::Big)?;
 
     let signal_name_len = usize::from(header[596]);
     if signal_name_len > 40 {
@@ -157,9 +157,9 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
         .to_string();
 
     // not sure how robust the following are
-    let sequence = u16::extract(&header[252..], Endian::Big)?;
-    let vial = u16::extract(&header[254..], Endian::Big)?;
-    let replicate = u16::extract(&header[256..], Endian::Big)?;
+    let sequence = u16::extract(&header[252..], &Endian::Big)?;
+    let vial = u16::extract(&header[254..], &Endian::Big)?;
+    let replicate = u16::extract(&header[256..], &Endian::Big)?;
 
     Ok(ChemstationMetadata {
         start_time,
@@ -179,7 +179,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
     })
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// Internal state for the ChemstationFid parser
 pub struct ChemstationFidState {
     cur_time: f64,
@@ -199,7 +199,7 @@ impl StateMetadata for ChemstationFidState {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationFidState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidState {
     type State = ();
 
     fn parse(
@@ -212,7 +212,7 @@ impl<'r> FromSlice<'r> for ChemstationFidState {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         let metadata = get_metadata(rb)?;
         // offset the current time back one step so it'll be right after the first time that parse
         self.cur_time = metadata.start_time - CHEMSTATION_TIME_STEP;
@@ -235,28 +235,28 @@ pub struct ChemstationFidRecord {
 
 impl_record!(ChemstationFidRecord: time, intensity);
 
-impl<'r> FromSlice<'r> for ChemstationFidRecord {
-    type State = &'r mut ChemstationFidState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidRecord {
+    type State = ChemstationFidState;
 
     fn parse(
-        rb: &[u8],
+        buffer: &[u8],
         eof: bool,
         consumed: &mut usize,
         state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let con = &mut 0;
-        if rb.is_empty() && eof {
+        if buffer.is_empty() && eof {
             return Ok(false);
-        } else if rb.len() == 1 && eof {
+        } else if buffer.len() == 1 && eof {
             return Err("FID record was incomplete".into());
-        } else if rb.len() < 2 {
+        } else if buffer.len() < 2 {
             return Err(EtError::from("Incomplete FID file").incomplete());
         }
 
-        let intensity: i16 = extract(rb, con, Endian::Big)?;
+        let intensity: i16 = extract(buffer, con, &mut Endian::Big)?;
         if intensity == 32767 {
-            let high_value: i32 = extract(rb, con, Endian::Big)?;
-            let low_value: u16 = extract(rb, con, Endian::Big)?;
+            let high_value: i32 = extract(buffer, con, &mut Endian::Big)?;
+            let low_value: u16 = extract(buffer, con, &mut Endian::Big)?;
             state.cur_delta = 0.;
             state.cur_intensity = f64::from(high_value) * 65534. + f64::from(low_value);
         } else {
@@ -269,7 +269,7 @@ impl<'r> FromSlice<'r> for ChemstationFidRecord {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         self.time = state.cur_time;
         self.intensity =
             state.cur_intensity * state.metadata.mult_correction + state.metadata.offset_correction;
@@ -277,7 +277,7 @@ impl<'r> FromSlice<'r> for ChemstationFidRecord {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// Internal state for the ChemstationMs parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
@@ -298,22 +298,22 @@ impl StateMetadata for ChemstationMsState {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationMsState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
     type State = ();
 
     fn parse(
-        rb: &[u8],
+        buffer: &[u8],
         _eof: bool,
         consumed: &mut usize,
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        *consumed += read_agilent_header(rb, true)?;
+        *consumed += read_agilent_header(buffer, true)?;
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(rb)?;
-        let n_scans = u32::extract(&rb[278..], Endian::Big)? as usize;
+    fn get(&mut self, buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let metadata = get_metadata(buffer)?;
+        let n_scans = u32::extract(&buffer[278..], &mut Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
         self.metadata = metadata;
@@ -334,8 +334,8 @@ pub struct ChemstationMsRecord {
 
 impl_record!(ChemstationMsRecord: time, mz, intensity);
 
-impl<'r> FromSlice<'r> for ChemstationMsRecord {
-    type State = &'r mut ChemstationMsState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsRecord {
+    type State = ChemstationMsState;
 
     fn parse(
         rb: &[u8],
@@ -352,19 +352,19 @@ impl<'r> FromSlice<'r> for ChemstationMsRecord {
         let mut n_mzs_left = state.n_mzs_left;
         while n_mzs_left == 0 {
             // handle the record header
-            let raw_n_mzs_left: u16 = extract(rb, con, Endian::Big)?;
+            let raw_n_mzs_left: u16 = extract(rb, con, &mut Endian::Big)?;
             if raw_n_mzs_left < 14 {
                 return Err("Invalid Chemstation MS record header".into());
             }
             n_mzs_left = usize::from((raw_n_mzs_left - 14) / 2);
-            state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Big)?) / 60000.;
+            state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Big)?) / 60000.;
             // eight more bytes of unknown information and then last 4 bytes
             // is a u16/u16 pair for the highest peak?
-            let _ = extract::<&[u8]>(rb, con, 12_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 12)?;
             if n_mzs_left == 0 {
                 // this is an empty record so debit and eat the footer too
                 state.n_scans_left -= 1;
-                let _ = extract::<&[u8]>(rb, con, 10_usize)?;
+                let _ = extract::<&[u8]>(rb, con, &mut 10)?;
                 if state.n_scans_left == 0 {
                     return Ok(false);
                 }
@@ -372,14 +372,14 @@ impl<'r> FromSlice<'r> for ChemstationMsRecord {
         }
 
         // just read the mz/intensity
-        state.cur_mz = f64::from(extract::<u16>(rb, con, Endian::Big)?) / 20.;
-        let raw_intensity: u16 = extract(rb, con, Endian::Big)?;
+        state.cur_mz = f64::from(extract::<u16>(rb, con, &mut Endian::Big)?) / 20.;
+        let raw_intensity: u16 = extract(rb, con, &mut Endian::Big)?;
         state.cur_intensity =
             f64::from(raw_intensity & 16383) * 8f64.powi(i32::from(raw_intensity) >> 14);
         if n_mzs_left == 1 {
             state.n_scans_left -= 1;
             // eat the footer
-            let _ = extract::<&[u8]>(rb, con, 10_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 10)?;
             // the very last 4 bytes are a u32 for the TIC
         }
         state.n_mzs_left = n_mzs_left - 1;
@@ -388,7 +388,7 @@ impl<'r> FromSlice<'r> for ChemstationMsRecord {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         self.time = state.cur_time;
         self.mz = state.cur_mz;
         self.intensity = state.cur_intensity;
@@ -396,7 +396,7 @@ impl<'r> FromSlice<'r> for ChemstationMsRecord {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// Internal state for the ChemstationMwd parser
 pub struct ChemstationMwdState {
     n_wvs_left: usize,
@@ -416,7 +416,7 @@ impl StateMetadata for ChemstationMwdState {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationMwdState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMwdState {
     type State = ();
 
     fn parse(
@@ -429,8 +429,8 @@ impl<'r> FromSlice<'r> for ChemstationMwdState {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(rb)?;
+    fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let metadata = get_metadata(buf)?;
 
         self.n_wvs_left = 0;
         // offset the current time back one step so it'll be right after the first time that parse
@@ -469,8 +469,8 @@ impl<'r> From<ChemstationMwdRecord<'r>> for Vec<Value<'r>> {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationMwdRecord<'r> {
-    type State = &'r mut ChemstationMwdState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMwdRecord<'s> {
+    type State = ChemstationMwdState;
 
     fn parse(
         rb: &[u8],
@@ -485,16 +485,16 @@ impl<'r> FromSlice<'r> for ChemstationMwdRecord<'r> {
         let mut n_wvs_left = state.n_wvs_left;
         if n_wvs_left == 0 {
             // mask out the top nibble because it's always 0b0001 (i hope?)
-            n_wvs_left = usize::from(extract::<u16>(rb, con, Endian::Big)?) & 0b1111_1111_1111;
+            n_wvs_left = usize::from(extract::<u16>(rb, con, &mut Endian::Big)?) & 0b1111_1111_1111;
             if n_wvs_left == 0 {
                 // TODO: consume the rest of the file so this can't accidentally repeat?
                 return Ok(false);
             }
         }
 
-        let intensity: i16 = extract(rb, con, Endian::Big)?;
+        let intensity: i16 = extract(rb, con, &mut Endian::Big)?;
         if intensity == -32768 {
-            state.cur_intensity = f64::from(extract::<i32>(rb, con, Endian::Big)?);
+            state.cur_intensity = f64::from(extract::<i32>(rb, con, &mut Endian::Big)?);
         } else {
             state.cur_intensity += f64::from(intensity);
         }
@@ -505,8 +505,8 @@ impl<'r> FromSlice<'r> for ChemstationMwdRecord<'r> {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
-        self.signal_name = &unsafe_access_state(state).metadata.signal_name;
+    fn get(&mut self, _rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
+        self.signal_name = &state.metadata.signal_name;
         self.time = state.cur_time;
         self.intensity =
             state.cur_intensity * state.metadata.mult_correction + state.metadata.offset_correction;
@@ -531,7 +531,7 @@ impl StateMetadata for ChemstationUvState {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationUvState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
     type State = ();
 
     fn parse(
@@ -544,8 +544,8 @@ impl<'r> FromSlice<'r> for ChemstationUvState {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let n_scans = u32::extract(&rb[278..], Endian::Big)? as usize;
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let n_scans = u32::extract(&rb[278..], &mut Endian::Big)? as usize;
 
         // TODO: get other metadata
         self.n_scans_left = n_scans;
@@ -571,8 +571,8 @@ pub struct ChemstationUvRecord {
 
 impl_record!(ChemstationUvRecord: time, wavelength, intensity);
 
-impl<'r> FromSlice<'r> for ChemstationUvRecord {
-    type State = &'r mut ChemstationUvState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
+    type State = ChemstationUvState;
 
     fn parse(
         rb: &[u8],
@@ -588,15 +588,15 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
         // refill case
         let mut n_wvs_left = state.n_wvs_left;
         if n_wvs_left == 0 {
-            let _ = extract::<&[u8]>(rb, con, 4_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 4)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Little)?) / 60000.;
-            let wv_start: u16 = extract(rb, con, Endian::Little)?;
-            let wv_end: u16 = extract(rb, con, Endian::Little)?;
+            state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?) / 60000.;
+            let wv_start: u16 = extract(rb, con, &mut Endian::Little)?;
+            let wv_end: u16 = extract(rb, con, &mut Endian::Little)?;
             if wv_start > wv_end {
                 return Err("Wavelength range has invalid bounds".into());
             }
-            let wv_step: u16 = extract(rb, con, Endian::Little)?;
+            let wv_step: u16 = extract(rb, con, &mut Endian::Little)?;
             if wv_step == 0 {
                 return Err("Invalid wavelength step".into());
             }
@@ -604,12 +604,12 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
             n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
-            let _ = extract::<&[u8]>(rb, con, 8_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 8)?;
         };
 
-        let delta = extract::<i16>(rb, con, Endian::Little)?;
+        let delta = extract::<i16>(rb, con, &mut Endian::Little)?;
         if delta == -32768 {
-            state.cur_intensity = f64::from(extract::<u32>(rb, con, Endian::Little)?);
+            state.cur_intensity = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
         } else {
             state.cur_intensity += f64::from(delta);
         }
@@ -622,7 +622,7 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         self.time = state.cur_time;
         self.wavelength = state.cur_wv;
         self.intensity = state.cur_intensity / 2000.;
@@ -682,11 +682,13 @@ impl<'r> FromSlice<'r> for ChemstationUvRecord {
 impl_reader!(
     ChemstationFidReader,
     ChemstationFidRecord,
+    ChemstationFidRecord,
     ChemstationFidState,
     ()
 );
 impl_reader!(
     ChemstationMsReader,
+    ChemstationMsRecord,
     ChemstationMsRecord,
     ChemstationMsState,
     ()
@@ -694,11 +696,13 @@ impl_reader!(
 impl_reader!(
     ChemstationMwdReader,
     ChemstationMwdRecord,
+    ChemstationMwdRecord<'r>,
     ChemstationMwdState,
     ()
 );
 impl_reader!(
     ChemstationUvReader,
+    ChemstationUvRecord,
     ChemstationUvRecord,
     ChemstationUvState,
     ()
@@ -712,7 +716,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_fid() -> Result<(), EtError> {
         let data: &[u8] = include_bytes!("../../../tests/data/test_fid.ch");
-        let mut reader = ChemstationFidReader::new(data, ())?;
+        let mut reader = ChemstationFidReader::new(data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "intensity"]);
         let ChemstationFidRecord { time, intensity } = reader.next()?.unwrap();
@@ -732,7 +736,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_ms() -> Result<(), EtError> {
         let data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/MSD1.MS");
-        let mut reader = ChemstationMsReader::new(data, ())?;
+        let mut reader = ChemstationMsReader::new(data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "mz", "intensity"]);
         let ChemstationMsRecord {
@@ -764,7 +768,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_mwd() -> Result<(), EtError> {
         let data: &[u8] = include_bytes!("../../../tests/data/chemstation_mwd.d/mwd1A.ch");
-        let mut reader = ChemstationMwdReader::new(data, ())?;
+        let mut reader = ChemstationMwdReader::new(data, None)?;
         assert_eq!(reader.headers(), ["time", "signal", "intensity"]);
         let _ = reader.metadata();
         let ChemstationMwdRecord {
@@ -787,7 +791,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
         let data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationUvReader::new(data, ())?;
+        let mut reader = ChemstationUvReader::new(data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
         let ChemstationUvRecord {
@@ -810,13 +814,13 @@ mod tests {
     #[test]
     fn test_chemstation_reader_bad_fuzzes() -> Result<(), EtError> {
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xaf%\xa8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>\n\xe3\x86\x86\n>>\n\n\n\n>\n\n\n\xaf%\x00\x00\x00\x00\x00\x00\x01\x04\n\n\n\n\n\n\n\n\n\n\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n>>>\n*\n\n>>>\n\n\n\n>\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\n\n\n\n\n\n\n\n>\n\n\n\n>";
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         let test_data = b"\x012>\n\n\n\n\n\n>*\n\x86\n>\n\n>\n\xE3\x86\n>\n>\n\n>\n\xE3\x86&\n>@\x10\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n>\n\xE3\n\n\n\n\n\n\x14\n\n\n\n>\n\xC8>\n\x86\n>\n\n\n\n\n\n\n\n\n\n\n\n>\n\xE3\xCD\xCD\xCD\x00\x00\n\n\n\n\n\n>\n\n>\n\x00\n\x00\n\n\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\n\n\n\n\n>\n\n\n>\n\n\n\n\n\n\n\n>\n\n\n\n\n\n>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n\n\n\n\xE3\x00\x00\x00>\x0b\n\x01\x00>\n\n\n\x00>\n\n\x01\x00>\n\n\n\n\x00\x00\n\n\n\x00\n\n\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\x00\x00\x00\n\n\n\n\n>\n\xE3\xCD\n>\n\n>\n\xE3\n>@W\n\n+\n\n\n>\n\n>\n\xE3>*\n\x86*\n\x86\xE3\x86\n>>*\n\x86\xE3\x86\n>>*\n\x86\x00R>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\n\n>\n*\n\n\n>\n\n>\n\n\n\n\n\n\n\n\n\n\n\n\x02Y\n\n\n\n\xE3\x86\x86\n>\n\n>\x01\x00\x00\x00\x00\x00\x00\x01>\n\n>\n\n>\n\xE3\n\n\n\n\n\x01\x00\x00\x00\x00\x00\x00\x00\n\xE3\n>@W>N\x02\xE3\n>\n>\xC6\n\n>\n\xE3\x00\x00\x00";
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         let test_data = b"\x012>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x14\n\n\n\n\n\n\n\n\xAF%\xA8\x00\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nVVVVV\n\n\xAF%\xA8\x00\xFE\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x81\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\n\n\n\n\n\n\n\n\n>";
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             1, 50, 0, 0, 62, 14, 14, 14, 14, 14, 14, 14, 14, 65, 14, 14, 14, 14, 14, 14, 14, 14,
@@ -834,7 +838,7 @@ mod tests {
             255, 10, 0, 4, 3, 2, 255, 255, 255, 255, 0, 244, 10, 255, 10, 0, 0, 4, 3, 2, 10, 255,
             10, 0,
         ];
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             1, 50, 0, 0, 62, 14, 14, 14, 14, 14, 14, 14, 14, 65, 14, 14, 14, 14, 14, 14, 14, 14,
@@ -867,7 +871,7 @@ mod tests {
             116, 0, 116, 116, 116, 116, 116, 0, 0, 0, 46, 0, 0, 0, 0, 0, 0, 0, 116, 0, 0, 0, 0,
             116, 116, 0, 0, 116, 0, 0,
         ];
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             1, 50, 0, 0, 62, 14, 14, 14, 14, 14, 14, 14, 14, 65, 14, 14, 14, 14, 14, 14, 14, 14,
@@ -906,7 +910,7 @@ mod tests {
             62, 10, 9, 9, 9, 255, 10, 10, 10, 62, 10, 10, 135, 0, 0, 0, 0, 0, 8, 201, 64, 248, 181,
             42, 124, 10, 10, 62, 10, 10, 135, 0, 0, 0, 0, 0, 8, 201, 64, 248, 181, 42, 124,
         ];
-        assert!(ChemstationMsReader::new(&test_data[..], ()).is_err());
+        assert!(ChemstationMsReader::new(&test_data[..], None).is_err());
 
         Ok(())
     }

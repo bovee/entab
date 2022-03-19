@@ -10,7 +10,7 @@ use crate::{impl_reader, impl_record};
 
 use alloc::borrow::Cow;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// A single sequence from a FASTA file
 pub struct FastaRecord<'r> {
     /// The ID/header line
@@ -34,12 +34,12 @@ impl StateMetadata for FastaState {
     }
 }
 
-impl<'r> FromSlice<'r> for FastaState {
+impl<'b: 's, 's> FromSlice<'b, 's> for FastaState {
     type State = ();
 }
 
-impl<'r> FromSlice<'r> for FastaRecord<'r> {
-    type State = &'r mut FastaState;
+impl<'b: 's, 's> FromSlice<'b, 's> for FastaRecord<'b> {
+    type State = FastaState;
 
     fn parse(
         rb: &[u8],
@@ -89,7 +89,7 @@ impl<'r> FromSlice<'r> for FastaRecord<'r> {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, rb: &'b [u8], state: &Self::State) -> Result<(), EtError> {
         self.id = alloc::str::from_utf8(&rb[1..state.header_end])?;
         let raw_sequence = &rb[state.seq.0..state.seq.1];
         let mut seq_newlines = memchr_iter(b'\n', raw_sequence).peekable();
@@ -113,12 +113,7 @@ impl<'r> FromSlice<'r> for FastaRecord<'r> {
     }
 }
 
-impl_reader!(
-    FastaReader,
-    FastaRecord,
-    FastaState,
-    ()
-);
+impl_reader!(FastaReader, FastaRecord, FastaRecord<'r>, FastaState, ());
 
 #[cfg(test)]
 mod tests {
@@ -129,7 +124,7 @@ mod tests {
     #[test]
     fn test_fasta_reading() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\n>id2\nTGCA";
-        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, None)?;
 
         let mut ix = 0;
         while let Some(FastaRecord { id, sequence }) = pt.next()? {
@@ -153,11 +148,11 @@ mod tests {
     #[test]
     fn test_fasta_short() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id";
-        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, None)?;
         assert!(pt.next().is_err());
 
         const TEST_FASTA_2: &[u8] = b">\n>";
-        let mut pt = FastaReader::new(TEST_FASTA_2, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA_2, None)?;
         assert!(pt.next().is_err());
 
         Ok(())
@@ -166,7 +161,7 @@ mod tests {
     #[test]
     fn test_fasta_multiline() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\nACGT\nAAAA\n>id2\nTGCA";
-        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, None)?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "id");
@@ -183,7 +178,7 @@ mod tests {
     #[test]
     fn test_fasta_multiline_extra_newlines() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">id\r\nACGT\r\nAAAA\r\n>id2\r\nTGCA\r\n";
-        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, None)?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "id");
@@ -200,7 +195,7 @@ mod tests {
     #[test]
     fn test_fasta_empty_fields() -> Result<(), EtError> {
         const TEST_FASTA: &[u8] = b">hd\n\n>\n\n";
-        let mut pt = FastaReader::new(TEST_FASTA, ())?;
+        let mut pt = FastaReader::new(TEST_FASTA, None)?;
 
         let FastaRecord { id, sequence } = pt.next()?.expect("first record present");
         assert_eq!(id, "hd");

@@ -24,7 +24,7 @@
 //! use entab::parsers::fasta::{FastaReader, FastaRecord};
 //!
 //! let file = File::open("./tests/data/sequence.fasta")?;
-//! let mut reader = FastaReader::new(file, ())?;
+//! let mut reader = FastaReader::new(file, None)?;
 //! while let Some(FastaRecord { id, .. }) = reader.next()? {
 //!     println!("{}", id);
 //! }
@@ -59,8 +59,6 @@ extern crate alloc;
 
 /// The buffer interface that underlies the file readers
 pub mod buffer;
-/// Part of a buffer used to parse records across threads
-pub mod chunk;
 /// Generic file decompression
 #[cfg(feature = "std")]
 pub mod compression;

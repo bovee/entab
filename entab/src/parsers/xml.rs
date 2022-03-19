@@ -4,6 +4,7 @@ use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::str::from_utf8;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use memchr::{memchr, memchr3_iter};
@@ -38,7 +39,7 @@ pub struct XmlTag<'r> {
     id: &'r str,
 }
 
-impl<'r> FromSlice<'r> for XmlTag<'r> {
+impl<'b: 's, 's> FromSlice<'b, 's> for XmlTag<'r> {
     type State = ();
 
     fn parse(
@@ -47,7 +48,6 @@ impl<'r> FromSlice<'r> for XmlTag<'r> {
         consumed: &mut usize,
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        let con = &mut 0;
         let mut cur_quote = b' ';
         let mut start = 0;
         let end = 'read: loop {
@@ -72,18 +72,17 @@ impl<'r> FromSlice<'r> for XmlTag<'r> {
                 return Err("Tag was never closed".into());
             }
             start = rb.len() - 1;
-            return Ok(false);
         };
-        *con += end;
+        *consumed += end;
         Ok(true)
     }
 
     fn get(
         &mut self,
         buf: &'r [u8],
-        state: &Self::State,
+        _state: &Self::State,
     ) -> Result<(), EtError> {
-        let is_closing = buf[1] == b'/';
+        let is_closing = buf.get(1) == Some(&b'/');
         let is_self_closing = buf.last() == Some(&b'/');
         let (tag_type, data) = match (is_closing, is_self_closing) {
             // TODO: we should be able to use EtError::new here
@@ -104,7 +103,7 @@ impl<'r> FromSlice<'r> for XmlTag<'r> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct XmlText<'r>(&'r str);
 
-impl<'r> FromSlice<'r> for XmlText<'r> {
+impl<'b: 's, 's> FromSlice<'b, 's> for XmlText<'r> {
     type State = ();
 
     fn parse(
@@ -113,32 +112,28 @@ impl<'r> FromSlice<'r> for XmlText<'r> {
         consumed: &mut usize,
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        let mut start = 0;
-        let end = loop {
-            // we're parsing a text element
-            if let Some(e) = memchr(b'<', &rb[start..]) {
-                break e;
-            }
-            if rb.len() > 65536 {
-                return Err(
-                    format!("XML text larger than {} not supported", 65536).into()
-                );
-            }
-            if eof {
-                // TODO: add test for this case
-                break rb.len();
-            }
-            start = rb.len() - 1;
-            return Ok(false);
-        };
-        *consumed += end;
-        Ok(true)
+        // we're parsing a text element
+        if let Some(e) = memchr(b'<', rb) {
+            *consumed += e;
+            return Ok(true);
+        }
+        if rb.len() > 65536 {
+            return Err(
+                format!("XML text larger than {} not supported", 65536).into()
+            );
+        }
+        if eof {
+            // TODO: add test for this case
+            *consumed += rb.len();
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn get(
         &mut self,
         buf: &'r [u8],
-        state: &Self::State,
+        _state: &Self::State,
     ) -> Result<(), EtError> {
         self.0 = from_utf8(buf)?;
         Ok(())
@@ -153,9 +148,13 @@ pub struct XmlState {
     is_text: bool,
 }
 
-impl StateMetadata for XmlState {}
+impl StateMetadata for XmlState {
+    fn header(&self) -> Vec<&str> {
+        vec!["tags", "text"]
+    }
+}
 
-impl<'r> FromSlice<'r> for XmlState {
+impl<'b: 's, 's> FromSlice<'b, 's> for XmlState {
     type State = ();
 }
 
@@ -168,7 +167,7 @@ pub struct XmlRecord<'r> {
     // attributes: BTreeMap<String>
 }
 
-impl<'r> FromSlice<'r> for XmlRecord<'r> {
+impl<'b: 's, 's> FromSlice<'b, 's> for XmlRecord<'r> {
     type State = &'r mut XmlState;
 
     fn parse(rb: &[u8], eof: bool, consumed: &mut usize, state: &mut Self::State) -> Result<bool, EtError> {
@@ -237,7 +236,7 @@ impl<'r> FromSlice<'r> for XmlRecord<'r> {
 
 impl_record!(XmlRecord<'r>: tags, text);
 
-impl_reader!(XmlReader, XmlRecord, XmlState, ());
+impl_reader!(XmlReader, XmlRecord, XmlRecord<'r>, XmlState, ());
 
 #[cfg(test)]
 mod tests {

@@ -13,8 +13,6 @@ use std::fs::File;
 #[cfg(feature = "std")]
 use std::io::{Cursor, Read};
 
-#[cfg(feature = "std")]
-use crate::chunk::BufferChunk;
 use crate::parsers::FromSlice;
 use crate::EtError;
 
@@ -25,7 +23,7 @@ pub const BUFFER_SIZE: usize = 10_000;
 pub struct ReadBuffer<'r> {
     #[cfg(feature = "std")]
     reader: Box<dyn Read + 'r>,
-    buffer: Cow<'r, [u8]>,
+    pub(crate) buffer: Cow<'r, [u8]>,
     /// The total amount of data read before byte 0 of this buffer (used for error messages)
     pub reader_pos: u64,
     /// The total number of records consumed (used for error messages)
@@ -128,12 +126,12 @@ impl<'r> ReadBuffer<'r> {
     /// Most commonly if the parser failed, but potentially also if the buffer could not be
     /// refilled.
     #[inline]
-    pub fn next<'n, T>(
-        &'n mut self,
-        mut state: <T as FromSlice<'n>>::State,
+    pub fn next<'b: 's, 's, T>(
+        &'b mut self,
+        state: &'s mut <T as FromSlice<'b, 's>>::State,
     ) -> Result<Option<T>, EtError>
     where
-        T: FromSlice<'n> + 'n,
+        T: FromSlice<'b, 's>,
     {
         let mut consumed = self.consumed;
         loop {
@@ -141,54 +139,72 @@ impl<'r> ReadBuffer<'r> {
                 &self.buffer[consumed..],
                 self.eof,
                 &mut self.consumed,
-                &mut state,
+                state,
             ) {
-                Ok(true) => {
-                    self.record_pos += 1;
-                    break;
-                }
+                Ok(true) => break,
                 Ok(false) => return Ok(None),
                 Err(e) => {
                     if !e.incomplete || self.eof {
                         return Err(e.add_context_from_readbuffer(self));
                     }
+                    if !self.refill()? {
+                        return Ok(None);
+                    }
+                    consumed = 0;
                 }
             }
-            if !self.refill()? {
-                return Ok(None);
-            }
-            consumed = 0;
         }
+        self.record_pos += 1;
         let mut record = T::default();
-        T::get(&mut record, &self.buffer[consumed..self.consumed], &state)
+        T::get(&mut record, &self.buffer[consumed..self.consumed], state)
             .map_err(|e| e.add_context_from_readbuffer(self))?;
         Ok(Some(record))
     }
 
-    /// Extract a chunk from the buffer for further parsing
-    #[doc(hidden)]
+    /// Reads a record into an existing value
+    ///
+    /// # Safety
+    /// Don't use a previous record after calling this again
     #[inline]
-    #[cfg(feature = "std")]
-    pub fn next_chunk(&mut self) -> Result<Option<(&[u8], BufferChunk)>, EtError> {
-        if self.end {
-            return Ok(None);
+    pub unsafe fn next_into<'b: 's, 's, T>(
+        &mut self,
+        mut state: &mut <T as FromSlice<'b, 's>>::State,
+        record: &mut T,
+    ) -> Result<bool, EtError>
+    where
+        T: FromSlice<'b, 's>,
+    {
+        let mut consumed = self.consumed;
+        loop {
+            match T::parse(
+                &self.buffer[consumed..],
+                self.eof,
+                &mut self.consumed,
+                state,
+            ) {
+                Ok(true) => break,
+                Ok(false) => return Ok(false),
+                Err(e) => {
+                    if !e.incomplete || self.eof {
+                        return Err(e.add_context_from_readbuffer(self));
+                    }
+                    if !self.refill()? {
+                        return Ok(false);
+                    }
+                    consumed = 0;
+                }
+            }
         }
-        if !self.refill()? {
-            self.end = true;
-        }
-        Ok(Some((
-            &self.buffer,
-            BufferChunk::new(self.consumed, self.eof, self.record_pos, self.reader_pos),
-        )))
-    }
-
-    /// Update the `ReadBuffer` from the chunk after it's been parsed
-    #[doc(hidden)]
-    #[inline]
-    #[cfg(feature = "std")]
-    pub fn update_from_chunk(&mut self, chunk: BufferChunk) {
-        self.consumed = chunk.consumed;
-        self.record_pos = chunk.record_pos;
+        let buffer = {
+            std::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer)
+        };
+        let cur_state = {
+            std::mem::transmute::<&mut <T as FromSlice<'b, 's>>::State, &'s mut <T as FromSlice<'b, 's>>::State>(&mut state)
+        };
+        self.record_pos += 1;
+        T::get(record, &buffer[consumed..self.consumed], cur_state)
+            .map_err(|e| e.add_context_from_readbuffer(self))?;
+        Ok(true)
     }
 }
 
@@ -279,7 +295,7 @@ mod test {
         let mut rb = ReadBuffer::from(&b"1\n2\n3"[..]);
 
         let mut ix = 0;
-        while let Some(NewLine(line)) = rb.next(0)? {
+        while let Some(NewLine(line)) = rb.next(&mut 0)? {
             match ix {
                 0 => assert_eq!(line, b"1"),
                 1 => assert_eq!(line, b"2"),
@@ -313,16 +329,16 @@ mod test {
     #[test]
     fn test_seek_pattern() -> Result<(), EtError> {
         let mut buffer: ReadBuffer = b"1\n2\n3"[..].into();
-        let _: Option<SeekPattern> = buffer.next(&b"1"[..])?;
+        let _: Option<SeekPattern> = buffer.next(&mut &b"1"[..])?;
         assert_eq!(&buffer.as_ref()[buffer.consumed..], b"1\n2\n3");
-        let _: Option<SeekPattern> = buffer.next(&b"3"[..])?;
+        let _: Option<SeekPattern> = buffer.next(&mut &b"3"[..])?;
         assert_eq!(&buffer.as_ref()[buffer.consumed..], b"3");
-        let e = buffer.next::<SeekPattern>(&b"1"[..])?;
+        let e = buffer.next::<SeekPattern>(&mut &b"1"[..])?;
         assert!(e.is_none());
 
         let mut buffer: ReadBuffer = b"ABC\n123\nEND"[..].into();
         assert_eq!(&buffer.as_ref()[buffer.consumed..], b"ABC\n123\nEND");
-        let _: Option<SeekPattern> = buffer.next(&b"123"[..])?;
+        let _: Option<SeekPattern> = buffer.next(&mut &b"123"[..])?;
         assert_eq!(&buffer.as_ref()[buffer.consumed..], b"123\nEND");
         Ok(())
     }

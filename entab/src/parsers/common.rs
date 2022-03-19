@@ -9,7 +9,7 @@ use crate::parsers::{Endian, FromSlice};
 
 macro_rules! impl_extract {
     ($return:ty) => {
-        impl<'r> FromSlice<'r> for $return {
+        impl<'b: 's, 's> FromSlice<'b, 's> for $return {
             type State = Endian;
 
             #[inline]
@@ -28,7 +28,7 @@ macro_rules! impl_extract {
                 Ok(true)
             }
 
-            fn get(&mut self, buf: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+            fn get(&mut self, buf: &'b [u8], state: &Self::State) -> Result<(), EtError> {
                 let slice = buf[..core::mem::size_of::<$return>()].try_into().unwrap();
                 *self = match state {
                     Endian::Big => <$return>::from_be_bytes(slice),
@@ -51,11 +51,11 @@ impl_extract!(u64);
 impl_extract!(f32);
 impl_extract!(f64);
 
-impl<'r> FromSlice<'r> for () {
+impl<'b: 's, 's> FromSlice<'b, 's> for () {
     type State = ();
 }
 
-impl<'r> FromSlice<'r> for &'r [u8] {
+impl<'b: 's, 's> FromSlice<'b, 's> for &'b [u8] {
     type State = usize;
 
     #[inline]
@@ -74,7 +74,7 @@ impl<'r> FromSlice<'r> for &'r [u8] {
     }
 
     #[inline]
-    fn get(&mut self, buf: &'r [u8], amt: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, buf: &'b [u8], amt: &Self::State) -> Result<(), EtError> {
         *self = &buf[..*amt];
         Ok(())
     }
@@ -86,9 +86,9 @@ impl<'r> FromSlice<'r> for &'r [u8] {
 /// before so should handle almost all current text file formats, but
 /// may fail on older '\r' only formats.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct NewLine<'r>(pub(crate) &'r [u8]);
+pub(crate) struct NewLine<'b>(pub(crate) &'b [u8]);
 
-impl<'r> FromSlice<'r> for NewLine<'r> {
+impl<'b: 's, 's> FromSlice<'b, 's> for NewLine<'b> {
     type State = usize;
 
     #[inline]
@@ -127,7 +127,7 @@ impl<'r> FromSlice<'r> for NewLine<'r> {
     }
 
     #[inline]
-    fn get(&mut self, buf: &'r [u8], amt: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, buf: &'b [u8], amt: &Self::State) -> Result<(), EtError> {
         self.0 = &buf[..*amt];
         Ok(())
     }
@@ -140,9 +140,9 @@ impl<'r> FromSlice<'r> for NewLine<'r> {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct SeekPattern;
 
-impl<'r> FromSlice<'r> for SeekPattern {
+impl<'b: 's, 's> FromSlice<'b, 's> for SeekPattern {
     // TODO: fix this lifetime to be more general?
-    type State = &'static [u8];
+    type State = &'s [u8];
 
     #[inline]
     fn parse(
@@ -179,7 +179,7 @@ impl<'r> FromSlice<'r> for SeekPattern {
     }
 
     #[inline]
-    fn get(&mut self, _buf: &'r [u8], _amt: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], _amt: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
 }
@@ -188,7 +188,7 @@ impl<'r> FromSlice<'r> for SeekPattern {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Skip;
 
-impl<'r> FromSlice<'r> for Skip {
+impl<'b: 's, 's> FromSlice<'b, 's> for Skip {
     type State = usize;
 
     #[inline]
@@ -209,7 +209,7 @@ impl<'r> FromSlice<'r> for Skip {
     }
 
     #[inline]
-    fn get(&mut self, _buf: &'r [u8], _amt: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], _amt: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
 }

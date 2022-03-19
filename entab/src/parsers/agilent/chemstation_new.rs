@@ -25,7 +25,7 @@ impl StateMetadata for ChemstationNewUvState {
     }
 }
 
-impl<'r> FromSlice<'r> for ChemstationNewUvState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewUvState {
     type State = ();
 
     fn parse(
@@ -39,8 +39,8 @@ impl<'r> FromSlice<'r> for ChemstationNewUvState {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let n_scans = extract::<u32>(&rb[278..], &mut 0, Endian::Big)? as usize;
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let n_scans = extract::<u32>(&rb[278..], &mut 0, &mut Endian::Big)? as usize;
         self.n_scans_left = n_scans;
         Ok(())
     }
@@ -59,8 +59,8 @@ pub struct ChemstationNewUvRecord {
 
 impl_record!(ChemstationNewUvRecord: time, wavelength, intensity);
 
-impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
-    type State = &'r mut ChemstationNewUvState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewUvRecord {
+    type State = ChemstationNewUvState;
 
     fn parse(
         rb: &[u8],
@@ -76,15 +76,15 @@ impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
         // refill case
         let mut n_wvs_left = state.n_wvs_left;
         if n_wvs_left == 0 {
-            let _ = extract::<&[u8]>(rb, con, 4_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 4_usize)?;
             // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = f64::from(extract::<u32>(rb, con, Endian::Little)?) / 60000.;
-            let wv_start: u16 = extract(rb, con, Endian::Little)?;
-            let wv_end: u16 = extract(rb, con, Endian::Little)?;
+            state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?) / 60000.;
+            let wv_start: u16 = extract(rb, con, &mut Endian::Little)?;
+            let wv_end: u16 = extract(rb, con, &mut Endian::Little)?;
             if wv_start > wv_end {
                 return Err("Invalid wavelength start and end".into());
             }
-            let wv_step: u16 = extract(rb, con, Endian::Little)?;
+            let wv_step: u16 = extract(rb, con, &mut Endian::Little)?;
             if wv_step == 0 {
                 return Err("Invalid wavelength step".into());
             }
@@ -92,12 +92,12 @@ impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
             n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
             state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
-            let _ = extract::<&[u8]>(rb, con, 8_usize)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 8_usize)?;
         };
 
-        let delta = extract::<i16>(rb, con, Endian::Little)?;
+        let delta = extract::<i16>(rb, con, &mut Endian::Little)?;
         if delta == -32768 {
-            state.cur_intensity = f64::from(extract::<u32>(rb, con, Endian::Little)?);
+            state.cur_intensity = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
         } else {
             state.cur_intensity += f64::from(delta);
         }
@@ -109,7 +109,7 @@ impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
         Ok(true)
     }
 
-    fn get(&mut self, _rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         self.time = state.cur_time;
         self.wavelength = state.cur_wv;
         self.intensity = state.cur_intensity / 2000.;
@@ -120,6 +120,7 @@ impl<'r> FromSlice<'r> for ChemstationNewUvRecord {
 impl_reader!(
     /// A reader for a Chemstation UV file
     ChemstationNewUvReader,
+    ChemstationNewUvRecord,
     ChemstationNewUvRecord,
     ChemstationNewUvState,
     ()
@@ -146,7 +147,7 @@ mod tests {
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
         let test_data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationNewUvReader::new(test_data, ())?;
+        let mut reader = ChemstationNewUvReader::new(test_data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
         let ChemstationNewUvRecord {

@@ -27,7 +27,7 @@ impl StateMetadata for InficonState {
     }
 }
 
-impl<'r> FromSlice<'r> for InficonState {
+impl<'b: 's, 's> FromSlice<'b, 's> for InficonState {
     type State = (Vec<Vec<f64>>, usize);
 
     fn parse(
@@ -38,18 +38,18 @@ impl<'r> FromSlice<'r> for InficonState {
     ) -> Result<bool, EtError> {
         let con = &mut 0;
 
-        if extract::<&[u8]>(rb, con, 4)? != [4, 3, 2, 1] {
+        if extract::<&[u8]>(rb, con, &mut 4)? != [4, 3, 2, 1] {
             return Err("Inficon file has bad magic bytes".into());
         }
 
         // probably not super robust, but it works? this appears at the end of
         // the "instrument collection steps" section and it appears to be
         // a constant distance before the "list of mzs" section
-        if extract_opt::<SeekPattern>(rb, eof, con, b"\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xF6\xFF\xFF\xFF\x00\x00\x00\x00")?.is_none() {
+        if extract_opt::<SeekPattern>(rb, eof, con, &mut &b"\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xF6\xFF\xFF\xFF\x00\x00\x00\x00"[..])?.is_none() {
             return Err("Could not find m/z header list".into());
         }
-        let _ = extract::<&[u8]>(rb, con, 148)?;
-        let n_segments = extract::<u32>(rb, con, Endian::Little)? as usize;
+        let _ = extract::<&[u8]>(rb, con, &mut 148)?;
+        let n_segments = extract::<u32>(rb, con, &mut Endian::Little)? as usize;
         if n_segments > 10000 {
             return Err("Inficon file has too many segments".into());
         }
@@ -59,22 +59,22 @@ impl<'r> FromSlice<'r> for InficonState {
         for segment in mz_segments.iter_mut() {
             // first 4 bytes appear to be an name/identifier? not sure what
             // the rest is.
-            let _ = extract::<&[u8]>(rb, con, 96)?;
-            let n_mzs = extract::<u32>(rb, con, Endian::Little)?;
+            let _ = extract::<&[u8]>(rb, con, &mut 96)?;
+            let n_mzs = extract::<u32>(rb, con, &mut Endian::Little)?;
             if n_mzs > 100_000 {
                 return Err("Too many m/z ranges".into());
             }
             for _ in 0..n_mzs {
-                let start_mz = extract::<u32>(rb, con, Endian::Little)?;
-                let end_mz = extract::<u32>(rb, con, Endian::Little)?;
+                let start_mz = extract::<u32>(rb, con, &mut Endian::Little)?;
+                let end_mz = extract::<u32>(rb, con, &mut Endian::Little)?;
                 if end_mz > 4_000_000_000u32 {
                     // only malformed data should hit this
                     return Err("End of m/z range is invalid".into());
                 }
                 // then dwell time (u32; microseconds) and three more u32s
-                let _ = extract::<&[u8]>(rb, con, 16)?;
-                let i_type = extract::<u32>(rb, con, Endian::Little)?;
-                let _ = extract::<&[u8]>(rb, con, 4)?;
+                let _ = extract::<&[u8]>(rb, con, &mut 16)?;
+                let i_type = extract::<u32>(rb, con, &mut Endian::Little)?;
+                let _ = extract::<&[u8]>(rb, con, &mut 4)?;
                 if i_type == 0 {
                     // this is a SIM
                     segment.push(f64::from(start_mz) / 100.);
@@ -91,18 +91,20 @@ impl<'r> FromSlice<'r> for InficonState {
                 }
             }
         }
-        if extract_opt::<SeekPattern>(rb, eof, con, b"\xFF\xFF\xFF\xFFHapsGPIR")?.is_none() {
+        if extract_opt::<SeekPattern>(rb, eof, con, &mut &b"\xFF\xFF\xFF\xFFHapsGPIR"[..])?
+            .is_none()
+        {
             return Err("Could not find start of scan data".into());
         }
         // seek to right before the "HapsScan" section because the section
         // length is encoded in the four bytes before the header for that
-        let _ = extract::<&[u8]>(rb, con, 180)?;
-        let data_length = u64::from(extract::<u32>(rb, con, Endian::Little)?);
-        let _ = extract::<&[u8]>(rb, con, 8)?;
-        if extract::<&[u8]>(rb, con, 8)? != b"HapsScan" {
+        let _ = extract::<&[u8]>(rb, con, &mut 180)?;
+        let data_length = u64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
+        let _ = extract::<&[u8]>(rb, con, &mut 8)?;
+        if extract::<&[u8]>(rb, con, &mut 8)? != b"HapsScan" {
             return Err("Data header was malformed".into());
         }
-        let _ = extract::<&[u8]>(rb, con, 56)?;
+        let _ = extract::<&[u8]>(rb, con, &mut 56)?;
         *data_left = usize::try_from(data_length)?;
         *consumed += *con;
         Ok(true)
@@ -125,8 +127,8 @@ pub struct InficonRecord {
 
 impl_record!(InficonRecord: time, mz, intensity);
 
-impl<'r> FromSlice<'r> for InficonRecord {
-    type State = &'r mut InficonState;
+impl<'b: 's, 's> FromSlice<'b, 's> for InficonRecord {
+    type State = InficonState;
 
     fn parse(
         rb: &[u8],
@@ -141,16 +143,16 @@ impl<'r> FromSlice<'r> for InficonRecord {
         let mut mzs_left = state.mzs_left;
         if mzs_left == 0 {
             // the first u32 is the number of the record (i.e. from 1 to r_scans)
-            let _ = extract::<u32>(rb, con, Endian::Little)?;
-            state.cur_time = f64::from(extract::<i32>(rb, con, Endian::Little)?) / 60000.;
+            let _ = extract::<u32>(rb, con, &mut Endian::Little)?;
+            state.cur_time = f64::from(extract::<i32>(rb, con, &mut Endian::Little)?) / 60000.;
             // next value always seems to be 1
-            let _ = extract::<u16>(rb, con, Endian::Little)?;
-            let n_mzs = usize::from(extract::<u16>(rb, con, Endian::Little)?);
+            let _ = extract::<u16>(rb, con, &mut Endian::Little)?;
+            let n_mzs = usize::from(extract::<u16>(rb, con, &mut Endian::Little)?);
             // next value always seems to be 0xFFFF
-            let _ = extract::<u16>(rb, con, Endian::Little)?;
+            let _ = extract::<u16>(rb, con, &mut Endian::Little)?;
             // the segment is only contained in the top nibble? the bottom is
             // F (e.g. values seem to be 0x0F, 0x1F, 0x2F...)
-            state.cur_segment = usize::from(extract::<u16>(rb, con, Endian::Little)? >> 4);
+            state.cur_segment = usize::from(extract::<u16>(rb, con, &mut Endian::Little)? >> 4);
             if state.cur_segment >= state.mz_segments.len() {
                 return Err(
                     format!("Invalid segment number ({}) specified", state.cur_segment).into(),
@@ -166,7 +168,7 @@ impl<'r> FromSlice<'r> for InficonRecord {
             }
             mzs_left = n_mzs;
         }
-        state.cur_intensity = f64::from(extract::<f32>(rb, con, Endian::Little)?);
+        state.cur_intensity = f64::from(extract::<f32>(rb, con, &mut Endian::Little)?);
         let cur_mz_segment = &state.mz_segments[state.cur_segment];
         if mzs_left > cur_mz_segment.len() {
             // i think this is probably more likely an error where mz_segments have 0 length, but I
@@ -192,6 +194,7 @@ impl<'r> FromSlice<'r> for InficonRecord {
 impl_reader!(
     InficonReader,
     InficonRecord,
+    InficonRecord,
     InficonState,
     (Vec<Vec<f64>>, usize)
 );
@@ -211,7 +214,7 @@ mod test {
             0, 16, 42, 42, 42, 10, 62, 10, 10, 26, 0, 0, 0, 42, 42, 4, 0, 0, 0, 0, 0, 0, 10, 10,
             10, 10, 10, 62, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 16, 42, 42, 42,
         ];
-        assert!(InficonReader::new(&data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&data[..], None).is_err());
 
         let data = [
             4, 3, 2, 1, 83, 80, 65, 72, 4, 1, 10, 255, 255, 255, 0, 3, 197, 65, 77, 1, 62, 1, 0, 0,
@@ -232,7 +235,7 @@ mod test {
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 10, 10, 10, 9, 10, 62, 45, 10, 59, 9, 0,
         ];
-        assert!(InficonReader::new(&data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&data[..], None).is_err());
 
         let data = [
             4, 3, 2, 1, 83, 80, 65, 72, 66, 65, 77, 1, 62, 1, 230, 255, 255, 251, 254, 254, 254,
@@ -258,7 +261,7 @@ mod test {
             0, 0, 0, 0, 0, 246, 255, 255, 255, 0, 0, 0, 0, 59, 10, 10, 10, 10, 10, 14, 10, 255, 10,
             10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 116, 116, 246, 245, 245, 240,
         ];
-        assert!(InficonReader::new(&data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&data[..], None).is_err());
 
         let data = [
             4, 3, 2, 1, 83, 80, 65, 72, 66, 168, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -280,7 +283,7 @@ mod test {
             0, 0, 245, 240, 255, 255, 255, 255, 255, 169, 77, 86, 139, 139, 116, 35, 116, 246, 245,
             245, 240,
         ];
-        assert!(InficonReader::new(&data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&data[..], None).is_err());
 
         Ok(())
     }
@@ -319,7 +322,7 @@ mod test {
             237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237, 237,
             237, 237, 237, 237, 237, 237, 240,
         ];
-        assert!(InficonReader::new(&test_data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             4, 3, 2, 1, 83, 80, 65, 72, 66, 65, 77, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -368,7 +371,7 @@ mod test {
             64, 62, 62, 0, 87, 10, 10, 43, 10, 10, 64, 42, 10, 42, 2, 10, 43, 138, 116, 115, 2, 10,
             64, 138, 116, 64, 39, 10, 10, 43, 10, 10, 231, 62, 62, 87, 116, 115, 2,
         ];
-        assert!(InficonReader::new(&test_data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             4, 3, 2, 1, 255, 255, 255, 255, 0, 0, 0, 0, 203, 203, 203, 203, 203, 203, 203, 203,
@@ -398,7 +401,7 @@ mod test {
             255, 255, 203, 203, 203, 40, 203, 0, 0, 0, 0, 0, 92, 0, 0, 9, 0, 0, 0, 0, 0, 0, 246,
             255, 255, 255, 0, 0, 0, 0, 2, 0,
         ];
-        assert!(InficonReader::new(&test_data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             4, 3, 2, 1, 10, 0, 0, 0, 0, 0, 0, 0, 0, 14, 14, 7, 0, 250, 0, 0, 0, 6, 0, 0, 0, 0, 255,
@@ -416,7 +419,7 @@ mod test {
             154, 154, 154, 154, 154, 154, 154, 154, 154, 161, 161, 161, 161, 161, 161, 161, 161, 0,
             0, 0, 0, 6, 0, 0,
         ];
-        assert!(InficonReader::new(&test_data[..], (Vec::new(), 0usize)).is_err());
+        assert!(InficonReader::new(&test_data[..], None).is_err());
 
         let test_data = [
             4, 3, 2, 1, 54, 54, 54, 93, 54, 54, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -453,7 +456,7 @@ mod test {
             0, 0, 0, 0, 0, 0, 244, 255, 255, 255, 0, 0, 0, 0, 250, 0, 134, 160, 0, 0, 0, 0, 0, 0,
             0, 0, 4, 0, 49, 54, 0, 0, 0, 0, 0, 250, 0, 0, 0,
         ];
-        let mut reader = InficonReader::new(&test_data[..], (Vec::new(), 0usize))?;
+        let mut reader = InficonReader::new(&test_data[..], None)?;
         while reader.next()?.is_some() {}
 
         Ok(())

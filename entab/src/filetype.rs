@@ -278,6 +278,4 @@ mod tests {
             assert_eq!(FileType::from_parser_name(&ft.to_parser_name()), ft);
         }
     }
-
-
 }

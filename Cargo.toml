@@ -5,3 +5,13 @@ members = [
   "entab-js",
   "entab-py",
 ]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+opt-level = 3
+overflow-checks = false
+codegen-units = 1

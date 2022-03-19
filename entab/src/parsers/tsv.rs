@@ -72,12 +72,12 @@ impl<'r> TsvReader<'r> {
         let mut rb = data.try_into()?;
         let (delim_char, quote_char) = params;
         let con = &mut 0;
-        let header = if let Some(NewLine(h)) = extract_opt::<NewLine>(rb.as_ref(), rb.eof, con, 0)?
-        {
-            h
-        } else {
-            return Err("could not read headers from TSV".into());
-        };
+        let header =
+            if let Some(NewLine(h)) = extract_opt::<NewLine>(rb.as_ref(), rb.eof, con, &mut 0)? {
+                h
+            } else {
+                return Err("could not read headers from TSV".into());
+            };
         // prefill with something impossible so we can tell how big
         let mut buffer = vec!["\t"; 32];
         split(&mut buffer, header, delim_char, quote_char)?;
@@ -103,11 +103,12 @@ impl<'r> TsvReader<'r> {
     pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
         let con = &mut 0;
         let buffer = &self.rb.as_ref()[self.rb.consumed..];
-        let line = if let Some(NewLine(l)) = extract_opt::<NewLine>(buffer, self.rb.eof, con, 0)? {
-            l
-        } else {
-            return Ok(None);
-        };
+        let line =
+            if let Some(NewLine(l)) = extract_opt::<NewLine>(buffer, self.rb.eof, con, &mut 0)? {
+                l
+            } else {
+                return Ok(None);
+            };
 
         // this is nasty, but I *think* it's sound as long as no other
         // code messes with cur_line in between iterations of `next`?

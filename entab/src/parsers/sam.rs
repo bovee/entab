@@ -6,13 +6,13 @@ use core::convert::TryFrom;
 use core::marker::Copy;
 
 use crate::parsers::common::{NewLine, Skip};
-use crate::parsers::{extract, extract_opt, unsafe_access_state, Endian, FromSlice};
+use crate::parsers::{extract, extract_opt, Endian, FromSlice};
 use crate::record::StateMetadata;
 use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// The internal state of the `BamReader`.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct BamState {
     references: Vec<(String, usize)>,
 }
@@ -35,54 +35,53 @@ impl StateMetadata for BamState {
     }
 }
 
-impl<'r> FromSlice<'r> for BamState {
+impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
     type State = ();
 
     fn parse(
-        rb: &[u8],
+        buffer: &[u8],
         eof: bool,
         consumed: &mut usize,
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let con = &mut 0;
         // read the magic & header length, and then the header
-        if extract::<&[u8]>(rb, con, 4)? != b"BAM\x01" {
+        if extract::<&[u8]>(buffer, con, &mut 4)? != b"BAM\x01" {
             return Err("Not a valid BAM file".into());
         }
-        let mut header_len = extract::<u32>(rb, con, Endian::Little)? as usize;
-        let _ = Skip::parse(rb, eof, con, &mut header_len)?;
+        let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
+        let _ = Skip::parse(buffer, eof, con, &mut header_len)?;
 
         // read the reference sequence data
-        let mut n_references = extract::<u32>(rb, con, Endian::Little)? as usize;
+        let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         while n_references > 0 {
-            let name_len = extract::<u32>(rb, con, Endian::Little)? as usize;
-            let _ = Skip::parse(rb, eof, con, &mut (4 + name_len))?;
+            let name_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
+            let _ = Skip::parse(buffer, eof, con, &mut (4 + name_len))?;
             n_references -= 1;
         }
         *consumed += *con;
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
-        let con = &mut 0;
-        let _ = extract::<Skip>(rb, con, 4)?;
-        let header_len = extract::<u32>(rb, con, Endian::Little)? as usize;
+    fn get(&mut self, buffer: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
+        let con = &mut 4;
+        let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        drop(extract::<Skip>(rb, con, header_len));
+        let _ = extract::<Skip>(buffer, con, &mut header_len);
 
         // read the reference sequence data
-        let mut n_references = extract::<u32>(rb, con, Endian::Little)? as usize;
+        let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
 
         let mut references = Vec::new();
         while n_references > 0 {
-            let name_len = extract::<u32>(rb, con, Endian::Little)? as usize;
-            let mut raw_ref_name = extract::<&[u8]>(rb, con, name_len)?;
+            let mut name_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
+            let mut raw_ref_name = extract::<&[u8]>(buffer, con, &mut name_len)?;
             if raw_ref_name.last() == Some(&b'\x00') {
                 raw_ref_name = &raw_ref_name[..name_len - 1];
             };
             let ref_name = String::from(alloc::str::from_utf8(raw_ref_name)?);
-            let ref_len = extract::<u32>(rb, con, Endian::Little)? as usize;
+            let ref_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
             references.push((ref_name, ref_len));
             n_references -= 1;
         }
@@ -92,7 +91,7 @@ impl<'r> FromSlice<'r> for BamState {
 }
 
 /// A single record from a BAM file.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct BamRecord<'r> {
     /// The name of the mapped sequence.
     pub query_name: &'r str,
@@ -130,8 +129,8 @@ pub struct BamRecord<'r> {
 
 impl_record!(BamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
-impl<'r> FromSlice<'r> for BamRecord<'r> {
-    type State = &'r mut BamState;
+impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
+    type State = BamState;
 
     fn parse(
         rb: &[u8],
@@ -149,7 +148,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         }
         // now read the record itself
         let con = &mut 0;
-        let mut record_len = extract::<u32>(rb, con, Endian::Little)? as usize;
+        let mut record_len = extract::<u32>(rb, con, &mut Endian::Little)? as usize;
         if record_len < 32 {
             return Err("Record is unexpectedly short".into());
         }
@@ -159,54 +158,54 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'r [u8], state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         let con = &mut 0;
-        let record_len = extract::<u32>(rb, con, Endian::Little)? as usize;
+        let record_len = extract::<u32>(rb, con, &mut Endian::Little)? as usize;
 
-        let raw_ref_name_id: i32 = extract(rb, con, Endian::Little)?;
+        let raw_ref_name_id: i32 = extract(rb, con, &mut Endian::Little)?;
         self.ref_name = if raw_ref_name_id < 0 {
             ""
         } else if usize::try_from(raw_ref_name_id)? >= state.references.len() {
             return Err("Invalid reference sequence ID".into());
         } else {
-            &unsafe_access_state(state).references[usize::try_from(raw_ref_name_id)?].0
+            &state.references[usize::try_from(raw_ref_name_id)?].0
         };
-        let raw_pos: i32 = extract(rb, con, Endian::Little)?;
+        let raw_pos: i32 = extract(rb, con, &mut Endian::Little)?;
         self.pos = if raw_pos == -1 {
             None
         } else {
             Some(u64::try_from(raw_pos)?)
         };
-        let query_name_len = usize::from(extract::<u8>(rb, con, Endian::Little)?);
-        let raw_mapq: u8 = extract(rb, con, Endian::Little)?;
+        let query_name_len = usize::from(extract::<u8>(rb, con, &mut Endian::Little)?);
+        let raw_mapq: u8 = extract(rb, con, &mut Endian::Little)?;
         self.mapq = if raw_mapq == 255 {
             None
         } else {
             Some(raw_mapq)
         };
         // don't care about the BAI index bin - &data[10..12]
-        let _ = extract::<&[u8]>(rb, con, 2_usize)?;
-        let n_cigar_op = usize::from(extract::<u16>(rb, con, Endian::Little)?);
-        self.flag = extract::<u16>(rb, con, Endian::Little)?;
-        let seq_len = extract::<u32>(rb, con, Endian::Little)? as usize;
-        let raw_rnext_id: i32 = extract(rb, con, Endian::Little)?;
+        let _ = extract::<&[u8]>(rb, con, &mut 2_usize)?;
+        let n_cigar_op = usize::from(extract::<u16>(rb, con, &mut Endian::Little)?);
+        self.flag = extract::<u16>(rb, con, &mut Endian::Little)?;
+        let seq_len = extract::<u32>(rb, con, &mut Endian::Little)? as usize;
+        let raw_rnext_id: i32 = extract(rb, con, &mut Endian::Little)?;
         self.rnext = if raw_rnext_id < 0 {
             ""
         } else if usize::try_from(raw_rnext_id)? >= state.references.len() {
             return Err("Invalid next reference sequence ID".into());
         } else {
-            &unsafe_access_state(state).references[usize::try_from(raw_rnext_id)?].0
+            &state.references[usize::try_from(raw_rnext_id)?].0
         };
-        let raw_pnext: i32 = extract(rb, con, Endian::Little)?;
+        let raw_pnext: i32 = extract(rb, con, &mut Endian::Little)?;
         self.pnext = if raw_pnext == -1 {
             None
         } else {
             Some(u32::try_from(raw_pnext)?)
         };
-        self.tlen = extract::<i32>(rb, con, Endian::Little)?;
+        self.tlen = extract::<i32>(rb, con, &mut Endian::Little)?;
 
         // now parse the variable length records
-        let data = extract::<&[u8]>(rb, con, record_len - 32)?;
+        let data = extract::<&[u8]>(rb, con, &mut (record_len - 32))?;
         if query_name_len + n_cigar_op * 8 + (1.5 * seq_len as f32 + 1.).ceil() as usize
             > data.len()
         {
@@ -223,7 +222,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
 
         self.cigar = Vec::new();
         for _ in 0..n_cigar_op {
-            let cigar_op = extract::<u32>(data, &mut start, Endian::Little)? as usize;
+            let cigar_op = extract::<u32>(data, &mut start, &mut Endian::Little)? as usize;
             self.cigar.extend((cigar_op >> 4).to_string().as_bytes());
             self.cigar.push(b"MIDNSHP=X"[cigar_op & 7]);
             start += 4;
@@ -247,12 +246,7 @@ impl<'r> FromSlice<'r> for BamRecord<'r> {
     }
 }
 
-impl_reader!(
-    BamReader,
-    BamRecord,
-    BamState,
-    ()
-);
+impl_reader!(BamReader, BamRecord, BamRecord<'r>, BamState, ());
 
 /// The internal state of the `SamReader`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -277,7 +271,7 @@ impl StateMetadata for SamState {
     }
 }
 
-impl<'r> FromSlice<'r> for SamState {
+impl<'b: 's, 's> FromSlice<'b, 's> for SamState {
     type State = ();
 
     fn parse(
@@ -292,7 +286,7 @@ impl<'r> FromSlice<'r> for SamState {
         // we're using `to_read` to keep track of how much *only* the header lines take up since
         // the final extracted line we don't want to consumed
         let mut to_read = 0;
-        while let Some(header) = extract_opt::<NewLine>(rb, eof, con, 0)? {
+        while let Some(header) = extract_opt::<NewLine>(rb, eof, con, &mut 0)? {
             if header.0.get(0) != Some(&b'@') {
                 break;
             }
@@ -303,13 +297,13 @@ impl<'r> FromSlice<'r> for SamState {
         Ok(true)
     }
 
-    fn get(&mut self, _buf: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
 }
 
 /// A single record from a SAM file.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct SamRecord<'r> {
     /// The name of the mapped sequence.
     pub query_name: &'r str,
@@ -347,8 +341,8 @@ pub struct SamRecord<'r> {
 
 impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
 
-impl<'r> FromSlice<'r> for SamRecord<'r> {
-    type State = &'r mut SamState;
+impl<'b: 's, 's> FromSlice<'b, 's> for SamRecord<'s> {
+    type State = SamState;
 
     fn parse(
         rb: &[u8],
@@ -357,7 +351,7 @@ impl<'r> FromSlice<'r> for SamRecord<'r> {
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let con = &mut 0;
-        Ok(match extract_opt::<NewLine>(rb, eof, con, 0)? {
+        Ok(match extract_opt::<NewLine>(rb, eof, con, &mut 0)? {
             Some(_) => {
                 *consumed += *con;
                 true
@@ -366,7 +360,7 @@ impl<'r> FromSlice<'r> for SamRecord<'r> {
         })
     }
 
-    fn get(&mut self, buf: &'r [u8], _state: &Self::State) -> Result<(), EtError> {
+    fn get(&mut self, buf: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
         // TODO: need to remove terminal newline?
         let chunks: Vec<&[u8]> = buf.split(|c| *c == b'\t').collect();
         if chunks.len() < 11 {
@@ -423,12 +417,7 @@ impl<'r> FromSlice<'r> for SamRecord<'r> {
     }
 }
 
-impl_reader!(
-    SamReader,
-    SamRecord,
-    SamState,
-    ()
-);
+impl_reader!(SamReader, SamRecord, SamRecord<'r>, SamState, ());
 
 #[cfg(test)]
 mod tests {
@@ -444,8 +433,8 @@ mod tests {
     #[test]
     fn test_sam_reader() -> Result<(), EtError> {
         let rb = include_bytes!("../../tests/data/test.sam");
-        let mut reader = SamReader::new(&rb[..], ())?;
-        let _ = reader.metadata();
+        let mut reader = SamReader::new(&rb[..], None)?;
+        // let _ = reader.metadata(); // FIXME
         if let Some(SamRecord {
             query_name, seq, ..
         }) = reader.next()?
@@ -467,7 +456,7 @@ mod tests {
     #[test]
     fn test_sam_no_data() -> Result<(), EtError> {
         let data = b"@HD\ttest\n";
-        let mut reader = SamReader::new(&data[..], ())?;
+        let mut reader = SamReader::new(&data[..], None)?;
         assert!(reader.next()?.is_none());
         Ok(())
     }
@@ -475,17 +464,17 @@ mod tests {
     #[test]
     fn test_sam_bad_fuzzes() -> Result<(), EtError> {
         const TEST_SAM: &[u8] = b"@HD\t\n\n";
-        let mut reader = SamReader::new(TEST_SAM, ())?;
+        let mut reader = SamReader::new(TEST_SAM, None)?;
         assert!(reader.next().is_err());
 
         // test with a pos of "00" instead of "0"
         let data = b"@HD\t\x1a{\n\x1a\t0\t\t00\t\t\t\t\t\t\t";
-        let mut reader = SamReader::new(&data[..], ())?;
+        let mut reader = SamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         // this one was just slow?
         let data = b"@HD\t\n\x1a\t10\t*\t0\t0\ty\t*\t1\t200\t\t0\0\n\x1a\t00\t*\t0\t0\t\t\t0\t201\t\t0\t\0\n\x1a\t0\t*\t0\t0\tyy;\t*\t0\t200\t\t0\0\n\x1a\t00`\t*\t0\t0\t$\t*\t200I\t\t0\tyy";
-        let mut reader = SamReader::new(&data[..], ())?;
+        let mut reader = SamReader::new(&data[..], None)?;
         assert!(reader.next()?.is_some());
         assert!(reader.next()?.is_some());
         assert!(reader.next()?.is_some());
@@ -507,8 +496,8 @@ mod tests {
         assert_eq!(filetype, FileType::Bam);
         assert_eq!(compress, Some(FileType::Gzip));
         let rb = ReadBuffer::from_reader(stream, None)?;
-        let mut reader = BamReader::new(rb, ())?;
-        let _ = reader.metadata();
+        let mut reader = BamReader::new(rb, None)?;
+        // let _ = reader.metadata();  // FIXME
 
         if let Some(BamRecord {
             query_name, seq, ..
@@ -553,7 +542,7 @@ mod tests {
             205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139,
             139, 116, 116, 116, 116, 116, 246, 245, 245, 240,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 223, 223, 223, 223,
@@ -577,7 +566,7 @@ mod tests {
             223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
             223, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -601,7 +590,7 @@ mod tests {
             0, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223, 223,
             185, 255, 255, 255, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -625,7 +614,7 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 255,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -635,12 +624,12 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 125, 10, 10, 10, 10, 255, 255, 255, 255,
             10, 10, 18,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 105, 0, 110, 0, 0, 0, 0,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 116, 116, 116,
@@ -663,7 +652,7 @@ mod tests {
             117, 10, 10, 10, 10, 10, 10, 10, 10, 10, 62, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 117,
             117, 117, 117, 117, 117, 117, 117, 117, 62, 10, 10,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 255, 255, 255, 1, 0, 0, 0, 0, 62, 1, 0, 0, 0, 0, 254, 254, 254, 254,
@@ -684,7 +673,7 @@ mod tests {
             155, 155, 155, 155, 155, 155, 155, 155, 155, 10, 10, 10, 10, 10, 10, 10, 1, 161, 70, 0,
             105, 0, 110, 0, 57, 10,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -702,7 +691,7 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        assert!(BamReader::new(&data[..], ()).is_err());
+        assert!(BamReader::new(&data[..], None).is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -725,7 +714,7 @@ mod tests {
             35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 62, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -750,7 +739,7 @@ mod tests {
             1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 251, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0,
             10, 10, 10, 62, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_ok());
         assert!(reader.next().is_err());
 
@@ -775,7 +764,7 @@ mod tests {
             35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 10, 10, 10, 10, 62, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -811,7 +800,7 @@ mod tests {
             0, 0, 0, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 0,
             0, 10, 10, 10, 10, 62, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_ok());
         assert!(reader.next().is_err());
 
@@ -836,7 +825,7 @@ mod tests {
             0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 130, 3, 0, 0,
             0, 47, 0, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         let data = [
@@ -864,7 +853,7 @@ mod tests {
             62, 0, 13, 10, 10, 220, 227, 10, 10, 97, 62, 0, 13, 10, 10, 227, 10, 10, 62, 10, 59,
             10, 10, 10, 10,
         ];
-        let mut reader = BamReader::new(&data[..], ())?;
+        let mut reader = BamReader::new(&data[..], None)?;
         assert!(reader.next().is_err());
 
         Ok(())

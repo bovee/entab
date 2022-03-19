@@ -20,7 +20,7 @@ pub struct ChemstationRegState {}
 
 impl StateMetadata for ChemstationRegState {}
 
-impl<'r> FromSlice<'r> for ChemstationRegState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationRegState {
     type State = ();
 
     fn parse(
@@ -140,7 +140,7 @@ pub struct ChemstationRegRecord {
     point: f64
 }
 
-impl<'r> FromSlice<'r> for ChemstationRegRecord {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationRegRecord {
     type State = &'r mut ChemstationRegState;
 
     fn parse(
@@ -163,7 +163,7 @@ impl<'r> FromSlice<'r> for ChemstationRegRecord {
 
 impl_record!(ChemstationRegRecord: point);
 
-impl_reader!(ChemstationRegReader, ChemstationRegRecord, ChemstationRegState, ());
+impl_reader!(ChemstationRegReader, ChemstationRegRecord, ChemstationRegRecord, ChemstationRegState, ());
 
 #[cfg(test)]
 mod tests {
