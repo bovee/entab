@@ -6,6 +6,7 @@ use std::io;
 use std::str;
 
 use clap::{crate_authors, crate_version, Arg, Command};
+use clap::error::ErrorKind;
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
@@ -23,7 +24,7 @@ where
     R: io::Read,
     W: io::Write,
 {
-    let matches = Command::new("entab")
+    let clap_result = Command::new("entab")
         .about("Turn anything into a TSV")
         .author(crate_authors!())
         .version(crate_version!())
@@ -51,7 +52,19 @@ where
                 .long("metadata")
                 .help("Reports metadata about the file instead of the data itself"),
         )
-        .get_matches_from(args);
+        .try_get_matches_from(args);
+
+    let matches = match clap_result {
+        Ok(d) => d,
+        Err(e) => {
+            if e.kind() == ErrorKind::DisplayHelp || e.kind() == ErrorKind::DisplayVersion {
+                e.print()?;
+                return Ok(());
+            } else {
+                return Err(e.to_string().into());
+            }
+        },
+    };
 
     // TODO: map/reduce/filter options?
     // every column should either have a reduction set or it'll be dropped from
@@ -124,7 +137,7 @@ where
 }
 
 #[cfg(test)]
-mod run_tests {
+mod tests {
     use super::*;
 
     #[test]
@@ -140,6 +153,14 @@ mod run_tests {
         let mut out = Vec::new();
         assert!(run(["entab"], &b">test\nACGT"[..], io::Cursor::new(&mut out)).is_ok());
         assert_eq!(&out[..], b"id\tsequence\ntest\tACGT\n");
+        Ok(())
+    }
+
+    #[test]
+    fn test_metadata() -> Result<(), EtError> {
+        let mut out = Vec::new();
+        assert!(run(["entab", "--metadata"], &b">test\nACGT"[..], io::Cursor::new(&mut out)).is_ok());
+        assert_eq!(&out[..], b"key\tvalue\n");
         Ok(())
     }
 }

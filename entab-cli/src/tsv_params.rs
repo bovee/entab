@@ -145,8 +145,13 @@ mod tests {
         let mut buffer = Cursor::new(Vec::new());
         let _ = params.write_str(b"\t\t\t", &mut buffer);
         assert_eq!(buffer.get_ref(), b"|||");
+    }
 
+    #[test]
+    fn test_escape_params() {
+        let mut params = TsvParams::default();
         params.escape_style = TsvEscapeStyle::Escape(b'|');
+
         let mut buffer = Cursor::new(Vec::new());
         let _ = params.write_str(b"\t", &mut buffer);
         assert_eq!(buffer.get_ref(), b"|\t");
