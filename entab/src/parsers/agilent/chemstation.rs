@@ -602,8 +602,8 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
             }
 
             n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
-            state.cur_wv = f64::from(wv_start) / 20.;
             state.wv_step = f64::from(wv_step) / 20.;
+            state.cur_wv = f64::from(wv_start) / 20. - state.wv_step;
             let _ = extract::<&[u8]>(rb, con, &mut 8)?;
         };
 
@@ -617,6 +617,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
         if state.n_wvs_left == 1 {
             state.n_scans_left -= 1;
         }
+        state.cur_wv += state.wv_step;
         state.n_wvs_left = n_wvs_left - 1;
         *consumed += *con;
         Ok(true)
@@ -794,6 +795,7 @@ mod tests {
         let mut reader = ChemstationUvReader::new(data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
+
         let ChemstationUvRecord {
             time,
             wavelength,
@@ -803,7 +805,16 @@ mod tests {
         assert!((wavelength - 200.).abs() < 0.000001);
         assert_eq!(intensity, -15.6675);
 
-        let mut n_mzs = 1;
+        let ChemstationUvRecord {
+            time,
+            wavelength,
+            intensity,
+        } = reader.next()?.unwrap();
+        assert!((time - 0.001333).abs() < 0.000001);
+        assert!((wavelength - 202.).abs() < 0.000001);
+        assert_eq!(intensity, -31.805);
+
+        let mut n_mzs = 2;
         while reader.next()?.is_some() {
             n_mzs += 1;
         }

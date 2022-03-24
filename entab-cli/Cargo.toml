@@ -1,6 +1,6 @@
 [package]
 name = "entab-cli"
-version = "0.3.0-alpha.1"
+version = "0.3.0-alpha.2"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 description = "Record-format file reader CLI"
@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "parsing", "science"]
 
 [dependencies]
 clap = { version = "3.1.5", features = ["cargo"] }
-entab = { path = "../entab", version = "0.3.0-alpha.1" }
+entab = { path = "../entab", version = "0.3.0-alpha.2" }
 memchr = "2.4"
 memmap2 = { version = "0.5.3", optional = true }
 
