@@ -5,8 +5,8 @@ use std::fs::File;
 use std::io;
 use std::str;
 
-use clap::{crate_authors, crate_version, Arg, Command};
 use clap::error::ErrorKind;
+use clap::{crate_authors, crate_version, Arg, Command};
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
@@ -63,7 +63,7 @@ where
             } else {
                 return Err(e.to_string().into());
             }
-        },
+        }
     };
 
     // TODO: map/reduce/filter options?
@@ -159,7 +159,12 @@ mod tests {
     #[test]
     fn test_metadata() -> Result<(), EtError> {
         let mut out = Vec::new();
-        assert!(run(["entab", "--metadata"], &b">test\nACGT"[..], io::Cursor::new(&mut out)).is_ok());
+        assert!(run(
+            ["entab", "--metadata"],
+            &b">test\nACGT"[..],
+            io::Cursor::new(&mut out)
+        )
+        .is_ok());
         assert_eq!(&out[..], b"key\tvalue\n");
         Ok(())
     }

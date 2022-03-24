@@ -48,8 +48,7 @@ impl Reader {
         let (mut reader, _) = decompress(stream).map_err(to_js)?;
         let filetype = reader.sniff_filetype().map_err(to_js)?;
 
-        let filetype = parser
-            .map_or_else(|| filetype, |p| FileType::from_parser_name(&p));
+        let filetype = parser.map_or_else(|| filetype, |p| FileType::from_parser_name(&p));
         let reader = get_reader(filetype, reader).map_err(to_js)?;
         let headers = reader.headers();
         Ok(Reader {

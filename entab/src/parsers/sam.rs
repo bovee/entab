@@ -206,9 +206,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
 
         // now parse the variable length records
         let data = extract::<&[u8]>(rb, con, &mut (record_len - 32))?;
-        if query_name_len + n_cigar_op * 8 + (3 * seq_len + 2) / 2
-            > data.len()
-        {
+        if query_name_len + n_cigar_op * 8 + (3 * seq_len + 2) / 2 > data.len() {
             // there's not enough space for the query name, cigar, and sequence/quality?
             return Err("Record ended abruptly while reading variable-length data".into());
         }
@@ -479,6 +477,12 @@ mod tests {
         assert!(reader.next()?.is_some());
         assert!(reader.next()?.is_some());
         assert!(reader.next().is_err());
+
+        // this one too?
+        let data = b"@HD\t\n\t0\t\t0000010248191152060862009\t0\t\t\t0\t2\t\t\t\t\t\t";
+        let mut reader = SamReader::new(&data[..], None)?;
+        assert!(reader.next()?.is_some());
+        assert!(reader.next()?.is_none());
 
         Ok(())
     }

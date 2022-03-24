@@ -9,18 +9,17 @@ use xz2::read::XzDecoder;
 #[cfg(feature = "compression")]
 use zstd::stream::read::Decoder as ZstdDecoder;
 
+use crate::buffer::ReadBuffer;
 use crate::filetype::FileType;
 use crate::EtError;
-use crate::buffer::ReadBuffer;
 
 /// Decompress the contents of a `ReadBuffer` into a new `ReadBuffer` and return the type of compression.
 ///
 /// # Errors
 /// If reading fails or if the stream can't be decompressed, return `EtError`.
 #[cfg(feature = "compression")]
-pub fn decompress<'r, B>(
-    data: B,
-) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError> where
+pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
+where
     B: TryInto<ReadBuffer<'r>>,
     EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
 {
@@ -29,19 +28,31 @@ pub fn decompress<'r, B>(
     Ok(match file_type {
         FileType::Gzip => {
             let gz_reader = MultiGzDecoder::new(reader.into_box_read());
-            (ReadBuffer::from_reader(Box::new(gz_reader), None)?, Some(file_type))
+            (
+                ReadBuffer::from_reader(Box::new(gz_reader), None)?,
+                Some(file_type),
+            )
         }
         FileType::Bzip => {
             let bz_reader = BzDecoder::new(reader.into_box_read());
-            (ReadBuffer::from_reader(Box::new(bz_reader), None)?, Some(file_type))
+            (
+                ReadBuffer::from_reader(Box::new(bz_reader), None)?,
+                Some(file_type),
+            )
         }
         FileType::Lzma => {
             let xz_reader = XzDecoder::new(reader.into_box_read());
-            (ReadBuffer::from_reader(Box::new(xz_reader), None)?, Some(file_type))
+            (
+                ReadBuffer::from_reader(Box::new(xz_reader), None)?,
+                Some(file_type),
+            )
         }
         FileType::Zstd => {
             let zstd_reader = ZstdDecoder::new(reader.into_box_read())?;
-            (ReadBuffer::from_reader(Box::new(zstd_reader), None)?, Some(file_type))
+            (
+                ReadBuffer::from_reader(Box::new(zstd_reader), None)?,
+                Some(file_type),
+            )
         }
         _ => (reader, None),
     })
@@ -52,9 +63,8 @@ pub fn decompress<'r, B>(
 /// # Errors
 /// If reading fails or if the stream can't be decompressed, return `EtError`.
 #[cfg(not(feature = "compression"))]
-pub fn decompress<'r, B>(
-    data: B,
-) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError> where
+pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
+where
     B: TryInto<ReadBuffer<'r>>,
     EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
 {
@@ -63,7 +73,10 @@ pub fn decompress<'r, B>(
     Ok(match file_type {
         FileType::Gzip => {
             let gz_reader = MultiGzDecoder::new(reader.into_box_read());
-            (ReadBuffer::from_reader(Box::new(gz_reader), None)?, Some(file_type))
+            (
+                ReadBuffer::from_reader(Box::new(gz_reader), None)?,
+                Some(file_type),
+            )
         }
         FileType::Bzip | FileType::Lzma | FileType::Zstd => {
             return Err("entab was not compiled with support for compressed files".into());

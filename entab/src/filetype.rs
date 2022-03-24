@@ -2,7 +2,6 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use core::marker::Copy;
 
-
 /// A file format.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FileType {

@@ -220,7 +220,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ThermoDxfRecord {
     }
 }
 
-impl_reader!(ThermoDxfReader, ThermoDxfRecord, ThermoDxfRecord, ThermoDxfState, ());
+impl_reader!(
+    ThermoDxfReader,
+    ThermoDxfRecord,
+    ThermoDxfRecord,
+    ThermoDxfState,
+    ()
+);
 
 /// The current state of the `ThermoCfReader`
 #[derive(Clone, Debug, Default)]
@@ -332,7 +338,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ThermoCfRecord {
     }
 }
 
-impl_reader!(ThermoCfReader, ThermoCfRecord, ThermoCfRecord, ThermoCfState, ());
+impl_reader!(
+    ThermoCfReader,
+    ThermoCfRecord,
+    ThermoCfRecord,
+    ThermoCfState,
+    ()
+);
 
 #[cfg(test)]
 mod tests {

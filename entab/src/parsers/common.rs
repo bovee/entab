@@ -141,7 +141,6 @@ impl<'b: 's, 's> FromSlice<'b, 's> for NewLine<'b> {
 pub(crate) struct SeekPattern;
 
 impl<'b: 's, 's> FromSlice<'b, 's> for SeekPattern {
-    // TODO: fix this lifetime to be more general?
     type State = &'s [u8];
 
     #[inline]

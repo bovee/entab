@@ -1,30 +1,27 @@
-use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::convert::TryInto;
-use core::mem;
 
 use memchr::memchr;
 
-use crate::buffer::ReadBuffer;
+use crate::impl_reader;
 use crate::parsers::common::NewLine;
 use crate::parsers::extract_opt;
-use crate::readers::RecordReader;
-use crate::record::Value;
+use crate::parsers::FromSlice;
+use crate::record::{StateMetadata, Value};
 use crate::EtError;
 
-fn split<'a>(
+pub(crate) fn split<'a>(
     buffer: &mut Vec<&'a str>,
     line: &'a [u8],
     delim: u8,
     quote: u8,
-) -> Result<(), EtError> {
+) -> Result<usize, EtError> {
     let mut cur_pos = 0;
     let mut token_num = 0;
     while cur_pos < line.len() {
         if token_num >= buffer.len() {
-            return Err("too many records".into());
+            buffer.push("");
         }
         let start_pos = cur_pos;
         if line[cur_pos] == quote {
@@ -45,123 +42,144 @@ fn split<'a>(
         cur_pos += 1;
         token_num += 1;
     }
-    // TODO: check that token_num matches the length of the buffer
-    // (unless these are the headers; in which case we don't care
-    // because we'll trim elsewhere)
-    Ok(())
+    Ok(token_num)
 }
 
-/// A reader for TSV and other delimited tabular text formats
-#[derive(Debug)]
-pub struct TsvReader<'r> {
-    rb: ReadBuffer<'r>,
+/// Track the current state of the TSV parser
+#[derive(Clone, Debug, Default)]
+pub struct TsvState {
     headers: Vec<String>,
     delim_char: u8,
     quote_char: u8,
-    // by storing the vec in here, we save an allocation on each line
-    cur_line: Vec<&'static str>,
 }
 
-impl<'r> TsvReader<'r> {
-    /// Create a new `TsvReader`
-    pub fn new<B>(data: B, params: (u8, u8)) -> Result<Self, EtError>
-    where
-        B: TryInto<ReadBuffer<'r>>,
-        EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
-    {
-        let mut rb = data.try_into()?;
-        let (delim_char, quote_char) = params;
+impl<'b: 's, 'r, 's> FromSlice<'b, 's> for TsvState {
+    // (delim_char, quote_char)
+    type State = (u8, u8);
+
+    fn parse(
+        buffer: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        NewLine::parse(buffer, eof, consumed, &mut 0)
+    }
+
+    fn get(
+        &mut self,
+        buffer: &'b [u8],
+        (delim_char, quote_char): &'s Self::State,
+    ) -> Result<(), EtError> {
         let con = &mut 0;
-        let header =
-            if let Some(NewLine(h)) = extract_opt::<NewLine>(rb.as_ref(), rb.eof, con, &mut 0)? {
-                h
-            } else {
-                return Err("could not read headers from TSV".into());
-            };
-        // prefill with something impossible so we can tell how big
-        let mut buffer = vec!["\t"; 32];
-        split(&mut buffer, header, delim_char, quote_char)?;
-        let headers: Vec<String> = buffer
+        let header = if let Some(NewLine(h)) = extract_opt::<NewLine>(buffer, false, con, &mut 0)? {
+            h
+        } else {
+            return Err("could not read headers from TSV".into());
+        };
+
+        // prefill with something impossible so we can tell how big the header is
+        let delim_str = [*delim_char];
+        let mut buffer = vec![core::str::from_utf8(&delim_str)?; 32];
+        let _ = split(&mut buffer, header, *delim_char, *quote_char)?;
+
+        self.headers = buffer
             .into_iter()
             .filter(|i| i != &"\t")
             .map(String::from)
             .collect();
-        let n_headers = headers.len();
-
-        rb.consumed += *con;
-        Ok(TsvReader {
-            rb,
-            headers,
-            cur_line: vec![""; n_headers],
-            delim_char,
-            quote_char,
-        })
-    }
-
-    /// Return the next record from the TSV file
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<Option<&[&str]>, EtError> {
-        let con = &mut 0;
-        let buffer = &self.rb.as_ref()[self.rb.consumed..];
-        let line =
-            if let Some(NewLine(l)) = extract_opt::<NewLine>(buffer, self.rb.eof, con, &mut 0)? {
-                l
-            } else {
-                return Ok(None);
-            };
-
-        // this is nasty, but I *think* it's sound as long as no other
-        // code messes with cur_line in between iterations of `next`?
-        unsafe {
-            split(
-                mem::transmute(&mut self.cur_line),
-                line,
-                self.delim_char,
-                self.quote_char,
-            )
-            .map_err(|e| e.add_context_from_readbuffer(&self.rb))?;
-        }
-
-        self.rb.consumed += *con;
-        self.rb.record_pos += 1;
-        // we pass along the headers too since they can be variable for tsvs
-        Ok(Some(self.cur_line.as_ref()))
+        self.delim_char = *delim_char;
+        self.quote_char = *quote_char;
+        Ok(())
     }
 }
 
-impl<'r> RecordReader for TsvReader<'r> {
-    fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError> {
-        if let Some(record) = self.next()? {
-            Ok(Some(record.iter().map(|i| (*i).into()).collect()))
-        } else {
-            Ok(None)
+impl<'r> StateMetadata for TsvState {
+    fn header(&self) -> Vec<&str> {
+        let mut headers = Vec::new();
+        for header in &self.headers {
+            headers.push(header.as_ref());
         }
-    }
-
-    fn headers(&self) -> Vec<String> {
-        self.headers.clone()
-    }
-
-    fn metadata(&self) -> BTreeMap<String, Value> {
-        BTreeMap::new()
+        headers
     }
 }
+
+/// Values from the current line of the TSV
+#[derive(Debug, Default, PartialEq)]
+pub struct TsvRecord<'r> {
+    values: Vec<Value<'r>>,
+}
+
+impl<'b: 's, 's> FromSlice<'b, 's> for TsvRecord<'s> {
+    type State = TsvState;
+
+    fn parse(
+        buffer: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        NewLine::parse(buffer, eof, consumed, &mut 0)
+    }
+
+    fn get(&mut self, mut buffer: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
+        if buffer.last() == Some(&b'\n') {
+            buffer = &buffer[..buffer.len() - 1]
+        }
+        if buffer.last() == Some(&b'\r') {
+            buffer = &buffer[..buffer.len() - 1]
+        }
+        let mut records = vec![""; state.headers.len()];
+        let n_records = split(&mut records, buffer, state.delim_char, state.quote_char)?;
+        if n_records != state.headers.len() {
+            return Err("Line had a bad number of records".into());
+        }
+        self.values = records.into_iter().map(Value::from).collect();
+        Ok(())
+    }
+}
+
+impl<'r> From<TsvRecord<'r>> for Vec<Value<'r>> {
+    fn from(record: TsvRecord<'r>) -> Self {
+        record.values
+    }
+}
+
+impl_reader!(TsvReader, TsvRecord, TsvRecord<'r>, TsvState, (u8, u8));
 
 #[cfg(test)]
 mod test {
     use super::*;
 
+    use crate::readers::RecordReader;
+
+    #[test]
+    fn test_split() -> Result<(), EtError> {
+        let mut buffer = Vec::new();
+
+        assert_eq!(split(&mut buffer, b"1,2,3,4", b',', b'"')?, 4);
+        assert_eq!(&buffer, &["1", "2", "3", "4"]);
+
+        Ok(())
+    }
+
     #[test]
     fn test_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\nrow\nanother row";
-        let mut pt = TsvReader::new(TEST_TEXT, (b'\t', b'"'))?;
+        let mut pt = TsvReader::new(TEST_TEXT, Some((b'\t', b'"')))?;
 
         assert_eq!(&pt.headers(), &["header"]);
         let mut ix = 0;
-        while let Some(fields) = pt.next()? {
+        while let Some(TsvRecord { values }) = pt.next()? {
             match ix {
-                0 => assert_eq!(fields, &["row"]),
-                1 => assert_eq!(fields, &["another row"]),
+                0 => {
+                    assert_eq!(values.len(), 1);
+                    assert_eq!(values[0], "row".into());
+                }
+                1 => {
+                    assert_eq!(values.len(), 1);
+                    assert_eq!(values[0], "another row".into());
+                }
                 _ => return Err("bad line".into()),
             }
             ix += 1;
@@ -173,14 +191,22 @@ mod test {
     #[test]
     fn test_two_size_reader() -> Result<(), EtError> {
         const TEST_TEXT: &[u8] = b"header\tcol1\nrow\t2\nanother row\t3";
-        let mut pt = TsvReader::new(TEST_TEXT, (b'\t', b'"'))?;
+        let mut pt = TsvReader::new(TEST_TEXT, Some((b'\t', b'"')))?;
 
         assert_eq!(&pt.headers(), &["header", "col1"]);
         let mut ix = 0;
-        while let Some(fields) = pt.next()? {
+        while let Some(TsvRecord { values }) = pt.next()? {
             match ix {
-                0 => assert_eq!(fields, &["row", "2"]),
-                1 => assert_eq!(fields, &["another row", "3"]),
+                0 => {
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values[0], "row".into());
+                    assert_eq!(values[1], "2".into());
+                }
+                1 => {
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values[0], "another row".into());
+                    assert_eq!(values[1], "3".into());
+                }
                 _ => return Err("bad line".into()),
             }
             ix += 1;

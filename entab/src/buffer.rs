@@ -227,11 +227,12 @@ impl<'r> ReadBuffer<'r> {
                 }
             }
         }
-        let buffer = {
-            ::core::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer)
-        };
+        let buffer = { ::core::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer) };
         let cur_state = {
-            ::core::mem::transmute::<&mut <T as FromSlice<'b, 's>>::State, &'s mut <T as FromSlice<'b, 's>>::State>(state)
+            ::core::mem::transmute::<
+                &mut <T as FromSlice<'b, 's>>::State,
+                &'s mut <T as FromSlice<'b, 's>>::State,
+            >(state)
         };
         self.record_pos += 1;
         T::get(record, &buffer[consumed..self.consumed], cur_state)

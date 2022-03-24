@@ -38,18 +38,20 @@ where
         FileType::Fasta => Box::new(parsers::fasta::FastaReader::new(data, None)?),
         FileType::Fastq => Box::new(parsers::fastq::FastqReader::new(data, None)?),
         FileType::Facs => Box::new(parsers::flow::FcsReader::new(data, None)?),
-        FileType::InficonHapsite => {
-            Box::new(parsers::inficon::InficonReader::new(data, None)?)
-        }
+        FileType::InficonHapsite => Box::new(parsers::inficon::InficonReader::new(data, None)?),
         #[cfg(feature = "std")]
         FileType::Png => Box::new(parsers::png::PngReader::new(data, None)?),
         FileType::Sam => Box::new(parsers::sam::SamReader::new(data, None)?),
-        FileType::ThermoCf => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(data, None)?),
-        FileType::ThermoDxf => {
-            Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(data, None)?)
-        }
+        FileType::ThermoCf => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(
+            data, None,
+        )?),
+        FileType::ThermoDxf => Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(
+            data, None,
+        )?),
         // FIXME: TSV should take Option like the other parsers
-        FileType::DelimitedText(d) => Box::new(parsers::tsv::TsvReader::new(data, (d, b'"'))?),
+        FileType::DelimitedText(d) => {
+            Box::new(parsers::tsv::TsvReader::new(data, Some((d, b'"')))?)
+        }
         _ => return Err(format!("No parser available for the filetype {:?}", file_type).into()),
     })
 }
@@ -160,9 +162,9 @@ where
         Ok((buffer, state))
     } else {
         Err(format!(
-                "Could not initialize state {}",
-                ::core::any::type_name::<S>()
-                )
-            .into())
+            "Could not initialize state {}",
+            ::core::any::type_name::<S>()
+        )
+        .into())
     }
 }

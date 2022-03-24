@@ -116,8 +116,7 @@ impl Reader {
         };
         let (mut reader, _) = decompress(stream).map_err(to_py)?;
         let filetype = reader.sniff_filetype().map_err(to_py)?;
-        let filetype = parser
-            .map_or_else(|| filetype, FileType::from_parser_name);
+        let filetype = parser.map_or_else(|| filetype, FileType::from_parser_name);
         let reader = get_reader(filetype, reader).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();

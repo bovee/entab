@@ -138,7 +138,7 @@ impl<'a> From<i64> for Value<'a> {
 
 impl<'a> From<u64> for Value<'a> {
     fn from(x: u64) -> Self {
-        // there's probably a better solution here?
+        // TODO: there's probably a better solution here?
         Value::Integer(i64::try_from(x).expect("u64 exceeded i64 memory limit"))
     }
 }

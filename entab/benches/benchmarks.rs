@@ -12,7 +12,6 @@ use entab::parsers::png::PngReader;
 use entab::parsers::sam::BamReader;
 use entab::readers::{get_reader, init_state};
 
-
 fn benchmark_raw_readers(c: &mut Criterion) {
     let mut raw_readers = c.benchmark_group("raw readers");
     raw_readers.significance_level(0.01).sample_size(500);
