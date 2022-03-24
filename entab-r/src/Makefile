@@ -1,3 +1,3 @@
 all:
-	cargo build --release --package=entab-r --manifest-path=../Cargo.toml
+	cargo build --release
 	cp ../target/release/libentab.so .

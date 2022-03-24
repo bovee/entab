@@ -6,6 +6,10 @@ members = [
   "entab-py",
 ]
 
+exclude = [
+  "entab-r",
+]
+
 [profile.release]
 lto = true
 codegen-units = 1
