@@ -1,3 +1,3 @@
 all:
 	cargo build --release
-	cp ../target/release/libentab.so .
+	cp ../target/release/libentab.dylib .
