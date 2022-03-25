@@ -97,7 +97,7 @@ where
     let params = TsvParams::default();
 
     let mut writer: Box<dyn io::Write> = if let Some(i) = matches.value_of("output") {
-        Box::new(File::open(i)?)
+        Box::new(File::create(i)?)
     } else {
         Box::new(stdout)
     };
