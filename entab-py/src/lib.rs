@@ -1,12 +1,11 @@
 #![allow(clippy::needless_option_as_deref)]
 mod raw_io_wrapper;
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use entab_base::compression::decompress;
 use entab_base::error::EtError;
-use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
@@ -93,6 +92,7 @@ impl Reader {
     #[new]
     #[args(data = "None", filename = "None", parser = "None")]
     fn new(data: Option<&PyAny>, filename: Option<&str>, parser: Option<&str>) -> PyResult<Self> {
+        let mut params = BTreeMap::new();
         let stream: Box<dyn Read> = match (data, filename) {
             (Some(d), None) => {
                 if let Ok(bytes) = d.extract::<Vec<u8>>() {
@@ -107,17 +107,17 @@ impl Reader {
                     ));
                 }
             }
-            (None, Some(f)) => Box::new(File::open(f)?),
+            (None, Some(f)) => {
+                params.insert("filename".to_string(), Value::String(f.into()));
+                Box::new(File::open(f)?)
+            }
             _ => {
                 return Err(EntabError::new_err(
                     "One and only one of `data` or `filename` must be provided",
                 ))
             }
         };
-        let (mut reader, _) = decompress(stream).map_err(to_py)?;
-        let filetype = reader.sniff_filetype().map_err(to_py)?;
-        let filetype = parser.map_or_else(|| filetype, FileType::from_parser_name);
-        let reader = get_reader(filetype, reader).map_err(to_py)?;
+        let (reader, parser_used) = get_reader(stream, parser, Some(params)).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
 
@@ -133,7 +133,7 @@ impl Reader {
             .into();
 
         Ok(Reader {
-            parser: filetype.to_parser_name(),
+            parser: parser_used.to_string(),
             record_class,
             reader,
         })

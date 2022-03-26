@@ -2,9 +2,7 @@ use std::fs::File;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use entab::buffer::ReadBuffer;
 use entab::compression::decompress;
-use entab::filetype::FileType;
 use entab::parsers::agilent::chemstation::ChemstationMsReader;
 use entab::parsers::fasta::FastaReader;
 use entab::parsers::fastq::{FastqReader, FastqRecord, FastqState};
@@ -71,8 +69,7 @@ fn benchmark_raw_readers(c: &mut Criterion) {
     raw_readers.bench_function("bam reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/test.bam").unwrap();
-            let (stream, _, _) = decompress(Box::new(f)).unwrap();
-            let rb = ReadBuffer::from_reader(stream, None).unwrap();
+            let (rb, _) = decompress(f).unwrap();
             let mut reader = BamReader::new(rb, None).unwrap();
             while let Some(record) = reader.next().unwrap() {
                 black_box(record);
@@ -88,7 +85,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("generic chemstation reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/carotenoid_extract.d/MSD1.MS").unwrap();
-            let mut reader = get_reader(FileType::AgilentChemstationMs, f).unwrap();
+            let (mut reader, _) = get_reader(f, Some("chemstation_ms"), None).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -98,7 +95,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("generic fastq reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/test.fastq").unwrap();
-            let mut reader = get_reader(FileType::Fastq, f).unwrap();
+            let (mut reader, _) = get_reader(f, Some("fastq"), None).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -108,7 +105,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("flow reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs").unwrap();
-            let mut reader = get_reader(FileType::Facs, f).unwrap();
+            let (mut reader, _) = get_reader(f, Some("flow"), None).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }
@@ -118,7 +115,7 @@ fn benchmark_generic_readers(c: &mut Criterion) {
     generic_readers.bench_function("png reader", |b| {
         b.iter(|| {
             let f = File::open("tests/data/bmp_24.png").unwrap();
-            let mut reader = get_reader(FileType::Png, f).unwrap();
+            let (mut reader, _) = get_reader(f, Some("png"), None).unwrap();
             while let Some(record) = reader.next_record().unwrap() {
                 black_box(record);
             }

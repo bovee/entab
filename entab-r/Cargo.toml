@@ -1,11 +1,11 @@
 [package]
 name = "entab-r"
-version = "0.3.0-alpha.2"
+version = "0.3.0-beta.1"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-entab_base = { package = "entab", version = "0.3.0-alpha.2" }
+entab_base = { package = "entab", version = "0.3.0-beta.1" }
 extendr-api = "0.2.0"
 libR-sys = "0.2.0"
 

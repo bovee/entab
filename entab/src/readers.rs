@@ -6,54 +6,69 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use crate::buffer::ReadBuffer;
+use crate::compression::decompress;
 use crate::error::EtError;
-use crate::filetype::FileType;
 use crate::parsers;
 use crate::parsers::FromSlice;
 use crate::record::Value;
 
-/// Turn `rb` into a Reader of type `parser_type`
-pub fn get_reader<'r, B>(
-    file_type: FileType,
+/// Turn `rb` into a Reader of type `parser`.
+///
+/// If `parser` is `None`, infer the correct parser from the file type.
+pub fn get_reader<'n, 'p, 'r, B>(
     data: B,
-) -> Result<Box<dyn RecordReader + 'r>, EtError>
+    parser: Option<&'n str>,
+    params: Option<BTreeMap<String, Value<'p>>>,
+) -> Result<(Box<dyn RecordReader + 'r>, &'n str), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,
     EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
 {
-    Ok(match file_type {
-        FileType::Bam => Box::new(parsers::sam::BamReader::new(data, None)?),
-        FileType::AgilentChemstationFid => Box::new(
-            parsers::agilent::chemstation::ChemstationFidReader::new(data, None)?,
-        ),
-        FileType::AgilentChemstationMs => Box::new(
-            parsers::agilent::chemstation::ChemstationMsReader::new(data, None)?,
-        ),
-        FileType::AgilentChemstationMwd => Box::new(
-            parsers::agilent::chemstation::ChemstationMwdReader::new(data, None)?,
-        ),
-        FileType::AgilentChemstationUv => Box::new(
-            parsers::agilent::chemstation::ChemstationUvReader::new(data, None)?,
-        ),
-        FileType::Fasta => Box::new(parsers::fasta::FastaReader::new(data, None)?),
-        FileType::Fastq => Box::new(parsers::fastq::FastqReader::new(data, None)?),
-        FileType::Facs => Box::new(parsers::flow::FcsReader::new(data, None)?),
-        FileType::InficonHapsite => Box::new(parsers::inficon::InficonReader::new(data, None)?),
+    let (mut rb, _): (ReadBuffer<'r>, _) = decompress(data)?;
+    let parser_name = rb.sniff_filetype()?.to_parser_name(parser);
+    _get_reader(rb, parser_name, params.unwrap_or_else(BTreeMap::new))
+}
+
+/// Internal function to handle `get_reader` not inferring that the Reader constructors need to be
+/// created using `ReadBuffer` and not `B`.
+pub fn _get_reader<'n, 'p, 'r>(
+    rb: ReadBuffer<'r>,
+    parser_name: &'n str,
+    mut params: BTreeMap<String, Value<'p>>,
+) -> Result<(Box<dyn RecordReader + 'r>, &'n str), EtError> {
+    let reader: Box<dyn RecordReader + 'r> = match parser_name {
+        "bam" => Box::new(parsers::sam::BamReader::new(rb, None)?),
+        "chemstation_fid" => Box::new(parsers::agilent::chemstation::ChemstationFidReader::new(
+            rb, None,
+        )?),
+        "chemstation_ms" => Box::new(parsers::agilent::chemstation::ChemstationMsReader::new(
+            rb, None,
+        )?),
+        "chemstation_mwd" => Box::new(parsers::agilent::chemstation::ChemstationMwdReader::new(
+            rb, None,
+        )?),
+        "chemstation_uv" => Box::new(parsers::agilent::chemstation::ChemstationUvReader::new(
+            rb, None,
+        )?),
+        "csv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b',', b'"')))?),
+        "fasta" => Box::new(parsers::fasta::FastaReader::new(rb, None)?),
+        "fastq" => Box::new(parsers::fastq::FastqReader::new(rb, None)?),
+        "flow" => Box::new(parsers::flow::FcsReader::new(rb, None)?),
+        "inficon" => Box::new(parsers::inficon::InficonReader::new(rb, None)?),
         #[cfg(feature = "std")]
-        FileType::Png => Box::new(parsers::png::PngReader::new(data, None)?),
-        FileType::Sam => Box::new(parsers::sam::SamReader::new(data, None)?),
-        FileType::ThermoCf => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(
-            data, None,
-        )?),
-        FileType::ThermoDxf => Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(
-            data, None,
-        )?),
-        // FIXME: TSV should take Option like the other parsers
-        FileType::DelimitedText(d) => {
-            Box::new(parsers::tsv::TsvReader::new(data, Some((d, b'"')))?)
-        }
-        _ => return Err(format!("No parser available for the filetype {:?}", file_type).into()),
-    })
+        "png" => Box::new(parsers::png::PngReader::new(rb, None)?),
+        "sam" => Box::new(parsers::sam::SamReader::new(rb, None)?),
+        "thermo_cf" => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(rb, None)?),
+        "thermo_dxf" => Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(rb, None)?),
+        "tsv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b'\t', b'"')))?),
+        x => return Err(format!("No parser available for the parser {}", x).into()),
+    };
+    let _ = params.remove("filename");
+    if !params.is_empty() {
+        let keys: Vec<&str> = params.keys().map(AsRef::as_ref).collect();
+        return Err(format!("Unused params remain: {}", keys.join(",")).into());
+    }
+    Ok((reader, parser_name))
 }
 
 /// The trait that maps over "generic" `RecordReader`s

@@ -1,5 +1,3 @@
-use alloc::format;
-use alloc::string::{String, ToString};
 use core::marker::Copy;
 
 /// A file format.
@@ -69,7 +67,7 @@ pub enum FileType {
     /// Generic scientific data format
     Hdf5,
     /// Tab- or comma-seperated value format
-    DelimitedText(u8),
+    DelimitedText,
     /// Unknown file type
     Unknown,
 }
@@ -133,6 +131,7 @@ impl FileType {
     #[must_use]
     pub fn from_extension(ext: &str) -> &[Self] {
         match ext {
+            "csv" | "tsv" => &[FileType::DelimitedText],
             "gz" | "gzip" => &[FileType::Gzip],
             "bz" | "bz2" | "bzip" => &[FileType::Bzip],
             "xz" => &[FileType::Lzma],
@@ -165,51 +164,27 @@ impl FileType {
         }
     }
 
-    /// Returns the "best" parser for a given file
-    #[must_use]
-    pub fn from_parser_name(parser_name: &str) -> Self {
-        match parser_name {
-            "chemstation_fid" => FileType::AgilentChemstationFid,
-            "chemstation_ms" => FileType::AgilentChemstationMs,
-            "chemstation_mwd" => FileType::AgilentChemstationMwd,
-            "chemstation_uv" => FileType::AgilentChemstationUv,
-            "csv" => FileType::DelimitedText(b','),
-            "bam" => FileType::Bam,
-            "fcs" => FileType::Facs,
-            "fasta" => FileType::Fasta,
-            "fastq" => FileType::Fastq,
-            "inficon" => FileType::InficonHapsite,
-            "png" => FileType::Png,
-            "sam" => FileType::Sam,
-            "thermo_cf" => FileType::ThermoCf,
-            "thermo_dxf" => FileType::ThermoDxf,
-            "tsv" => FileType::DelimitedText(b'\t'),
-            _ => FileType::Unknown,
-        }
-    }
-
     /// Returns the "parser name" associated with this file type
     #[must_use]
-    pub fn to_parser_name(&self) -> String {
-        match self {
-            FileType::AgilentChemstationFid => "chemstation_fid",
-            FileType::AgilentChemstationMs => "chemstation_ms",
-            FileType::AgilentChemstationMwd => "chemstation_mwd",
-            FileType::AgilentChemstationUv => "chemstation_uv",
-            FileType::Bam => "bam",
-            FileType::Facs => "fcs",
-            FileType::Fasta => "fasta",
-            FileType::Fastq => "fastq",
-            FileType::InficonHapsite => "inficon",
-            FileType::Png => "png",
-            FileType::Sam => "sam",
-            FileType::ThermoCf => "thermo_cf",
-            FileType::ThermoDxf => "thermo_dxf",
-            FileType::DelimitedText(b',') => "csv",
-            FileType::DelimitedText(b'\t') => "tsv",
-            _ => return format!("unsupported/{:?}", self),
+    pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> &'a str {
+        match (self, hint) {
+            (FileType::AgilentChemstationFid, None) => "chemstation_fid",
+            (FileType::AgilentChemstationMs, None) => "chemstation_ms",
+            (FileType::AgilentChemstationMwd, None) => "chemstation_mwd",
+            (FileType::AgilentChemstationUv, None) => "chemstation_uv",
+            (FileType::Bam, None) => "bam",
+            (FileType::Fasta, None) => "fasta",
+            (FileType::Fastq, None) => "fastq",
+            (FileType::Facs, None) => "flow",
+            (FileType::InficonHapsite, None) => "inficon_hapsite",
+            (FileType::Png, None) => "png",
+            (FileType::Sam, None) => "sam",
+            (FileType::ThermoCf, None) => "thermo_cf",
+            (FileType::ThermoDxf, None) => "thermo_dxf",
+            (FileType::DelimitedText, None) => "tsv",
+            (_, Some(x)) => x,
+            _ => "unsupported",
         }
-        .to_string()
     }
 }
 
@@ -220,24 +195,23 @@ mod tests {
     #[test]
     fn test_parser_names() {
         let filetypes = [
-            FileType::AgilentChemstationFid,
-            FileType::AgilentChemstationMs,
-            FileType::AgilentChemstationMwd,
-            FileType::AgilentChemstationUv,
-            FileType::Bam,
-            FileType::Facs,
-            FileType::Fasta,
-            FileType::Fastq,
-            FileType::InficonHapsite,
-            FileType::Png,
-            FileType::Sam,
-            FileType::ThermoCf,
-            FileType::ThermoDxf,
-            FileType::DelimitedText(b','),
-            FileType::DelimitedText(b'\t'),
+            (FileType::AgilentChemstationFid, "chemstation_fid"),
+            (FileType::AgilentChemstationMs, "chemstation_ms"),
+            (FileType::AgilentChemstationMwd, "chemstation_mwd"),
+            (FileType::AgilentChemstationUv, "chemstation_uv"),
+            (FileType::Bam, "bam"),
+            (FileType::Fasta, "fasta"),
+            (FileType::Fastq, "fastq"),
+            (FileType::Facs, "flow"),
+            (FileType::InficonHapsite, "inficon_hapsite"),
+            (FileType::Png, "png"),
+            (FileType::Sam, "sam"),
+            (FileType::ThermoCf, "thermo_cf"),
+            (FileType::ThermoDxf, "thermo_dxf"),
+            (FileType::DelimitedText, "tsv"),
         ];
-        for ft in filetypes {
-            assert_eq!(FileType::from_parser_name(&ft.to_parser_name()), ft);
+        for (ft, parser) in filetypes {
+            assert_eq!(ft.to_parser_name(None), parser);
         }
     }
 }

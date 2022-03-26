@@ -1,10 +1,9 @@
 mod util;
 
+use std::collections::BTreeMap;
 use std::fs::File;
 
-use entab_base::compression::decompress;
 use entab_base::error::EtError;
-use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use extendr_api::{append, append_lang, append_with_name, class_symbol, extendr, extendr_module, lang, make_lang, Robj};
@@ -46,17 +45,17 @@ struct Reader {
 
 fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
     let file = File::open(filename)?;
-    let (mut reader, _) = decompress(file)?;
-
-    let filetype = if parser == "" {
-        reader.sniff_filetype()?
+    let parser = if parser == "" {
+        None
     } else {
-        FileType::from_parser_name(parser)
+        Some(parser)
     };
-    let reader = get_reader(filetype, reader)?;
+    let mut params = BTreeMap::new();
+    params.insert("filename".to_string(), Value::String(filename.into()));
+    let (reader, parser_used) = get_reader(file, parser, Some(params))?;
     let header_names = reader.headers().into();
     Ok(Reader {
-        parser: filetype.to_parser_name(),
+        parser: parser_used.to_string(),
         header_names,
         reader,
     }.into())

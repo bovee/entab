@@ -1,5 +1,6 @@
 mod tsv_params;
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io;
@@ -10,9 +11,8 @@ use clap::{crate_authors, crate_version, Arg, Command};
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
-use entab::compression::decompress;
-use entab::filetype::FileType;
 use entab::readers::get_reader;
+use entab::record::Value;
 use entab::EtError;
 
 use crate::tsv_params::TsvParams;
@@ -43,7 +43,7 @@ where
         .arg(
             Arg::new("parser")
                 .short('p')
-                .help("Parser to use [if not specified, file type will be auto-detected]")
+                .help("Parser to use [if not specified, it will be auto-detected]")
                 .takes_value(true),
         )
         .arg(
@@ -75,24 +75,22 @@ where
     #[cfg(feature = "mmap")]
     let mmap: Mmap;
 
-    let (mut rb, _) = if let Some(i) = matches.value_of("input") {
+    let mut parse_params = BTreeMap::new();
+    let parser = matches.value_of("parser");
+    let (mut rec_reader, _) = if let Some(i) = matches.value_of("input") {
+        parse_params.insert("filename".to_string(), Value::String(i.into()));
         let file = File::open(i)?;
         #[cfg(feature = "mmap")]
         {
             mmap = unsafe { Mmap::map(&file)? };
-            decompress(mmap.as_ref())?
+            get_reader(mmap.as_ref(), parser, Some(parse_params))?
         }
         #[cfg(not(feature = "mmap"))]
-        decompress(file)?
+        get_reader(file, parser, Some(parse_params))?
     } else {
         let buffer: Box<dyn io::Read> = Box::new(stdin);
-        decompress(buffer)?
+        get_reader(buffer, parser, Some(parse_params))?
     };
-    let filetype = rb.sniff_filetype()?;
-    let parser = matches
-        .value_of("parser")
-        .map_or_else(|| filetype, FileType::from_parser_name);
-    let mut rec_reader = get_reader(parser, rb)?;
     // TODO: allow user to set these
     let params = TsvParams::default();
 
