@@ -1,11 +1,12 @@
 TARGET_DIR = ../target
 LIBDIR = $(TARGET_DIR)/release
-ifeq ($(shell uname -s),Darwin)
-	STATLIB = libentab.dylib
-else
-	STATLIB = libentab.so
-endif
+STATLIB = libentab.so
 PKG_LIBS = -L$(LIBDIR) -lentab
+ifeq ($(shell uname -s),Darwin)
+	PLATFORM_STATLIB = libentab.dylib
+else
+	PLATFORM_STATLIB = libentab.so
+endif
 
 all: C_clean
 
@@ -13,7 +14,7 @@ $(SHLIB): $(STATLIB)
 
 $(STATLIB):
 	cargo build --release --manifest-path=../Cargo.toml --target-dir $(TARGET_DIR)
-	mv ./$(LIBDIR)/$(STATLIB) .
+	mv ./$(LIBDIR)/$(PLATFORM_STATLIB) ./$(STATLIB)
 
 C_clean:
 	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS)
