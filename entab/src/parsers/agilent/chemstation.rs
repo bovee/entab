@@ -609,7 +609,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
 
         let delta = extract::<i16>(rb, con, &mut Endian::Little)?;
         if delta == -32768 {
-            state.cur_intensity = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
+            state.cur_intensity = f64::from(extract::<i32>(rb, con, &mut Endian::Little)?);
         } else {
             state.cur_intensity += f64::from(delta);
         }
