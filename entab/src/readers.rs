@@ -25,7 +25,7 @@ where
     EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
 {
     let (mut rb, _): (ReadBuffer<'r>, _) = decompress(data)?;
-    let parser_name = rb.sniff_filetype()?.to_parser_name(parser);
+    let parser_name = rb.sniff_filetype()?.to_parser_name(parser)?;
     _get_reader(rb, parser_name, params.unwrap_or_else(BTreeMap::new))
 }
 
@@ -55,6 +55,16 @@ pub fn _get_reader<'n, 'p, 'r>(
         "fastq" => Box::new(parsers::fastq::FastqReader::new(rb, None)?),
         "flow" => Box::new(parsers::flow::FcsReader::new(rb, None)?),
         "inficon" => Box::new(parsers::inficon::InficonReader::new(rb, None)?),
+        #[cfg(feature = "std")]
+        "masshunter_dad" => Box::new(parsers::agilent::masshunter::MasshunterDadReader::new(
+            rb,
+            Some(
+                params
+                    .remove("filename")
+                    .ok_or_else(|| "No filename found".into())
+                    .and_then(Value::into_string)?,
+            ),
+        )?),
         #[cfg(feature = "std")]
         "png" => Box::new(parsers::png::PngReader::new(rb, None)?),
         "sam" => Box::new(parsers::sam::SamReader::new(rb, None)?),
@@ -114,12 +124,8 @@ macro_rules! impl_reader {
                 B: ::core::convert::TryInto<$crate::buffer::ReadBuffer<'r>>,
                 EtError: From<<B as ::core::convert::TryInto<$crate::buffer::ReadBuffer<'r>>>::Error>,
             {
-                let mut rb = data.try_into()?;
-                match rb.next(&mut params.unwrap_or_default())? {
-                    // Some(state) => Ok($reader { rb, state, current_value: ::core::default::Default::default() }),
-                    Some(state) => Ok($reader { rb, state }),
-                    None => Err(::alloc::format!("Could not initialize state {}", ::core::any::type_name::<$state>()) .into())
-                }
+                let (rb, state) = $crate::readers::init_state(data, params)?;
+                Ok($reader { rb, state })
             }
 
             /// Return the specialized version of this record.
@@ -140,11 +146,7 @@ macro_rules! impl_reader {
             fn next_record(
                 &mut self,
             ) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
-                if let Some(record) = self.rb.next::<$record>(&mut self.state)? {
-                    Ok(Some(record.into()))
-                } else {
-                    Ok(None)
-                }
+                Ok(self.next()?.map(|r| r.into()))
             }
 
             /// The headers for this Reader.
@@ -165,6 +167,7 @@ macro_rules! impl_reader {
 
 /// Set up a state and a `ReadBuffer` for parsing.
 #[doc(hidden)]
+#[inline]
 pub fn init_state<'r, S, B, P>(data: B, params: Option<P>) -> Result<(ReadBuffer<'r>, S), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,

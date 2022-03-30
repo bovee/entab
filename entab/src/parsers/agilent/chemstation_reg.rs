@@ -32,7 +32,6 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationRegState {
         let con = &mut 0;
         let header = rb.extract::<&[u8]>(45)?;
 
-        println!("{:x?}", &header[20..30]);
         if header[25] != b'A' {
             return Err(EtError::new("Version of REG file is too new", &rb));
         }

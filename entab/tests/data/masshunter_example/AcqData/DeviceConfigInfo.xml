@@ -1,0 +1,378 @@
+<DeviceConfigInformation>
+  <Device>
+    <DeviceID>TCC_1</DeviceID>
+    <DisplayName>Column Comp.</DisplayName>
+  </Device>
+  <Device>
+    <DeviceID>HiP-ALS_1</DeviceID>
+    <DisplayName>HiP Sampler</DisplayName>
+  </Device>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>ExtendedRunInformation</ResourceName>
+    <ResourceID>RunStart_ValvePosition_Description</ResourceID>
+    <Value>Port 1 -&gt; 6</Value>
+    <Units />
+    <DisplayName>Run Start Valve Pos. Desc.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>ExtendedRunInformation</ResourceName>
+    <ResourceID>RunStart_ValvePosition_Number</ResourceID>
+    <Value>1</Value>
+    <Units />
+    <DisplayName>Run Start Valve Pos. No.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>HiP-ALS_1</DeviceID>
+    <ResourceName>method</ResourceName>
+    <ResourceID>Thermostat_Temperature</ResourceID>
+    <Value />
+    <Units>°C</Units>
+    <DisplayName>Thermostat Temp.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_BatchNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Batch Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_Comment</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Comment</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_Description</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Description</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_Diameter</ResourceID>
+    <Value />
+    <Units>mm</Units>
+    <DisplayName>Tag Diameter</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_Injections</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Inj. Count</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_Length</ResourceID>
+    <Value />
+    <Units>mm</Units>
+    <DisplayName>Tag Length</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_MaxPH</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Max. pH</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_MaxPressure</ResourceID>
+    <Value />
+    <Units>bar</Units>
+    <DisplayName>Tag Max. Press.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_MaxTemperature</ResourceID>
+    <Value />
+    <Units>°C</Units>
+    <DisplayName>Tag Max. Temp.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_ParticleSize</ResourceID>
+    <Value />
+    <Units>µm</Units>
+    <DisplayName>Tag Particle Size</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_ProductNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Product Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_SerialNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag Serial Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_Content_VoidVolume</ResourceID>
+    <Value />
+    <Units>mL</Units>
+    <DisplayName>Tag Void Volume</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag_State</ResourceID>
+    <Value>NotPresent</Value>
+    <Units />
+    <DisplayName>Tag State</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_BatchNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Batch No.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_Comment</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Comment</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_Description</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Description</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_Diameter</ResourceID>
+    <Value />
+    <Units>mm</Units>
+    <DisplayName>Tag2 Diameter</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_Injections</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Inj. Count</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_Length</ResourceID>
+    <Value />
+    <Units>mm</Units>
+    <DisplayName>Tag2 Length</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_MaxPH</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Max. pH</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_MaxPressure</ResourceID>
+    <Value />
+    <Units>bar</Units>
+    <DisplayName>Tag2 Max. Press.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_MaxTemperature</ResourceID>
+    <Value />
+    <Units>°C</Units>
+    <DisplayName>Tag2 Max. Temp.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_ParticleSize</ResourceID>
+    <Value />
+    <Units>µm</Units>
+    <DisplayName>Tag2 Particle Size</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_ProductNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Product No.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_SerialNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Tag2 Serial Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_Content_VoidVolume</ResourceID>
+    <Value />
+    <Units>mL</Units>
+    <DisplayName>Tag2 Void Volume</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Tag2_State</ResourceID>
+    <Value>NotPresent</Value>
+    <Units />
+    <DisplayName>Tag2 State</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>ExtendedRunInformation</ResourceName>
+    <ResourceID>RunStop_ValvePosition_Description</ResourceID>
+    <Value>Port 1 -&gt; 6</Value>
+    <Units />
+    <DisplayName>Run Stop Valve Pos. Desc.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>ExtendedRunInformation</ResourceName>
+    <ResourceID>RunStop_ValvePosition_Number</ResourceID>
+    <Value>1</Value>
+    <Units />
+    <DisplayName>Run Stop Valve Pos. No.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>BatchNumber</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Untagged Batch Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>ColumnDiameter</ResourceID>
+    <Value>0</Value>
+    <Units>mm</Units>
+    <DisplayName>Untagged Diameter</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>ColumnLength</ResourceID>
+    <Value>150</Value>
+    <Units>mm</Units>
+    <DisplayName>Untagged Length</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Comment</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Untagged Comment</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>Description</ResourceID>
+    <Value />
+    <Units />
+    <DisplayName>Untagged Description</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>MaxpH</ResourceID>
+    <Value>0</Value>
+    <Units />
+    <DisplayName>Untagged Max. pH</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>MaxPressure</ResourceID>
+    <Value>1200</Value>
+    <Units>bar</Units>
+    <DisplayName>Untagged Max. Press.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>MaxTemperature</ResourceID>
+    <Value>90</Value>
+    <Units>°C</Units>
+    <DisplayName>Untagged Max. Temp.</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>NoOfInjections</ResourceID>
+    <Value>1068</Value>
+    <Units />
+    <DisplayName>Untagged Inj. Count</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>ParticleSize</ResourceID>
+    <Value>0</Value>
+    <Units>µm</Units>
+    <DisplayName>Untagged Particle Size</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>ProductNumber</ResourceID>
+    <Value>186004802</Value>
+    <Units />
+    <DisplayName>Untagged Product Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>SerialNumber</ResourceID>
+    <Value>BEHamide</Value>
+    <Units />
+    <DisplayName>Untagged Serial Number</DisplayName>
+  </Parameter>
+  <Parameter>
+    <DeviceID>TCC_1</DeviceID>
+    <ResourceName>columntags</ResourceName>
+    <ResourceID>VoidVolume</ResourceID>
+    <Value>0</Value>
+    <Units>mL</Units>
+    <DisplayName>Untagged Void Volume</DisplayName>
+  </Parameter>
+</DeviceConfigInformation>

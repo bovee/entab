@@ -1,4 +1,7 @@
+use alloc::format;
 use core::marker::Copy;
+
+use crate::error::EtError;
 
 /// A file format.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,7 +42,9 @@ pub enum FileType {
     /// Agilent format used for UV-visible detector trace data
     AgilentChemstationUv,
     /// Agilent format used for diode array detector trace data
-    AgilentDad, // sd
+    AgilentMasshunterDad,
+    /// Header file bundled with `AgilentMasshunterDad` files
+    AgilentMasshunterDadHeader,
     /// Bruker format
     BrukerBaf,
     /// Bruker format
@@ -98,6 +103,8 @@ impl FileType {
                 [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstationMs,
                 [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
                 [0x03, 0x31, 0x33, 0x31] => return FileType::AgilentChemstationUv,
+                [0x02, 0x02, 0x00, 0x00] => return FileType::AgilentMasshunterDadHeader,
+                [0x03, 0x02, 0x00, 0x00] => return FileType::AgilentMasshunterDad,
                 [0x28, 0xB5, 0x2F, 0xFD] => return FileType::Zstd,
                 [0xFF, 0xFF, 0x06 | 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
@@ -131,34 +138,36 @@ impl FileType {
     #[must_use]
     pub fn from_extension(ext: &str) -> &[Self] {
         match ext {
-            "csv" | "tsv" => &[FileType::DelimitedText],
-            "gz" | "gzip" => &[FileType::Gzip],
+            "ami" => &[FileType::BrukerMsms],
+            "baf" => &[FileType::BrukerBaf],
+            "bam" => &[FileType::Bam],
             "bz" | "bz2" | "bzip" => &[FileType::Bzip],
-            "xz" => &[FileType::Lzma],
-            "zstd" => &[FileType::Zstd],
+            "cdf" => &[FileType::NetCdf],
+            "cf" => &[FileType::ThermoCf],
             "ch" => &[
                 FileType::AgilentChemstationFid,
                 FileType::AgilentChemstationMwd,
             ],
-            "ms" => &[FileType::AgilentChemstationMs],
-            "uv" => &[FileType::AgilentChemstationUv],
-            "bam" => &[FileType::Bam],
-            "baf" => &[FileType::BrukerBaf],
-            "ami" => &[FileType::BrukerMsms],
-            "fcs" | "lmd" => &[FileType::Facs],
+            "csv" | "tsv" => &[FileType::DelimitedText],
+            "dxf" => &[FileType::ThermoDxf],
             "fa" | "faa" | "fasta" | "fna" => &[FileType::Fasta],
             "faq" | "fastq" | "fq" => &[FileType::Fastq],
+            "fcs" | "lmd" => &[FileType::Facs],
+            "gz" | "gzip" => &[FileType::Gzip],
             "hdf" => &[FileType::Hdf5],
-            "raw" => &[FileType::ThermoRaw],
-            "mzxml" => &[FileType::MzXml],
-            "cdf" => &[FileType::NetCdf],
-            "png" => &[FileType::Png],
             "hps" => &[FileType::InficonHapsite],
+            "idx" => &[FileType::WatersAutospec],
+            "ms" => &[FileType::AgilentChemstationMs],
+            "mzxml" => &[FileType::MzXml],
+            "png" => &[FileType::Png],
+            "raw" => &[FileType::ThermoRaw],
             "sam" => &[FileType::Sam],
             "scf" => &[FileType::Scf],
-            "cf" => &[FileType::ThermoCf],
-            "dxf" => &[FileType::ThermoDxf],
-            "idx" => &[FileType::WatersAutospec],
+            "sd" => &[FileType::AgilentMasshunterDadHeader],
+            "sp" => &[FileType::AgilentMasshunterDad],
+            "uv" => &[FileType::AgilentChemstationUv],
+            "xz" => &[FileType::Lzma],
+            "zstd" => &[FileType::Zstd],
             "ztr" => &[FileType::Ztr],
             _ => &[FileType::Unknown],
         }
@@ -166,12 +175,14 @@ impl FileType {
 
     /// Returns the "parser name" associated with this file type
     #[must_use]
-    pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> &'a str {
-        match (self, hint) {
+    pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> Result<&'a str, EtError> {
+        Ok(match (self, hint) {
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",
             (FileType::AgilentChemstationMs, None) => "chemstation_ms",
             (FileType::AgilentChemstationMwd, None) => "chemstation_mwd",
             (FileType::AgilentChemstationUv, None) => "chemstation_uv",
+            (FileType::AgilentMasshunterDad, None) => "masshunter_dad",
+            (FileType::AgilentMasshunterDadHeader, None) => return Err("Reading the \".sd\" file is unsupported. Please open the \".sp\" data file instead".into()),
             (FileType::Bam, None) => "bam",
             (FileType::Fasta, None) => "fasta",
             (FileType::Fastq, None) => "fastq",
@@ -183,8 +194,8 @@ impl FileType {
             (FileType::ThermoDxf, None) => "thermo_dxf",
             (FileType::DelimitedText, None) => "tsv",
             (_, Some(x)) => x,
-            _ => "unsupported",
-        }
+            (x, _) => return Err(format!("{:?} doesn't have a parser", x).into())
+        })
     }
 }
 
@@ -199,6 +210,7 @@ mod tests {
             (FileType::AgilentChemstationMs, "chemstation_ms"),
             (FileType::AgilentChemstationMwd, "chemstation_mwd"),
             (FileType::AgilentChemstationUv, "chemstation_uv"),
+            (FileType::AgilentMasshunterDad, "masshunter_dad"),
             (FileType::Bam, "bam"),
             (FileType::Fasta, "fasta"),
             (FileType::Fastq, "fastq"),
@@ -211,7 +223,7 @@ mod tests {
             (FileType::DelimitedText, "tsv"),
         ];
         for (ft, parser) in filetypes {
-            assert_eq!(ft.to_parser_name(None), parser);
+            assert_eq!(ft.to_parser_name(None).unwrap(), parser);
         }
     }
 }

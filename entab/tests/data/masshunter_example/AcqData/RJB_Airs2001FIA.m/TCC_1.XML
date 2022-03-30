@@ -1,0 +1,31 @@
+<ColumnCompMethod xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" ModuleType="G1316C" schemaVersion="1.0.4" ModuleOptions="">
+  <ConfigurationXml>&lt;ColumnCompConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" schemaVersion="1.0.2"&gt;&lt;DisplayName&gt;Column Comp.&lt;/DisplayName&gt;&lt;SerialNumber&gt;DEBAC05711&lt;/SerialNumber&gt;&lt;ModuleType&gt;G1316C&lt;/ModuleType&gt;&lt;ModuleDisplayType&gt;G1316C&lt;/ModuleDisplayType&gt;&lt;ConnectionInfo&gt;&lt;ConnectionType&gt;ConnectionType_IPAddress&lt;/ConnectionType&gt;&lt;IPAddress&gt;192.168.254.11&lt;/IPAddress&gt;&lt;/ConnectionInfo&gt;&lt;FirmwareRevision&gt;A.06.53 [002]&lt;/FirmwareRevision&gt;&lt;IsColumnSwitchingValveInstalled&gt;true&lt;/IsColumnSwitchingValveInstalled&gt;&lt;ColumnValveVersion&gt;6Port2Positions1200Bar&lt;/ColumnValveVersion&gt;&lt;/ColumnCompConfig&gt;</ConfigurationXml>
+  <Timetable />
+  <StopTime>
+    <StopTimeMode>StopTime_NoLimit</StopTimeMode>
+  </StopTime>
+  <PostTime>
+    <PostTimeMode>PostTime_Off</PostTimeMode>
+  </PostTime>
+  <ColumnValvePosition>ValvePos_1_6_10</ColumnValvePosition>
+  <TemperatureCorrection>
+    <Linear>0</Linear>
+    <Offset>0</Offset>
+  </TemperatureCorrection>
+  <LeftTemperatureControl>
+    <TemperatureControlMode>TemperatureSet</TemperatureControlMode>
+    <Temperature>30</Temperature>
+    <NotReadyLimit>
+      <NotReadyLimitOn>true</NotReadyLimitOn>
+      <NotReadyLimitValue>0.8</NotReadyLimitValue>
+    </NotReadyLimit>
+  </LeftTemperatureControl>
+  <RightTemperatureControl>
+    <TemperatureControlMode>Combined</TemperatureControlMode>
+    <NotReadyLimit>
+      <NotReadyLimitOn>true</NotReadyLimitOn>
+      <NotReadyLimitValue>0.8</NotReadyLimitValue>
+    </NotReadyLimit>
+  </RightTemperatureControl>
+  <ReadyWhenFrontDoorOpen>true</ReadyWhenFrontDoorOpen>
+</ColumnCompMethod>

@@ -77,6 +77,14 @@ impl<'a> Value<'a> {
             .map_err(|e| EtError::from(e.to_string()))?;
         Ok(Self::Datetime(datetime))
     }
+
+    /// If the Value is a String, return the string.
+    pub fn into_string(self) -> Result<String, EtError> {
+        if let Value::String(s) = self {
+            return Ok(s.into_owned());
+        }
+        Err(EtError::from("Value was not a string"))
+    }
 }
 
 impl<'a, T: Into<Value<'a>>> From<Option<T>> for Value<'a> {

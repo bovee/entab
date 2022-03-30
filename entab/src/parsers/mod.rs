@@ -32,7 +32,7 @@ pub mod tsv;
 pub trait FromSlice<'b: 's, 's>: Sized + Default {
     /// State is used to track information outside of the current slice scope that's used to create
     /// the value returned.
-    type State: Clone + core::fmt::Debug + Default + 's;
+    type State: core::fmt::Debug + Default + 's;
 
     /// Given a slice and state, determine how much of the slice needs to be parsed to return a
     /// value and update `consumed` with that amount. If no value can be parsed, return Ok(false),
