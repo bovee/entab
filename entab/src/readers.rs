@@ -47,7 +47,7 @@ pub fn _get_reader<'n, 'p, 'r>(
         "chemstation_mwd" => Box::new(parsers::agilent::chemstation::ChemstationMwdReader::new(
             rb, None,
         )?),
-        "chemstation_uv" => Box::new(parsers::agilent::chemstation::ChemstationUvReader::new(
+        "chemstation_uv" => Box::new(parsers::agilent::chemstation_new::ChemstationUvReader::new(
             rb, None,
         )?),
         "csv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b',', b'"')))?),
