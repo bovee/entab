@@ -1,14 +1,15 @@
-mod util;
-
 use std::collections::BTreeMap;
 use std::fs::File;
 
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use extendr_api::{append, append_lang, append_with_name, class_symbol, extendr, extendr_module, lang, make_lang, Robj};
+use extendr_api::prelude::*;
 
-use util::{unwrap_result, vec_to_frame, vec_to_list};
+#[allow(clippy::needless_pass_by_value)]
+fn to_r(err: EtError) -> Error {
+    err.to_string().into()
+}
 
 fn value_to_robj(value: Value) -> Robj {
     match value {
@@ -23,77 +24,46 @@ fn value_to_robj(value: Value) -> Robj {
             for v in l {
                 values.push(value_to_robj(v));
             }
-            vec_to_list(&values, None)
+            List::from_values(values).into()
         }
         Value::Record(r) => {
             let mut names = Vec::new();
             let mut values = Vec::new();
-            for (key, value) in r.into_iter() {
+            for (key, value) in r {
                 names.push(key);
                 values.push(value_to_robj(value));
             }
-            vec_to_list(&values, Some(&names.into()))
+            List::from_names_and_values(names, values).into()
         }
     }
 }
 
 struct Reader {
     parser: String,
-    header_names: Robj,
+    header_names: Vec<String>,
     reader: Box<dyn RecordReader>,
-}
-
-fn new_reader(filename: &str, parser: &str) -> Result<Robj, EtError> {
-    let file = File::open(filename)?;
-    let parser = if parser == "" {
-        None
-    } else {
-        Some(parser)
-    };
-    let mut params = BTreeMap::new();
-    params.insert("filename".to_string(), Value::String(filename.into()));
-    let (reader, parser_used) = get_reader(file, parser, Some(params))?;
-    let header_names = reader.headers().into();
-    Ok(Reader {
-        parser: parser_used.to_string(),
-        header_names,
-        reader,
-    }.into())
-}
-
-fn next_reader(reader: &mut Reader) -> Result<Robj, EtError> {
-    if let Some(record) = reader.reader.next_record()? {
-        let mut values = Vec::new();
-        for v in record {
-            values.push(value_to_robj(v));
-        }
-        Ok(vec_to_list(&values, Some(&reader.header_names)))
-    } else {
-        Ok(().into())
-    }
-}
-
-fn get_dataframe(reader: &mut Reader) -> Result<Robj, EtError> {
-    let mut data: Vec<Vec<Robj>> = vec![vec![]; reader.header_names.len()];
-    while let Some(record) = reader.reader.next_record()? {
-        let mut ix = 0;
-        for v in &record {
-            data[ix].push(value_to_robj(v.clone()));
-            ix += 1;
-        }
-    }
-    let mut vectors: Vec<Robj> = vec![];
-    for v in data {
-        vectors.push(v.into());
-    }
-    Ok(vec_to_frame(&vectors, &reader.header_names))
 }
 
 #[extendr]
 impl Reader {
-    fn new(filename: &str, parser: &str) -> Robj {
-        // TODO: move this back inline once extendr supports returning Result
-        unwrap_result(new_reader(filename, parser))
+    #[allow(clippy::new_ret_no_self)]
+    fn new(filename: &str, parser: &str) -> Result<Robj> {
+        let file = File::open(filename).map_err(|e| Error::from(e.to_string()))?;
+        let parser = if parser.is_empty() {
+            None
+        } else {
+            Some(parser)
+        };
+        let mut params = BTreeMap::new();
+        params.insert("filename".to_string(), Value::String(filename.into()));
+        let (reader, parser_used) = get_reader(file, parser, Some(params)).map_err(to_r)?;
+        let header_names = reader.headers();
+        Ok(Reader {
+            parser: parser_used.to_string(),
+            header_names,
+            reader,
+        }
+        .into())
     }
 
     fn parser(&self) -> &str {
@@ -108,24 +78,46 @@ impl Reader {
         let metadata = self.reader.metadata();
         let mut names = Vec::new();
         let mut values = Vec::new();
-        for (key, value) in metadata.into_iter() {
+        for (key, value) in metadata {
             names.push(key);
             values.push(value_to_robj(value));
         }
-        vec_to_list(&values, Some(&names.into()))
+        List::from_names_and_values(names, values).into()
     }
 
-    fn next(&mut self) -> Robj {
-        // TODO: move this back inline once extendr supports returning Result
-        unwrap_result(next_reader(self))
+    fn next(&mut self) -> Result<Robj> {
+        if let Some(record) = self.reader.next_record().map_err(to_r)? {
+            let mut values = Vec::new();
+            for v in record {
+                values.push(value_to_robj(v));
+            }
+            Ok(List::from_names_and_values(&self.header_names, values).into())
+        } else {
+            Ok(().into())
+        }
     }
 }
 
 #[extendr]
-fn as_data_frame(reader: &mut Reader) -> Robj {
-    unwrap_result(get_dataframe(reader))
+fn as_data_frame(reader: &mut Reader) -> Result<Robj> {
+    let mut data: Vec<Vec<Robj>> = vec![vec![]; reader.header_names.len()];
+    while let Some(record) = reader.reader.next_record().map_err(to_r)? {
+        for (ix, v) in record.into_iter().enumerate() {
+            data[ix].push(value_to_robj(v));
+        }
+    }
+    let mut vectors: Vec<Robj> = vec![];
+    for v in data {
+        vectors.push(v.into());
+    }
+    let obj: Robj = List::from_names_and_values(&reader.header_names, &vectors).into();
+    obj.set_attrib(
+        row_names_symbol(),
+        (1i32..=vectors[0].len() as i32).collect_robj(),
+        )?;
+    obj.set_class(&["data.frame"])?;
+    Ok(obj)
 }
-
 
 extendr_module! {
     mod entab;
