@@ -8,7 +8,7 @@ use std::io::{Cursor, Read};
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use js_sys::Array;
+use js_sys::{Array, Object};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -51,8 +51,6 @@ impl Reader {
             reader,
         })
     }
-
-    // TODO: it'd be nice to implement @@iterator somehow in here too
 
     #[wasm_bindgen(getter)]
     pub fn parser(&self) -> String {
@@ -97,4 +95,20 @@ impl Reader {
             .map_err(|_| JsValue::from_str("Error translating record"))
         }
     }
+}
+
+#[wasm_bindgen(inline_js = "
+  export function make_reader_iter(proto) { proto[Symbol.iterator] = function () { return this; }; }
+")]
+extern "C" {
+    fn make_reader_iter(obj: &Object);
+}
+
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    // this is kind of hacky, but we create a simple object and get its prototype so we can add the
+    // iterable marker onto it to allow e.g. `for (row of reader) {}`
+    let reader = Reader::new(b"\n".to_vec().into_boxed_slice(), Some("csv".to_string()))?;
+    make_reader_iter(&Object::get_prototype_of(&reader.into()));
+    Ok(())
 }

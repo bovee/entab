@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <!--
   [WIP]
   Build the JS assets with `wasm-pack build -_-target web`
@@ -14,9 +15,15 @@
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
     <script type="module">
       import init, { Reader } from "./pkg/entab.js";
-      // there should be a way to do this in Rust, but I can't find it
-      Reader.prototype[Symbol.iterator] = function() { return this; };
       let loaded = false;
+      async function loadEntab() {
+        if (!loaded) {
+          await init();
+          window.Reader = Reader;
+          loaded = true;
+        }
+      }
+      loadEntab();
 
       const app = new Vue({
         el: "#app",
@@ -27,10 +34,7 @@
       });
 
       async function processFile(event) {
-        if (!loaded) {
-          await init();
-          loaded = true;
-        }
+        loadEntab();
 
         const file = event.target.files[0];
         Vue.set(app, 'filename', file.name);
@@ -40,12 +44,12 @@
         Vue.set(app, 'parser', reader.parser);
       }
 
-      function createTsv(file) {
+      async function createTsv(file) {
         const buffer = new Uint8Array(await file.arrayBuffer());
         const reader = new Reader(buffer);
         const data = [];
         for (const i of reader) {
-          data.push();
+          data.push(i);
         }
         const blob = new Blob(data, { type: 'text/tsv;charset=utf-8;' });
         const link = document.createElement('a');

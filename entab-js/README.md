@@ -6,12 +6,11 @@ Parse record-based file formats into a stream of records.
 
 ```javascript
 import { Reader } from 'entab';
-// patch Reader to be an iterator too; this is a temporary hack until we can
-// figure out how to do this on the Rust side
-Reader.prototype[Symbol.iterator] = function() { return this; };
 
 // now parse the file
 const reader = new Reader(new Uint8Array(await file.arrayBuffer()));
+// or a string
+const reader = new Reader(new TextEncoder("utf-8").encode(">test\nacgt"));
 for (const record of reader) {
   ...
 }
