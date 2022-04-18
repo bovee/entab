@@ -50,13 +50,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
             return Err("Not a valid BAM file".into());
         }
         let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
-        let _ = Skip::parse(buffer, eof, con, &mut header_len)?;
+        let _ = Skip::parse(&buffer[*con..], eof, con, &mut header_len)?;
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         while n_references > 0 {
             let name_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
-            let _ = Skip::parse(buffer, eof, con, &mut (4 + name_len))?;
+            let _ = Skip::parse(&buffer[*con..], eof, con, &mut (4 + name_len))?;
             n_references -= 1;
         }
         *consumed += *con;
@@ -68,7 +68,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
         let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        drop(extract::<Skip>(buffer, con, &mut header_len));
+        let _ = extract::<Skip>(buffer, con, &mut header_len)?;
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
@@ -152,7 +152,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
         if record_len < 32 {
             return Err("Record is unexpectedly short".into());
         }
-        let _ = Skip::parse(rb, eof, con, &mut record_len)?;
+        let _ = Skip::parse(&rb[*con..], eof, con, &mut record_len)?;
         *consumed += *con;
 
         Ok(true)
@@ -545,7 +545,8 @@ mod tests {
             205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139,
             139, 116, 116, 116, 116, 116, 246, 245, 245, 240,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 223, 223, 223, 223,
@@ -617,7 +618,8 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 255,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -627,12 +629,14 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 125, 10, 10, 10, 10, 255, 255, 255, 255,
             10, 10, 18,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 105, 0, 110, 0, 0, 0, 0,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 116, 116, 116,

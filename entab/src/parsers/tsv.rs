@@ -124,10 +124,10 @@ impl<'b: 's, 's> FromSlice<'b, 's> for TsvRecord<'s> {
 
     fn get(&mut self, mut buffer: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
         if buffer.last() == Some(&b'\n') {
-            buffer = &buffer[..buffer.len() - 1]
+            buffer = &buffer[..buffer.len() - 1];
         }
         if buffer.last() == Some(&b'\r') {
-            buffer = &buffer[..buffer.len() - 1]
+            buffer = &buffer[..buffer.len() - 1];
         }
         let mut records = vec![""; state.headers.len()];
         let n_records = split(&mut records, buffer, state.delim_char, state.quote_char)?;

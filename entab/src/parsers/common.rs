@@ -197,8 +197,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for Skip {
         consumed: &mut usize,
         amt: &mut Self::State,
     ) -> Result<bool, EtError> {
-        if buffer.len() < *consumed + *amt {
-            *consumed += buffer.len();
+        if buffer.len() < *amt {
             let err: EtError =
                 format!("Buffer terminated before {} bytes could be skipped.", amt).into();
             return Err(err.incomplete());
@@ -209,6 +208,33 @@ impl<'b: 's, 's> FromSlice<'b, 's> for Skip {
 
     #[inline]
     fn get(&mut self, _buf: &'b [u8], _amt: &Self::State) -> Result<(), EtError> {
+        Ok(())
+    }
+}
+
+/// Used to skip ahead in a buffer
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct EndOfFile;
+
+impl<'b: 's, 's> FromSlice<'b, 's> for EndOfFile {
+    type State = ();
+
+    #[inline]
+    fn parse(
+        buffer: &[u8],
+        eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if !eof {
+            return Err(EtError::from("No EOF yet").incomplete());
+        }
+        *consumed += buffer.len();
+        Ok(true)
+    }
+
+    #[inline]
+    fn get(&mut self, _buf: &'b [u8], _state: &Self::State) -> Result<(), EtError> {
         Ok(())
     }
 }

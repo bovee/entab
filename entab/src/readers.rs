@@ -70,10 +70,11 @@ pub fn _get_reader<'n, 'p, 'r>(
         "sam" => Box::new(parsers::sam::SamReader::new(rb, None)?),
         "thermo_cf" => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(rb, None)?),
         "thermo_dxf" => Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(rb, None)?),
+        "thermo_raw" => Box::new(parsers::thermo::thermo_raw::ThermoRawReader::new(rb, None)?),
         "tsv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b'\t', b'"')))?),
         x => return Err(format!("No parser available for the parser {}", x).into()),
     };
-    let _ = params.remove("filename");
+    drop(params.remove("filename"));
     if !params.is_empty() {
         let keys: Vec<&str> = params.keys().map(AsRef::as_ref).collect();
         return Err(format!("Unused params remain: {}", keys.join(",")).into());

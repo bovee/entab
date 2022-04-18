@@ -174,7 +174,6 @@ impl FileType {
     }
 
     /// Returns the "parser name" associated with this file type
-    #[must_use]
     pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> Result<&'a str, EtError> {
         Ok(match (self, hint) {
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",
@@ -192,6 +191,7 @@ impl FileType {
             (FileType::Sam, None) => "sam",
             (FileType::ThermoCf, None) => "thermo_cf",
             (FileType::ThermoDxf, None) => "thermo_dxf",
+            (FileType::ThermoRaw, None) => "thermo_raw",
             (FileType::DelimitedText, None) => "tsv",
             (_, Some(x)) => x,
             (x, _) => return Err(format!("{:?} doesn't have a parser", x).into())
@@ -220,6 +220,7 @@ mod tests {
             (FileType::Sam, "sam"),
             (FileType::ThermoCf, "thermo_cf"),
             (FileType::ThermoDxf, "thermo_dxf"),
+            (FileType::ThermoRaw, "thermo_raw"),
             (FileType::DelimitedText, "tsv"),
         ];
         for (ft, parser) in filetypes {

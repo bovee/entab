@@ -146,8 +146,12 @@ impl<'a> From<i64> for Value<'a> {
 
 impl<'a> From<u64> for Value<'a> {
     fn from(x: u64) -> Self {
-        // TODO: there's probably a better solution here?
-        Value::Integer(i64::try_from(x).expect("u64 exceeded i64 memory limit"))
+        if x.leading_zeros() == 0 {
+            // handle u64 -> i64 overflow by saturating; maybe someday this should be a try_from?
+            Value::Integer(i64::MAX)
+        } else {
+            Value::Integer(i64::try_from(x).unwrap())
+        }
     }
 }
 
