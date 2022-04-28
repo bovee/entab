@@ -24,7 +24,7 @@ name = "reader"
 path = "fuzz_targets/reader.rs"
 
 [[bin]]
-name = "inficon"
-path = "fuzz_targets/inficon.rs"
+name = "tsv"
+path = "fuzz_targets/tsv.rs"
 test = false
 doc = false

@@ -151,7 +151,6 @@ impl StreamingStats {
     }
 }
 
-// spaces outside quote fields
 // decimal separator
 // date format
 // text encoding
@@ -285,7 +284,7 @@ impl<'b: 's, 'r, 's> FromSlice<'b, 's> for TsvState {
                 return Err("could not skip header lines".into());
             }
         }
-        if !NewLine::parse(buffer, eof, con, &mut 0)? {
+        if !NewLine::parse(&buffer[*con..], eof, con, &mut 0)? {
             return Ok(false);
         }
         *consumed += *con;
@@ -480,6 +479,15 @@ mod test {
             ix += 1;
         }
         assert_eq!(ix, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bad_fuzzes() -> Result<(), EtError> {
+        const TEST_TEXT: &[u8] = b"U,\n\n\n";
+        let mut pt = TsvReader::new(TEST_TEXT, Some(TsvParams::default()))?;
+        while let Some(TsvRecord { values }) = pt.next()? {}
+
         Ok(())
     }
 }
