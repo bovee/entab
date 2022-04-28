@@ -50,7 +50,10 @@ pub fn _get_reader<'n, 'p, 'r>(
         "chemstation_uv" => Box::new(parsers::agilent::chemstation_new::ChemstationUvReader::new(
             rb, None,
         )?),
-        "csv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b',', b'"')))?),
+        "csv" => Box::new(parsers::tsv::TsvReader::new(
+            rb,
+            Some(parsers::tsv::TsvParams::default().quote(b',')),
+        )?),
         "fasta" => Box::new(parsers::fasta::FastaReader::new(rb, None)?),
         "fastq" => Box::new(parsers::fastq::FastqReader::new(rb, None)?),
         "flow" => Box::new(parsers::flow::FcsReader::new(rb, None)?),
@@ -71,7 +74,10 @@ pub fn _get_reader<'n, 'p, 'r>(
         "thermo_cf" => Box::new(parsers::thermo::thermo_iso::ThermoCfReader::new(rb, None)?),
         "thermo_dxf" => Box::new(parsers::thermo::thermo_iso::ThermoDxfReader::new(rb, None)?),
         "thermo_raw" => Box::new(parsers::thermo::thermo_raw::ThermoRawReader::new(rb, None)?),
-        "tsv" => Box::new(parsers::tsv::TsvReader::new(rb, Some((b'\t', b'"')))?),
+        "tsv" => Box::new(parsers::tsv::TsvReader::new(
+            rb,
+            Some(parsers::tsv::TsvParams::default().quote(b'\t')),
+        )?),
         x => return Err(format!("No parser available for the parser {}", x).into()),
     };
     drop(params.remove("filename"));

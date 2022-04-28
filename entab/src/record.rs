@@ -176,6 +176,12 @@ impl<'a> From<Vec<u8>> for Value<'a> {
     }
 }
 
+impl<'a> From<Cow<'a, str>> for Value<'a> {
+    fn from(x: Cow<'a, str>) -> Self {
+        Value::String(x)
+    }
+}
+
 impl<'a> From<&'a str> for Value<'a> {
     fn from(x: &'a str) -> Self {
         Value::String(x.into())
