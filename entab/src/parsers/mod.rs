@@ -24,6 +24,8 @@ pub mod sam;
 pub mod thermo;
 /// Readers for tab-seperated text format
 pub mod tsv;
+/// Helpers for TSV parsing
+pub mod tsv_inference;
 // /// Reader for generic XML
 // pub mod xml;
 
