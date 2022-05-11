@@ -263,6 +263,10 @@ mod test {
         let mut pt = TsvReader::new(TEST_TEXT_2, None)?;
         while let Some(TsvRecord { values: _ }) = pt.next()? {}
 
+        const TEST_TEXT_3: &[u8] = b"field1,field2\n,";
+        let mut pt = TsvReader::new(TEST_TEXT_3, None)?;
+        while let Some(TsvRecord { values: _ }) = pt.next()? {}
+
         Ok(())
     }
 }

@@ -52,7 +52,7 @@ pub fn _get_reader<'n, 'p, 'r>(
         )?),
         "csv" => Box::new(parsers::tsv::TsvReader::new(
             rb,
-            Some(parsers::tsv::TsvParams::default().quote(b',')),
+            Some(parsers::tsv::TsvParams::default().delim(b',')),
         )?),
         "fasta" => Box::new(parsers::fasta::FastaReader::new(rb, None)?),
         "fastq" => Box::new(parsers::fastq::FastqReader::new(rb, None)?),
@@ -76,7 +76,7 @@ pub fn _get_reader<'n, 'p, 'r>(
         "thermo_raw" => Box::new(parsers::thermo::thermo_raw::ThermoRawReader::new(rb, None)?),
         "tsv" => Box::new(parsers::tsv::TsvReader::new(
             rb,
-            Some(parsers::tsv::TsvParams::default().quote(b'\t')),
+            Some(parsers::tsv::TsvParams::default().delim(b'\t')),
         )?),
         x => return Err(format!("No parser available for the parser {}", x).into()),
     };

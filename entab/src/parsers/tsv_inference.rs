@@ -116,6 +116,15 @@ pub(crate) fn split<'a>(
         cur_pos += 1;
         token_num += 1;
     }
+    // special case if there's a null record at the very end of the line
+    if line.last() == Some(&delim) {
+        if token_num >= buffer.len() {
+            buffer.push(Cow::Borrowed(""));
+        } else {
+            buffer[token_num] = "".into();
+        }
+        token_num += 1;
+    }
     buffer.truncate(token_num);
     Ok(token_num)
 }
@@ -297,7 +306,7 @@ impl TsvFieldType {
                 '0'..='9' => numeric = true,
                 '.' => has_period = true,
                 ',' => has_comma = true,
-                ' ' => {}
+                ' ' | '+' | '-' => {}
                 _ => nonnumeric = true,
             }
         }
