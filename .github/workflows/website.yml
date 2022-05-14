@@ -1,0 +1,43 @@
+name: Build WASM and publish website
+
+on:
+  push:
+    branches: [ master ]
+#  push:
+#    tags:
+#      - v[0-9]+.*
+
+jobs:
+  build-wasm-and-publish:
+    concurrency: ci-${{ github.ref }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install rust-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
+
+      - name: Run JS tests
+        working-directory: ./entab-js
+        run: wasm-pack test --headless --chrome
+
+      - name: Build the WASM
+        working-directory: ./entab-js
+        run: wasm-pack build --target web --out-dir ./example/pkg
+
+      - name: Delete .gitignore so pkg will be pushed too
+        run: rm .gitignore entab-js/example/pkg/.gitignore
+
+      - name: Publish to Github pages
+        uses: JamesIves/github-pages-deploy-action@v4.3.3
+        with:
+          branch: gh-pages
+          folder: entab-js/example
+          single-commit: true

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   [WIP]
-  Build the JS assets with `wasm-pack build --target web`, move them into
+  Build the JS assets with `wasm-pack build --target web --out-dir examples/pkg`, move them into
   this folder and serve with e.g. `python3 -m http.server 8000`.
 -->
 <html lang="en-us">
@@ -10,11 +10,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="entab is a parser for bioinformatic, chemoinformatic and other scientific file formats. This page is a demonstration of how it can be used to graph data and file formats it can read.">
     <meta name="theme-color" content="#B0B0D0">
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
-    <link rel="icon" type="image/x-icon" href="/icons/favicon.ico">
-    <link rel="manifest" href="/app.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="./icons/favicon.ico">
+    <link rel="manifest" href="./app.webmanifest">
     <style>
       #file-drop { border: 5px dashed blue }
       html, body, #app { height: 100%; font-family: 'Montserrat', sans-serif; }
@@ -59,7 +59,7 @@
   <body>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/petite-vue/0.4.1/petite-vue.iife.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.4.4/d3.min.js"></script>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="./app.js"></script>
     <script type="module">
       // set up service worker so this page can be installable
       if ("serviceWorker" in navigator) {
