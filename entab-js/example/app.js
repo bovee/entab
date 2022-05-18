@@ -1,16 +1,14 @@
 /*
   TODO:
-    - Bar chart if Y axis is None? Density plot?
-    - URL params to allow sharing URL-loaded files?
     - Disclaimer? Link to Github
     - Handle dates in entab-js
-    - Panning/zooming the graph
     - "Play" data as sound/music
-    - Allow downloading a picture
+    - Read file/streams with ReadableStream or Blob.slice to support large files
 
     - Handle dates in CSV parsing
     - Add a method to StateMetadata to expose bounds so they don't always need to be calculated here
  */
+import init, { Reader } from "./pkg/entab.js";
 
 const lang = (window.navigator.userLanguage || window.navigator.language).toLowerCase();
 
@@ -25,6 +23,7 @@ function translate(text, key = "") {
       "Enter a URL": "Introduce una URL",
       "Loading file…": "Cargando archivo…",
       "Calculating bounds…": "Cálculo de límites…",
+      "Plotting…": "Trazando…",
       "File type": "Tipo de archivo",
       "X axis": "Eje X",
       "Y axis": "Eje Y",
@@ -45,6 +44,7 @@ function translate(text, key = "") {
       "Enter a URL": "Entrez une URL",
       "Loading file…": "Fichier de chargement…",
       "Calculating bounds…": "Calcul des limites…",
+      "Plotting…": "Tracer…",
       "File type": "Type de fichier",
       "X axis": "Axe X",
       "Y axis": "Axe Y",
@@ -65,6 +65,7 @@ function translate(text, key = "") {
       "Enter a URL": "写网址",
       "Loading file…": "加载文件……",
       "Calculating bounds…": "计算界限……",
+      "Plotting…": "绘制",
       "File type": "文件类型",
       "X axis": "X轴",
       "Y axis": "Y轴",
@@ -85,6 +86,7 @@ function translate(text, key = "") {
       "Enter a URL": "寫網址",
       "Loading file…": "加載文件……",
       "Calculating bounds…": "計算界限……",
+      "Plotting…": "繪製",
       "File type": "文件類型",
       "X axis": "X軸",
       "Y axis": "Y軸",
@@ -109,13 +111,40 @@ function translate(text, key = "") {
 let curProcess = null;
 const app = PetiteVue.createApp({
   graph: {},
+  url: "",
   filename: "",
   showOverlay: false,
   statusType: "file",
   statusMessage: "",
   translate,
+  updateUrl() {
+    if (this.url) {
+      const url = new URL(window.location);
+      url.search = "";
+      url.searchParams.set("u", this.url);
+      url.searchParams.set("p", this.graph.parser);
+      url.searchParams.set("x", this.graph.xaxis);
+      if (this.graph.yaxis) url.searchParams.set("y", this.graph.yaxis);
+      if (this.graph.caxis) url.searchParams.set("c", this.graph.caxis);
+      url.searchParams.set("m", this.graph.cmap);
+      window.history.replaceState(null, "entab: plot scientific data", url);
+    }
+  },
   mounted() {
     window.addEventListener("resize", this.render);
+    const url = new URL(window.location);
+    if (url.search) {
+      this.chooseUrl(url.searchParams.get("u")).then(() => {
+        if (url.searchParams.get("p")) {
+          this.graph.parser = url.searchParams.get("p");
+        }
+        this.graph.xaxis = url.searchParams.get("x") || "";
+        this.graph.yaxis = url.searchParams.get("y") || "";
+        this.graph.caxis = url.searchParams.get("c") || "";
+        this.graph.cmap = url.searchParams.get("m") || "Turbo";
+      });
+      url.searchParams.get("u");
+    }
   },
   fileDropped(event) {
     this.processFile(event.dataTransfer.files[0]);
@@ -138,6 +167,7 @@ const app = PetiteVue.createApp({
     });
   },
   chooseUrl(url) {
+    this.url = url;
     this.statusType = "";
     this.statusMessage = translate("Loading file…");
     return fetch(url).then(response => {
@@ -151,17 +181,22 @@ const app = PetiteVue.createApp({
     });
   },
   closeFile() {
-    clearTimeout(curProcess);
     this.statusType = "file";
     this.statusMessage = "";
     this.filename = "";
     this.graph = {};
   },
   async processFile(file) {
-    // TODO: double check that Reader is loaded?
     clearTimeout(curProcess);
+    if (!window.Reader) {
+      await init();
+      window.Reader = Reader;
+    }
     let parserName = undefined;
-    if (file.name.endsWith(".csv")) {
+    if (!file) {
+      // an error with trying to open too many files in rapid order?
+      return;
+    } else if (file.name.endsWith(".csv")) {
       parserName = "csv";
     } else if (file.name.endsWith(".csv")) {
       parserName = "tsv";
@@ -197,6 +232,9 @@ const app = PetiteVue.createApp({
         yaxis,
         caxis,
         cmap: "Turbo",
+        // used for setting the zoom on the graph
+        xbounds: bounds[xaxis].slice(1, 3),
+        ybounds: bounds[yaxis].slice(1, 3),
       };
       this.statusMessage = "";
     } catch (e) {
@@ -238,11 +276,39 @@ const app = PetiteVue.createApp({
     link.click();
     document.body.removeChild(link);
   },
+  downloadSvg() {
+    // TODO: update inline styles so things display properly in dark mode with CSS?
+    const svg = document.getElementById("chart");
+
+    // convert the `canvas` into an `image`
+    const canvas = document.getElementById("chart-canvas")
+    if (canvas) {
+      const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+      image.setAttributeNS("http://www.w3.org/1999/xlink", "href", canvas.toDataURL());
+      image.setAttributeNS(null, "height", canvas.height);
+      image.setAttributeNS(null, "width", canvas.width);
+      svg.firstElementChild.appendChild(image);
+      canvas.parentNode.remove();
+    }
+    // save it
+    const blob = new Blob([
+      '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">',
+      (new XMLSerializer()).serializeToString(svg).replace(/^<svg.+?>/, ''),
+    ], { type: "image/svg+xml;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${this.filename}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
   render() {
     // basically a debounce
+    clearTimeout(curProcess);
     curProcess = setTimeout(this.renderAsync, 200);
   },
   renderAsync() {
+    // TODO: make leftMargin smaller if this.graph.yaxis missing
     const [leftMargin, rightMargin, bottomMargin, topMargin] = [50, 5, 5, 20];
     const pointRadius = 2;
     let chart = d3.select("svg");
@@ -253,10 +319,25 @@ const app = PetiteVue.createApp({
     if (!this.graph.buffer) {
       return;
     }
-    const xScale = d3.scaleLinear(this.graph.bounds[this.graph.xaxis].slice(1, 3), [0, width]);
-    const yScale = d3.scaleLinear(this.graph.bounds[this.graph.yaxis].slice(1, 3), [height, 0]);
+    this.statusType = "";
+    this.statusMessage = "Plotting…";
+    let reader;
+    try {
+      reader = new Reader(this.graph.buffer, this.graph.parser);
+    } catch (e) {
+      console.error(e);
+      this.statusType = "error";
+      this.statusMessage = e;
+      return;
+    }
+
+    const xScale = d3.scaleLinear(this.graph.xbounds, [0, width]);
+    chart.append("g")
+         .attr("transform", `translate(0,${height})`)
+         .call(d3.axisBottom(xScale))
+         .classed("axis", true);
     const xTransform = d => xScale(this.graph.bounds[this.graph.xaxis][0](d));
-    const yTransform = d => yScale(this.graph.bounds[this.graph.yaxis][0](d));
+
     const darkMode = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     let color;
     if (this.graph.caxis) {
@@ -269,13 +350,46 @@ const app = PetiteVue.createApp({
       color = d => "black";
     }
 
-    chart.append("g")
-         .attr("transform", `translate(0,${height})`)
-         .call(d3.axisBottom(xScale))
-         .classed("axis", true);
-    chart.append("g")
-         .call(d3.axisLeft(yScale))
-         .classed("axis", true);
+    let zoomTimeout = null;
+    let zoom;
+    let yTransform;
+    let xRange;
+    let xDensity;
+    if (this.graph.yaxis) {
+      const yScale = d3.scaleLinear(this.graph.ybounds, [height, 0]);
+      chart.append("g")
+           .call(d3.axisLeft(yScale))
+           .classed("axis", true);
+      yTransform = d => yScale(this.graph.bounds[this.graph.yaxis][0](d));
+      zoom = d3.brush().on("end", evt => {
+        const sel = evt.selection;
+        if (!sel && !zoomTimeout) {
+          zoomTimeout = setTimeout(() => zoomTimeout = null, 500);
+          return;
+        } else if (!evt.selection) {
+          this.graph.xbounds = this.graph.bounds[this.graph.xaxis].slice(1, 3);
+          this.graph.ybounds = this.graph.bounds[this.graph.yaxis].slice(1, 3);
+        } else {
+          this.graph.xbounds = [sel[0][0], sel[1][0]].map(xScale.invert).sort((a, b) => a - b);
+          this.graph.ybounds = [sel[0][1], sel[1][1]].map(yScale.invert).sort((a, b) => a - b);
+        }
+        this.render();
+      });
+    } else {
+      xRange = xScale.ticks(200);
+      xDensity = new Array(xRange.length).fill(0);
+      zoom = d3.brushX().on("end", evt => {
+        if (!evt.selection && !zoomTimeout) {
+          zoomTimeout = setTimeout(() => zoomTimeout = null, 500);
+          return;
+        } else if (!evt.selection) {
+          this.graph.xbounds = this.graph.bounds[this.graph.xaxis].slice(1, 3);
+        } else {
+          this.graph.xbounds = evt.selection.map(xScale.invert).sort((a, b) => a - b);
+        }
+        this.render();
+      });
+    }
 
     /*
     // svg-based render for a few points
@@ -292,41 +406,69 @@ const app = PetiteVue.createApp({
     */
 
     // canvas-based render if there are tons of points
-    let reader;
-    try {
-      reader = new Reader(this.graph.buffer, this.graph.parser);
-    } catch (e) {
-      console.error(e);
-      this.statusType = "error";
-      this.statusMessage = e;
-      return;
-    }
     const foreignObject = chart.append("foreignObject").attr("height", height).attr("width", width);
     const canvas = foreignObject.node().appendChild(document.createElement("canvas"));
+    canvas.id = "chart-canvas";
     canvas.height = height;
     canvas.width = width;
     const cxt = canvas.getContext("2d");
+    cxt.globalAlpha = 0.5;
+    chart.append("g").call(zoom);
 
+    let nPoints = 0;
     const processChunk = () => {
       try {
         const chunk = reader_chunk(reader);
-        for (const datum of chunk) {
-          cxt.beginPath();
-          cxt.rect(
-            xTransform(datum) - pointRadius,
-            yTransform(datum) - pointRadius,
-            2 * pointRadius,
-            2 * pointRadius
-          );
-          cxt.fillStyle = color(datum);
-          cxt.fill();
-          cxt.closePath();
+        if (this.graph.yaxis && yTransform) {
+          for (const datum of chunk) {
+            cxt.fillStyle = color(datum);
+            cxt.fillRect(
+              xTransform(datum) - pointRadius,
+              yTransform(datum) - pointRadius,
+              2 * pointRadius,
+              2 * pointRadius
+            );
+            nPoints++;
+          }
+        } else if (xRange && xDensity) {
+          let bandwidth = 0.1;
+          const invBandwidth = 1 / bandwidth;
+          const sqBandwidth = bandwidth ** 2;
+          const xMap = d => this.graph.bounds[this.graph.xaxis][0](d);
+          for (const datum of chunk) {
+            const value = xMap(datum);
+            for (let i = 0; i < xRange.length; i++) {
+              if (Math.abs(xRange[i] - value) > invBandwidth) continue;
+              xDensity[i] += (1 - sqBandwidth * (xRange[i] - value) ** 2 - xDensity[i]) / (nPoints + 1);
+            }
+            cxt.strokeStyle = color(datum);
+            cxt.beginPath();
+            cxt.moveTo(xScale(value), 0);
+            cxt.lineTo(xScale(value), 5);
+            cxt.stroke();
+            cxt.closePath();
+            
+            nPoints++;
+          }
+          // technically xDensity should be multiplied by 0.75 * bandwidth, but we're not plotting a y axis
+          const yScale = d3.scaleLinear(d3.extent(xDensity), [height, 0]);
+          // TODO: do this as a transition instead?
+          chart.selectAll("path").remove();
+          chart.append("path")
+               .datum(xDensity)
+               .attr("fill", "none")
+               .attr("stroke", darkMode ? "white" : "black")
+               .attr("stroke-width", 1)
+               .attr("stroke-linejoin", "round")
+               .attr("d",  d3.line().curve(d3.curveBasis).x((d, i) => xScale(xRange[i])).y(d => yScale(d)));
         }
         if (!reader.done) {
           curProcess = setTimeout(processChunk);
+        } else {
+          this.statusMessage = "";
         }
       } catch (e) {
-        console.error(e);
+        console.error(e)
         this.statusType = "error";
         this.statusMessage = e;
       }
@@ -335,9 +477,8 @@ const app = PetiteVue.createApp({
   },
 });
 
-function* reader_chunk(reader) {
-  let n_left = 2000;
-  while (n_left--) {
+function* reader_chunk(reader, chunkSize = 2000) {
+  while (chunkSize--) {
     const value = reader.next();
     if (value.done) {
       reader.done = true;
@@ -415,13 +556,17 @@ async function calculateBounds(reader) {
   return new Promise((resolve, reject) => {
     const processChunk = () => {
       const chunk = reader_chunk(reader);
-      for (const datum of chunk) {
-        for (const column of Object.keys(bounds)) {
-          const value = bounds[column][0](datum);
-          bounds[column][1] = Math.min(bounds[column][1], value);
-          bounds[column][2] = Math.max(bounds[column][2], value);
+      try {
+        for (const datum of chunk) {
+          for (const column of Object.keys(bounds)) {
+            const value = bounds[column][0](datum);
+            bounds[column][1] = Math.min(bounds[column][1], value);
+            bounds[column][2] = Math.max(bounds[column][2], value);
+          }
+          nPoints++;
         }
-        nPoints++;
+      } catch (e) {
+        reject(e);
       }
       if (reader.done) {
         resolve([bounds, columns, nPoints]);

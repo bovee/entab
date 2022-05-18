@@ -22,22 +22,27 @@
         body { background-color: white; color: black; }
         #overlay, .status, noscript { background-color: #D0D0D0; border-right: 1px solid #B0B0D0 }
         .button { background-color: #B0B0D0; color: black; };
-        .axis :is(path, line, text) { color: #303030; }
+        .axis :is(line, text) { color: #303030; }
+        svg path { stroke: #303030; }
         .status, noscript { border: 1px solid #B0B0D0 }
       }
       @media (prefers-color-scheme: dark) {
         body { background-color: black; color: white; }
         #overlay, .status, noscript { background-color: #303030; border-right: 1px solid #505070}
         .button { background-color: #505070; color: #B0B0D0; };
-        .axis :is(path, line, text) { color: #D0D0D0; }
+        .axis :is(line, text) { color: #D0D0D0; }
+        svg path { stroke: #D0D0D0; }
         .status, noscript { border: 1px solid #505070 }
       }
       [v-cloak] { display: none; }
-      #overlay { height: 98%; left: 0px; top: 0px; position: absolute; padding: 5px; display: flex; flex-direction: column; justify-content: space-between; }
+      #overlay { height: 98%; left: 0px; top: 0px; position: absolute; padding: 5px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; }
       .overlayButton { position: absolute; left: 0px; top: 0px; padding: 15px; font-size: 18pt; line-height: 24pt; }
       #overlay .overlayButton { font-size: 30pt; }
-      .closeFileButton { position: absolute; right: 0px; top: 0px; padding: 15px; font-size: 30pt; line-height: 24pt; }
-     .row { display: block; }
+      /* .closeFileButton { position: absolute; right: 0px; top: 0px; padding: 15px; font-size: 30pt; line-height: 24pt; } */
+      .progress { position: absolute; right: 0px; top: 0px; padding: 15px; line-height: 24pt; display: flex; align-items: center; }
+      .closeFileButton { padding-left: 20px; font-size: 30pt; }
+      .row { display: flex; align-items: center; }
+      .row label, .row .label-spacer { display: inline-block; width: 80px; text-align: right; }
       #chart { height: 95%; width: 95%; top: 2.5%; left: 2.5%; position: absolute; }
       .status, noscript { position: absolute; width: 20%; left: 30%; top: 10%; padding: 2em; text-align: center; }
       .button { margin: 0.2em; padding: 0.5em; border-radius: 5px; };
@@ -79,7 +84,7 @@
     <noscript>
       This page requires Javascript (and WASM) support to be able to read files and plot them. Sorry!
     </noscript>
-    <div id="app" v-cloak @dragover.prevent @drop.prevent @vue:mounted="mounted">
+    <div id="app" v-cloak @dragover.prevent @drop.prevent @vue:mounted="mounted" v-effect="updateUrl(graph.url,graph.parser,graph.xaxis,graph.yaxis,graph.cmap)">
       <svg
         id="chart"
         @drop.prevent="fileDropped"
@@ -96,23 +101,21 @@
         >
           &#9776;
         </a>
-        <a class="closeFileButton"
-           role="button" 
-           :aria-label="translate('Close file')"
-           tabindex="0" 
-           v-if="graph.buffer || filename"
-           @keydown.enter="closeFile"
-           @click="closeFile"
-        >
-          &#xd7;
-        </a>
-      </div>
-      <div class="status"
-        @drop.prevent="fileDropped"
-        @dragover.prevent
-        v-if="statusMessage && !statusType"
-      >
-        {{ statusMessage }}
+        <div class="progress">
+          <span v-if="statusMessage && !statusType">
+            {{ statusMessage }}
+          </span>
+          <a class="closeFileButton"
+             role="button" 
+             :aria-label="translate('Close file')"
+             tabindex="0" 
+             v-if="graph.buffer || filename"
+             @keydown.enter="closeFile"
+             @click="closeFile"
+          >
+            &#xd7;
+          </a>
+        </div>
       </div>
       <div class="status"
         style="text-align: left;"
@@ -164,11 +167,15 @@
         </a>
         <div style="height: 3em; flex-shrink: 0;"></div>
         <div class="row" style="flex: 0 0 0%;">
+          <span class="label-spacer" style="height: 1em;"></span>
           {{ filename }}
         </div>
+        <div class="row" style="height: 2em;"></div>
         <div class="row">
+          <label for="file-type-select">
           {{ translate("File type") }}
-          <select class="button" :disabled="!graph.buffer" v-model="graph.parser">
+          </label>
+          <select id="file-type-select" class="button" :disabled="!graph.buffer" v-model="graph.parser">
             <optgroup label="Biology Formats">
               <option value="bam">BAM</option>
               <option value="sam">SAM</option>
@@ -194,25 +201,38 @@
             </optgroup>
           </select>
         </div>
+        <div class="row" style="height: 2em;"></div>
         <div class="row">
-          {{ translate("X axis") }}
-          <select class="button" :disabled="!graph.buffer" v-model="graph.xaxis">
+          <label for="x-axis-select">
+            {{ translate("X axis") }}
+          </label>
+          <select id="x-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.xaxis">
             <option v-for="key in graph.columns" :value="key">{{ key }}</option>
           </select>
-          <br />
-          {{ translate("Y axis") }}
-          <select class="button" :disabled="!graph.buffer" v-model="graph.yaxis">
+        </div>
+        <div class="row">
+          <label for="y-axis-select">
+            {{ translate("Y axis") }}
+          </label>
+          <select id="y-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.yaxis">
+            <option value="">{{ translate("None", "color-none") }}</option>
             <option v-for="key in graph.columns" :value="key">{{ key }}</option>
           </select>
-          <br />
-          {{ translate("Colour") }}
-          <select class="button" :disabled="!graph.buffer" v-model="graph.caxis">
-            {{ translate("None", "color-none") }}
+        </div>
+        <div class="row">
+          <label for="c-axis-select">
+            {{ translate("Colour") }}
+          </label>
+          <select id="c-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.caxis">
+            <option value="">{{ translate("None", "color-none") }}</option>
             <option v-for="key in graph.columns" :value="key">{{ key }}</option>
           </select>
-          <br />
-          {{ translate("Palette") }}
-          <select class="button" :disabled="!graph.buffer || !graph.caxis" v-model="graph.cmap">
+        </div>
+        <div class="row">
+          <label for="color-map-select">
+            {{ translate("Palette") }}
+          </label>
+          <select id="color-map-select" class="button" :disabled="!graph.buffer || !graph.caxis" v-model="graph.cmap">
             <optgroup label="Diverging">
               <option value="BrBG">Brown-Blue Green</option>
               <option value="PRGn">Purple-Green</option>
@@ -245,12 +265,18 @@
             </optgroup>
           </select>
         </div>
+        <div class="row" style="height: 2em;"></div>
         <div class="row">
           <button class="button" :disabled="!graph.buffer" @click="downloadTsv()">
             {{ translate("Download") }}
             TSV
           </button>
+          <button class="button" :disabled="!graph.buffer" @click="downloadSvg()">
+            {{ translate("Download") }}
+            SVG
+          </button>
         </div>
+        <div class="row" style="flex-grow: 1;"></div>
         <div class="row">
           <a class="link" href="https://github.com/bovee/entab">GitHub page</a>
         </div>
