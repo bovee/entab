@@ -80,6 +80,31 @@ impl<'b: 's, 's> FromSlice<'b, 's> for &'b [u8] {
     }
 }
 
+impl<'b: 's, 's> FromSlice<'b, 's> for &'b str {
+    type State = usize;
+
+    #[inline]
+    fn parse(
+        buf: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        amt: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if buf.len() < *amt {
+            let err: EtError = format!("Could not extract a slice of size {}", amt).into();
+            return Err(err.incomplete());
+        }
+        *consumed += *amt;
+        Ok(true)
+    }
+
+    #[inline]
+    fn get(&mut self, buf: &'b [u8], amt: &Self::State) -> Result<(), EtError> {
+        *self = core::str::from_utf8(&buf[..*amt])?;
+        Ok(())
+    }
+}
+
 /// Used to read a single line out of the buffer.
 ///
 /// Assumes all lines are terminated with a '\n' and an optional '\r'

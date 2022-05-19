@@ -3,7 +3,6 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, str};
-use core::convert::TryFrom;
 use core::default::Default;
 
 use chrono::{NaiveDate, NaiveTime};
@@ -30,7 +29,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsHeaderKeyValue<'s> {
         let mut i = 0;
         let mut temp = None;
         let value_end = loop {
-            if i > *text_left {
+            if i >= *text_left {
                 return Ok(false);
             }
             if i + 2 >= buf.len() {
@@ -76,12 +75,8 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsHeaderKeyValue<'s> {
     }
 }
 
-fn str_to_int(s: &[u8]) -> Result<u64, EtError> {
-    Ok(str::from_utf8(s)?.trim().parse()?)
-}
-
 #[derive(Clone, Debug, Default)]
-struct FcsParam {
+struct FcsColumn {
     size: i8,
     range: u64,
     short_name: String,
@@ -93,11 +88,12 @@ struct FcsParam {
 /// Note that the state is primarily derived from the TEXT segment of the file.
 #[derive(Clone, Debug, Default)]
 pub struct FcsState {
-    params: Vec<FcsParam>,
+    params: Vec<FcsColumn>,
     endian: Endian,
     data_type: char,
     next_data: Option<usize>,
     n_events_left: usize,
+    bytes_data_left: usize,
     metadata: BTreeMap<String, Value<'static>>,
 }
 
@@ -117,13 +113,13 @@ impl StateMetadata for FcsState {
 }
 
 impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
-    type State = ();
+    type State = BTreeMap<String, String>;
 
     fn parse(
         buf: &[u8],
-        _eof: bool,
+        eof: bool,
         consumed: &mut usize,
-        _state: &mut Self::State,
+        map: &mut Self::State,
     ) -> Result<bool, EtError> {
         let con = &mut 0;
 
@@ -133,106 +129,72 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         }
 
         // get the offsets to the different data
-        let text_start = usize::try_from(str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?)?;
-        let text_end = usize::try_from(str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?)?;
+        let text_start: usize = extract::<&str>(buf, con, &mut 8)?.trim().parse()?;
+        let text_end: usize = extract::<&str>(buf, con, &mut 8)?.trim().parse()?;
         if text_end < text_start {
             return Err("Invalid end from text segment".into());
         }
-        let mut data_start = str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?;
-        let mut data_end = str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?;
         if text_start < 58 {
             return Err("Bad FCS text start offset".into());
         }
-        // skip the analysis_start/analysis_end values
-        let _ = extract::<Skip>(buf, con, &mut 16)?;
+        drop(map.insert(
+            "$BEGINDATA".to_string(),
+            extract::<&str>(buf, con, &mut 8)?.trim().to_string(),
+        ));
+        drop(map.insert(
+            "$ENDDATA".to_string(),
+            extract::<&str>(buf, con, &mut 8)?.trim().to_string(),
+        ));
+        drop(map.insert(
+            "$BEGINANALYSIS".to_string(),
+            extract::<&str>(buf, con, &mut 8)?.trim().to_string(),
+        ));
+        drop(map.insert(
+            "$ENDANALYSIS".to_string(),
+            extract::<&str>(buf, con, &mut 8)?.trim().to_string(),
+        ));
         let _ = extract::<Skip>(buf, con, &mut (text_start - 58))?;
         let delim: u8 = extract(buf, con, &mut Endian::Little)?;
         while let Some(FcsHeaderKeyValue(key, value)) = extract_opt::<FcsHeaderKeyValue>(
             buf,
-            false,
+            eof,
             con,
             &mut (delim, text_end.saturating_sub(*con), 0),
         )? {
-            match (key.as_ref(), value.as_ref()) {
-                ("$BEGINDATA", v) => {
-                    let data_start_value = v.trim().parse::<u64>()?;
-                    if data_start_value > 0 && data_start == 0 {
-                        data_start = data_start_value;
-                    }
+            if &key == "$BEGINDATA" || &key == "$ENDDATA" {
+                if map[&key] == "0" {
+                    drop(map.insert(key.to_string(), value.trim().into()));
                 }
-                ("$ENDDATA", v) => {
-                    let data_end_value = v.trim().parse::<u64>()?;
-                    if data_end_value > 0 && data_end == 0 {
-                        data_end = data_end_value;
-                    }
-                }
-                _ => {}
+            } else {
+                drop(map.insert(key.to_string(), value.into()));
             }
         }
+        let data_start: usize = map["$BEGINDATA"].parse()?;
+        let data_end: usize = map["$ENDDATA"].parse()?;
         if data_end < data_start {
             return Err("Invalid end from data segment".into());
-        } else if data_start < text_end as u64 {
-            return Err("Data segment can not start before text segment ends".into());
         }
         // get anything between the end of the text segment and the start of the data segment
-        if usize::try_from(data_start)? < *con {
-            return Err(EtError::from("Ran out of data before data segment started").incomplete());
+        if data_start > text_end {
+            let _ = extract::<Skip>(buf, con, &mut (data_start - *con))?;
         }
-        let _ = extract::<Skip>(buf, con, &mut (usize::try_from(data_start)? - *con))?;
 
-        *consumed += *con;
+        *consumed += data_start;
         Ok(true)
     }
 
-    fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+    fn get(&mut self, _buf: &'b [u8], map: &'s Self::State) -> Result<(), EtError> {
         let mut params = Vec::new();
         let mut endian = Endian::Little;
         let mut data_type = 'F';
         let mut next_data = None;
         let mut n_events_left = 0;
-
-        let con = &mut 0;
-
-        let magic = extract::<&[u8]>(buf, con, &mut 10)?;
-        if &magic[..3] != b"FCS" {
-            return Err("FCS file has invalid header".into());
-        }
         let mut metadata = BTreeMap::new();
 
-        // get the offsets to the different data
-        let text_start = usize::try_from(str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?)?;
-        let text_end = usize::try_from(str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?)?;
-        let mut data_start = str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?;
-        let mut data_end = str_to_int(extract::<&[u8]>(buf, con, &mut 8)?)?;
-        if text_start < 58 {
-            return Err("Bad FCS text start offset".into());
-        }
-        let _ = extract::<Skip>(buf, con, &mut 16)?;
-        // let analysis_start = buf.extract::<AsciiInt>(8)?.0 as usize;
-        // let analysis_end = buf.extract::<AsciiInt>(8)?.0 as usize;
-        let _ = extract::<Skip>(buf, con, &mut (text_start - 58))?;
-        let delim: u8 = extract(buf, con, &mut Endian::Little)?;
         let mut date = NaiveDate::from_yo(2000, 1);
         let mut time = NaiveTime::from_num_seconds_from_midnight(0, 0);
-        while let Some(FcsHeaderKeyValue(key, value)) = extract_opt::<FcsHeaderKeyValue>(
-            buf,
-            false,
-            con,
-            &mut (delim, text_end.saturating_sub(*con), 0),
-        )? {
+        for (key, value) in map.iter() {
             match (key.as_ref(), value.as_ref()) {
-                ("$BEGINDATA", v) => {
-                    let data_start_value = v.trim().parse::<u64>()?;
-                    if data_start_value > 0 && data_start == 0 {
-                        data_start = data_start_value;
-                    }
-                }
-                ("$ENDDATA", v) => {
-                    let data_end_value = v.trim().parse::<u64>()?;
-                    if data_end_value > 0 && data_end == 0 {
-                        data_end = data_end_value;
-                    }
-                }
                 ("$NEXTDATA", v) => {
                     let next_value: usize = v.trim().parse()?;
                     if next_value > 0 {
@@ -305,13 +267,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
                     if n_params < params.len() {
                         return Err(format!("Declared number of params ({}) is less than the observed number of params ({})", n_params, params.len()).into());
                     }
-                    params.resize_with(n_params, FcsParam::default);
+                    params.resize_with(n_params, FcsColumn::default);
                 }
                 (k, v) if k.starts_with("$P") && k.ends_with(&['B', 'N', 'R', 'S'][..]) => {
                     let mut i: usize = k[2..k.len() - 1].parse()?;
                     i -= 1; // params are numbered from 1
                     if i >= params.len() {
-                        params.resize_with(i + 1, FcsParam::default);
+                        params.resize_with(i + 1, FcsColumn::default);
                     }
                     if k.ends_with('B') {
                         if v == "*" {
@@ -337,6 +299,14 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         }
         drop(metadata.insert("date".into(), date.and_time(time).into()));
 
+        // make the next_data offset relative
+        if let Some(n) = next_data {
+            next_data = Some(n.saturating_sub(map["$ENDDATA"].parse::<usize>()?));
+        }
+
+        let data_start: usize = map["$BEGINDATA"].parse()?;
+        let data_end: usize = map["$ENDDATA"].parse()?;
+
         // check that the datatypes and params match up
         for p in &params {
             match data_type {
@@ -359,6 +329,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         self.data_type = data_type;
         self.next_data = next_data;
         self.n_events_left = n_events_left;
+        self.bytes_data_left = data_end - data_start + 1;
         self.metadata = metadata;
         Ok(())
     }
@@ -386,23 +357,23 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
         consumed: &mut usize,
         state: &mut Self::State,
     ) -> Result<bool, EtError> {
+        let con = &mut 0;
         if state.n_events_left == 0 {
             if let Some(next_data) = state.next_data {
-                let con = &mut 0;
-                let _ = extract::<Skip>(buf, con, &mut (next_data - *consumed))?;
-                if !FcsState::parse(buf, eof, consumed, &mut ())? {
+                let _ = extract::<Skip>(buf, con, &mut (next_data + state.bytes_data_left - 1))?;
+                let mut headers = BTreeMap::new();
+                let start = *con;
+                if !FcsState::parse(&buf[*con..], eof, con, &mut headers)? {
                     return Ok(false);
                 }
-                FcsState::get(state, buf, &())?;
-                *consumed += *con;
+                FcsState::get(state, &buf[start..*con], &headers)?;
             } else {
                 return Ok(false);
             }
         }
 
-        let mut data_size: usize = 0;
         for param in &state.params {
-            data_size += match state.data_type {
+            *con += match state.data_type {
                 'A' if param.size > 0 => param.size as usize,
                 'A' if param.size < 0 => {
                     return Err("Delimited-ASCII number datatypes are not yet supported".into());
@@ -418,11 +389,12 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
                 _ => panic!("Data type is in an unknown state"),
             };
         }
-        if data_size > buf.len() {
+        if *con > buf.len() {
             return Err(EtError::from("Record was incomplete").incomplete());
         }
         state.n_events_left -= 1;
-        *consumed += data_size;
+        state.bytes_data_left = state.bytes_data_left.saturating_sub(*con);
+        *consumed += *con;
         Ok(true)
     }
 
@@ -447,6 +419,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
                     let value: u64 = match param.size {
                         8 => extract::<u8>(buf, con, &mut state.endian.clone())?.into(),
                         16 => extract::<u16>(buf, con, &mut state.endian.clone())?.into(),
+                        24 => {
+                            let top =
+                                u32::from(extract::<u8>(buf, con, &mut state.endian.clone())?);
+                            let bottom =
+                                u32::from(extract::<u16>(buf, con, &mut state.endian.clone())?);
+                            ((top << 16) + bottom).into()
+                        }
                         32 => extract::<u32>(buf, con, &mut state.endian.clone())?.into(),
                         64 => extract::<u64>(buf, con, &mut state.endian.clone())?,
                         x => return Err(format!("Unknown param size {}", x).into()),
@@ -474,7 +453,7 @@ impl<'r> From<FcsRecord<'r>> for Vec<Value<'r>> {
     }
 }
 
-impl_reader!(FcsReader, FcsRecord, FcsRecord<'r>, FcsState, ());
+impl_reader!(FcsReader, FcsRecord, FcsRecord<'r>, FcsState, BTreeMap<String, String>);
 
 #[cfg(test)]
 mod tests {
@@ -536,7 +515,7 @@ mod tests {
         assert_eq!(record.values.len(), 11);
 
         let mut n_recs = 1;
-        while let Some(_) = reader.next()? {
+        while reader.next()?.is_some() {
             n_recs += 1;
         }
         assert_eq!(n_recs, 14945);
@@ -547,12 +526,12 @@ mod tests {
     fn test_fcs_reader_metadata() -> Result<(), EtError> {
         let buf: &[u8] =
             include_bytes!("../../tests/data/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs");
-        let reader = FcsReader::new(&buf[..], None)?;
+        let reader = FcsReader::new(buf, None)?;
         let metadata = reader.metadata();
         assert_eq!(metadata["specimen_source"], "Specimen_001".into());
         assert_eq!(
             metadata["date"],
-            NaiveDate::from_ymd(2012, 10, 26).and_hms(18, 08, 10).into()
+            NaiveDate::from_ymd(2012, 10, 26).and_hms(18, 8, 10).into()
         );
         Ok(())
     }
@@ -566,10 +545,12 @@ mod tests {
         assert!(FcsReader::new(test_data, None).is_err());
 
         let test_data: &[u8] = b"FCS3.1  \n0\t\t\t\t\t\t7777\t\t\t\t\t\t00000000007777777777\0\0\x007777y\t0\tH\0\0\0\0\0\x007777777\t\t\ty7777777\t\t\tyyy\t0\tH\0\0\0\0\x007777777\t\t\0\x00777777yy\t0\tH\0\0\0\0\0\x007777777\t\t";
-        assert!(FcsReader::new(test_data, None).is_err());
+        let mut reader = FcsReader::new(test_data, None)?;
+        while reader.next()?.is_some() {}
 
         let test_data: &[u8] = b"FCS3.1  \n0\t\t\t\t\t\t7777\t\t\t\t\t\t00000077777707777yyyy77777\t0000006692\x1a\t0\x01\0\0\0-\0D`\0\x000\t\t*\tyyyy77777\t777\0\0-\0D`\0\x000\t\t*\tyyyy77777\t77777\t77777\t77777\t";
-        assert!(FcsReader::new(test_data, None).is_err());
+        let mut reader = FcsReader::new(test_data, None)?;
+        while reader.next()?.is_some() {}
 
         Ok(())
     }

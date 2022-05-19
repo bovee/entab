@@ -1,7 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::str::from_utf8;
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 
 use memchr::memchr;
 

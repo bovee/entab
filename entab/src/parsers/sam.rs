@@ -435,7 +435,9 @@ mod tests {
         #[cfg(all(feature = "compression", feature = "std"))]
         let _ = reader.metadata();
         if let Some(SamRecord {
-            query_name, sequence, ..
+            query_name,
+            sequence,
+            ..
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
@@ -504,7 +506,9 @@ mod tests {
         let _ = reader.metadata();
 
         if let Some(BamRecord {
-            query_name, sequence, ..
+            query_name,
+            sequence,
+            ..
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
