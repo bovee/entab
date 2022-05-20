@@ -30,7 +30,11 @@ pub struct Reader {
 }
 
 fn to_js(err: EtError) -> JsValue {
-    err.to_string().into()
+    let res = err.to_string().into();
+    // technically we could just take a &EtError, but to have a nice function signature we consume
+    // the err so we should also drop it in here to make clippy happy
+    drop(err);
+    res
 }
 
 #[wasm_bindgen]

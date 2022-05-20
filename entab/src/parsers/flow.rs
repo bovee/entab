@@ -1,4 +1,4 @@
-use alloc::borrow::{Cow, ToOwned};
+use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -9,75 +9,14 @@ use chrono::{NaiveDate, NaiveTime};
 
 use crate::impl_reader;
 use crate::parsers::common::Skip;
-use crate::parsers::{extract, extract_opt, Endian, FromSlice};
+use crate::parsers::{extract, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
 use crate::EtError;
 
-/// A single key-value pair from the text segment of an FCS file.
-#[derive(Clone, Debug, Default, PartialEq)]
-struct FcsHeaderKeyValue<'a>(String, Cow<'a, str>);
-
-impl<'b: 's, 's> FromSlice<'b, 's> for FcsHeaderKeyValue<'s> {
-    type State = (u8, usize, usize);
-
-    fn parse(
-        buf: &[u8],
-        eof: bool,
-        consumed: &mut usize,
-        (delim, text_left, key_end): &mut Self::State,
-    ) -> Result<bool, EtError> {
-        let mut i = 0;
-        let mut temp = None;
-        let value_end = loop {
-            if i >= *text_left {
-                return Ok(false);
-            }
-            if i + 2 >= buf.len() {
-                if i + 1 >= buf.len() {
-                    return Err(EtError::from("Incomplete key in FCS header").incomplete());
-                } else if temp != None && buf[i + 1] == *delim {
-                    *key_end = temp.unwrap();
-                    break i + 1;
-                } else if !eof {
-                    return Err(EtError::from("Incomplete FCS header").incomplete());
-                }
-                return Err("FCS header ended abruptly".into());
-            }
-            if buf[i] == *delim && temp != None {
-                if buf[i + 1] == *delim {
-                    // skip consectutive delimiters
-                    i += 1;
-                } else {
-                    *key_end = temp.unwrap();
-                    break i;
-                }
-            } else if buf[i] == *delim {
-                if buf[i + 1] == *delim {
-                    // The spec says this should be parsed as an escaped
-                    // delimiter in the key, but I've never seen that so
-                    // we parse it as an empty value (which I have seen
-                    // in Applied Biosystems files).
-                    *key_end = i;
-                    break i + 1;
-                }
-                temp = Some(i);
-            }
-            i += 1;
-        };
-        *consumed += value_end + 1;
-        Ok(true)
-    }
-
-    fn get(&mut self, buf: &'b [u8], (_, _, key_end): &'s Self::State) -> Result<(), EtError> {
-        self.0 = str::from_utf8(&buf[..*key_end])?.to_ascii_uppercase();
-        self.1 = String::from_utf8_lossy(&buf[*key_end + 1..buf.len() - 1]);
-        Ok(())
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 struct FcsColumn {
-    size: i8,
+    size: u8,
+    delimited: bool,
     range: u64,
     short_name: String,
     long_name: String,
@@ -117,7 +56,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
 
     fn parse(
         buf: &[u8],
-        eof: bool,
+        _eof: bool,
         consumed: &mut usize,
         map: &mut Self::State,
     ) -> Result<bool, EtError> {
@@ -137,6 +76,9 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         if text_start < 58 {
             return Err("Bad FCS text start offset".into());
         }
+        if buf.len() < text_end {
+            return Err(EtError::from("Text segment shorter than specified").incomplete());
+        }
         drop(map.insert(
             "$BEGINDATA".to_string(),
             extract::<&str>(buf, con, &mut 8)?.trim().to_string(),
@@ -155,18 +97,24 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         ));
         let _ = extract::<Skip>(buf, con, &mut (text_start - 58))?;
         let delim: u8 = extract(buf, con, &mut Endian::Little)?;
-        while let Some(FcsHeaderKeyValue(key, value)) = extract_opt::<FcsHeaderKeyValue>(
-            buf,
-            eof,
-            con,
-            &mut (delim, text_end.saturating_sub(*con), 0),
-        )? {
-            if &key == "$BEGINDATA" || &key == "$ENDDATA" {
-                if map[&key] == "0" {
-                    drop(map.insert(key.to_string(), value.trim().into()));
+        // The spec says repeated delimiters should be parsed as an escaped delimiter, but I've
+        // never seen that so we parse them as empty values (which I have seen in Applied
+        // Biosystems files) which allows us to simplify the parsing logic a lot.
+        let params = extract::<&[u8]>(buf, con, &mut (text_end.saturating_sub(*con)))?;
+        let mut key: Option<String> = None;
+        for item in params.split(|b| b == &delim) {
+            if let Some(k) = key {
+                let value = String::from_utf8_lossy(item);
+                if &k == "$BEGINDATA" || &k == "$ENDDATA" {
+                    if map[&k] == "0" {
+                        drop(map.insert(k.to_string(), value.trim().into()));
+                    }
+                } else {
+                    drop(map.insert(k.to_string(), value.into()));
                 }
+                key = None;
             } else {
-                drop(map.insert(key.to_string(), value.into()));
+                key = Some(str::from_utf8(item)?.to_ascii_uppercase());
             }
         }
         let data_start: usize = map["$BEGINDATA"].parse()?;
@@ -183,6 +131,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         Ok(true)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn get(&mut self, _buf: &'b [u8], map: &'s Self::State) -> Result<(), EtError> {
         let mut params = Vec::new();
         let mut endian = Endian::Little;
@@ -278,18 +227,23 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
                     if k.ends_with('B') {
                         if v == "*" {
                             // this should only be true for $DATATYPE=A
-                            params[i].size = -1;
+                            params[i].size = 0;
+                            params[i].delimited = true;
                         } else {
                             params[i].size = v.trim().parse()?;
+                            params[i].delimited = false;
                         }
                     } else if k.ends_with('N') {
                         params[i].short_name = v.to_string();
                     } else if k.ends_with('R') {
                         // some yahoos put ranges for $DATATYPE=F in their
-                        // files as the floats so we have to parse as float
-                        // here and convert into
+                        // files as floats so we have to parse as float
+                        // here and convert back into ints
                         let range = v.trim().parse::<f64>()?;
-                        params[i].range = range.ceil() as u64;
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        {
+                            params[i].range = range.ceil() as u64;
+                        }
                     } else if k.ends_with('S') {
                         params[i].long_name = v.to_string();
                     }
@@ -374,8 +328,8 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
 
         for param in &state.params {
             *con += match state.data_type {
-                'A' if param.size > 0 => param.size as usize,
-                'A' if param.size < 0 => {
+                'A' if !param.delimited => param.size as usize,
+                'A' if param.delimited => {
                     return Err("Delimited-ASCII number datatypes are not yet supported".into());
                 }
                 'D' => 8,
@@ -406,11 +360,11 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsRecord<'s> {
         let con = &mut 0;
         for (ix, param) in state.params.iter().enumerate() {
             self.values[ix] = match state.data_type {
-                'A' if param.size > 0 => {
+                'A' if !param.delimited => {
                     let n = extract::<&[u8]>(buf, con, &mut (param.size as usize))?;
                     str::from_utf8(n)?.trim().parse::<f64>()?.into()
                 }
-                'A' if param.size < 0 => {
+                'A' if param.delimited => {
                     return Err("Delimited-ASCII number datatypes are not yet supported".into());
                 }
                 'D' => extract::<f64>(buf, con, &mut state.endian.clone())?.into(),
@@ -459,35 +413,6 @@ impl_reader!(FcsReader, FcsRecord, FcsRecord<'r>, FcsState, BTreeMap<String, Str
 mod tests {
     use super::*;
     use crate::readers::RecordReader;
-
-    #[test]
-    fn test_fcs_header_kv_parser() -> Result<(), EtError> {
-        let buf = &b"test/key/"[..];
-        let mut state = (b'/', 100, 0);
-        let test_parse = extract::<FcsHeaderKeyValue>(buf, &mut 0, &mut state)?;
-        assert_eq!(
-            test_parse,
-            FcsHeaderKeyValue("TEST".to_string(), "key".into())
-        );
-
-        let buf = b"test/key";
-        assert!(extract::<FcsHeaderKeyValue>(buf, &mut 0, &mut (b'/', 100, 0)).is_err());
-
-        let buf = b" ";
-        assert!(extract::<FcsHeaderKeyValue>(buf, &mut 0, &mut (b'/', 100, 0)).is_err());
-
-        let buf = b"//";
-        assert!(extract::<FcsHeaderKeyValue>(buf, &mut 0, &mut (b'/', 100, 0)).is_err());
-
-        // super pathological case that should probably never occur? (since it
-        // would imply the previous ending delim was before this start delim)
-        let buf = b"/ /";
-        let mut state = (b'/', 100, 0);
-        let test_parse = extract::<FcsHeaderKeyValue>(buf, &mut 0, &mut state)?;
-        assert_eq!(test_parse, FcsHeaderKeyValue("".to_string(), " ".into()));
-
-        Ok(())
-    }
 
     #[test]
     fn test_fcs_reader() -> Result<(), EtError> {

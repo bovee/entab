@@ -65,6 +65,9 @@ pub trait FromSlice<'b: 's, 's>: Sized + Default {
     /// Use only for simple types with defined sizes like u8, i32, &[u8], etc. Using this with more
     /// complex types that rely upon updating `state` in between reads will cause bad and confusing
     /// things to happen!
+    ///
+    /// # Errors
+    /// If parsing fails, an error will be returned.
     fn extract(buffer: &'b [u8], state: &'s Self::State) -> Result<Self, EtError>
     where
         Self::State: 'static,

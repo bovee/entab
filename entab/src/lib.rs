@@ -37,8 +37,9 @@
 //! Alternatively, you may not know the type of file when writing your code so
 //! you may want to abstract over as many types as possible. This is where the
 //! slower, generic parser framework is used (for example, in the bindings
-//! libraries also). This framework can optionally take a `parser_name` to force
-//! it to use that specific parser and optional params to control parser options.
+//! for different languages). This framework can optionally take a `parser_name`
+//! to force it to use that specific parser and optional params to control
+//! parser options.
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;

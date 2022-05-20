@@ -173,8 +173,8 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ThermoDxfRecord {
                 let _ = extract::<&[u8]>(rb, con, &mut 16)?;
             }
 
-            let mut mfc_state = ();
-            let gas_name = extract::<MfcString>(rb, con, &mut mfc_state)?.0;
+            let mfc_state = &mut ();
+            let MfcString(gas_name) = extract(rb, con, mfc_state)?;
             if gas_name == "" {
                 return Ok(false);
             }

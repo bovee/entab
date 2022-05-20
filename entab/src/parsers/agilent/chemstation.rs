@@ -180,7 +180,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationFid parser
+/// Internal state for the `ChemstationFidRecord` parser
 pub struct ChemstationFidState {
     cur_time: f64,
     cur_delta: f64,
@@ -278,7 +278,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidRecord {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationMs parser
+/// Internal state for the `ChemstationMsRecord` parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
@@ -322,7 +322,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-/// A single time/mz record from a ChemstationMs file
+/// A single time/mz record from a Chemstation MS file
 pub struct ChemstationMsRecord {
     /// The time recorded at
     pub time: f64,
@@ -397,7 +397,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsRecord {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationMwd parser
+/// Internal state for the `ChemstationMwdRecord` parser
 pub struct ChemstationMwdState {
     n_wvs_left: usize,
     cur_time: f64,

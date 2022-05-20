@@ -3,6 +3,7 @@ use alloc::str::from_utf8;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use bytecount::count;
 use memchr::memchr;
 
 use crate::error::EtError;
@@ -27,6 +28,7 @@ pub struct StreamingStats {
 
 impl StreamingStats {
     /// Create a fresh `StreamingStats` struct
+    #[must_use]
     pub fn new() -> Self {
         StreamingStats {
             n: 0,
@@ -38,6 +40,7 @@ impl StreamingStats {
     }
 
     /// Update `StreamingStats` with a new value
+    #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self, val: f64) {
         self.n += 1;
 
@@ -53,6 +56,8 @@ impl StreamingStats {
     }
 
     /// Return the current variance
+    #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn variance(&self) -> f64 {
         self.m2 / self.n as f64
     }
@@ -77,28 +82,27 @@ pub(crate) fn split<'a>(
         if line[cur_pos] == quote {
             let mut quoted_quotes = false;
             loop {
-                if let Some(next) = memchr(quote, &line[cur_pos + 1..]) {
-                    if cur_pos + next + 2 == line.len() || line[cur_pos + next + 2] == delim {
+                let qpos = cur_pos + 1;
+                if let Some(next) = memchr(quote, &line[qpos..]) {
+                    if qpos + next + 1 == line.len() || line[qpos + next + 1] == delim {
                         // either the next quote is right before a delimiter
                         if quoted_quotes {
-                            buffer[token_num] += from_utf8(&line[cur_pos + 1..cur_pos + next + 1])?;
+                            buffer[token_num] += from_utf8(&line[qpos..qpos + next])?;
                         } else {
-                            buffer[token_num] =
-                                Cow::Borrowed(from_utf8(&line[cur_pos + 1..cur_pos + next + 1])?);
+                            buffer[token_num] = Cow::Borrowed(from_utf8(&line[qpos..qpos + next])?);
                         }
                         cur_pos += next + 2;
                         break;
-                    } else if line[cur_pos + next + 2] != quote {
+                    } else if line[qpos + next + 1] != quote {
                         return Err("quotes must start and end next to delimiters".into());
                     }
                     // or its right before a pair of quotes (how CSVs escape a quote inside quoted
                     // output). note that the error case is above because we need to continue
                     // parsing quotes if we're in the pair scenario.
                     if quoted_quotes {
-                        buffer[token_num] += from_utf8(&line[cur_pos + 1..cur_pos + next + 2])?;
+                        buffer[token_num] += from_utf8(&line[qpos..=qpos + next])?;
                     } else {
-                        buffer[token_num] =
-                            Cow::Borrowed(from_utf8(&line[cur_pos + 1..cur_pos + next + 2])?);
+                        buffer[token_num] = Cow::Borrowed(from_utf8(&line[qpos..=qpos + next])?);
                     }
                     quoted_quotes = true;
                     cur_pos += next + 2;
@@ -171,7 +175,8 @@ pub fn sniff_params_from_data(params: &mut TsvParams, data: &[u8]) {
     let mut skip_lines = 0;
     let mut in_data = 0;
     while let Ok(NewLine(line)) = extract(data, con, &mut 0) {
-        let n_delims = line.iter().filter(|b| *b == &delim_char).count();
+        let n_delims = count(line, delim_char);
+        #[allow(clippy::cast_precision_loss)]
         if (n_delims as f64 - avg_delims).abs() < 1. {
             if in_data == 0 {
                 skip_lines = ix;
@@ -202,12 +207,12 @@ pub fn sniff_types_from_data(params: &mut TsvParams, data: &[u8]) {
             line_ix += 1;
             continue;
         }
-        let _ = split(
+        drop(split(
             &mut fields,
             line,
             delim_char,
             params.quote_char.unwrap_or(b'"'),
-        );
+        ));
         for (field_ix, field) in fields.iter().enumerate() {
             if field_ix >= types.len() {
                 let mut ty = TsvFieldType::default();
@@ -256,7 +261,7 @@ fn count_bytes(line: &[u8], stats: &mut [StreamingStats; N_DELIMS], quote_diff: 
         }] += 1;
     }
     for (count, stat) in counts.iter().zip(stats.iter_mut()) {
-        stat.update(*count as f64);
+        stat.update(f64::from(*count));
     }
 }
 
@@ -323,6 +328,8 @@ impl TsvFieldType {
     }
 
     /// Coerce a string into a Value
+    #[allow(clippy::match_same_arms)] // TODO: remove when dates are supported
+    #[must_use]
     pub fn coerce<'a>(&self, field: Cow<'a, str>) -> Value<'a> {
         let f = field.trim();
         match 128 >> self.ty.leading_zeros() {

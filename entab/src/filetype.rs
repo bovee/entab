@@ -174,6 +174,9 @@ impl FileType {
     }
 
     /// Returns the "parser name" associated with this file type
+    ///
+    /// # Errors
+    /// If a file is unsupported, an error will be returned.
     pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> Result<&'a str, EtError> {
         Ok(match (self, hint) {
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",

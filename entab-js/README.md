@@ -16,6 +16,9 @@ for (const record of reader) {
 }
 ```
 
+Note that this will require paging the entire file into memory so files that
+take >10 Mb may be slow and files >100 Mb may not work at all.
+
 ## Development
 
 Build with `wasm-pack build`.

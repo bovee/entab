@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   [WIP]
-  Build the JS assets with `wasm-pack build --target web --out-dir examples/pkg`, move them into
+  Build the JS assets with `wasm-pack build --target web --out-dir example/pkg`, move them into
   this folder and serve with e.g. `python3 -m http.server 8000`.
 -->
 <html lang="en-us">
@@ -38,13 +38,19 @@
       #overlay { height: 98%; left: 0px; top: 0px; position: absolute; padding: 5px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; }
       .overlayButton { position: absolute; left: 0px; top: 0px; padding: 15px; font-size: 18pt; line-height: 24pt; }
       #overlay .overlayButton { font-size: 30pt; }
-      /* .closeFileButton { position: absolute; right: 0px; top: 0px; padding: 15px; font-size: 30pt; line-height: 24pt; } */
       .progress { position: absolute; right: 0px; top: 0px; padding: 15px; line-height: 24pt; display: flex; align-items: center; }
       .closeFileButton { padding-left: 20px; font-size: 30pt; }
+      .closeErrorButton { position: absolute; right: 0px; top: 0px; padding: 10px; font-size: 30pt; line-height: 24pt; } */
       .row { display: flex; align-items: center; }
       .row label, .row .label-spacer { display: inline-block; width: 80px; text-align: right; }
       #chart { height: 95%; width: 95%; top: 2.5%; left: 2.5%; position: absolute; }
-      .status, noscript { position: absolute; width: 20%; left: 30%; top: 10%; padding: 2em; text-align: center; }
+      .status, noscript { position: absolute; width: 35%; left: 25%; top: 10%; padding: 2em; text-align: center; }
+      @media only screen and (min-width: 768px) {
+        .status, noscript { width: 28%; left: 28%; }
+      }
+      @media only screen and (min-width: 992px) {
+        .status, noscript { width: 20%; left: 30%; }
+      }
       .button { margin: 0.2em; padding: 0.5em; border-radius: 5px; };
       .button:active {
         box-shadow: 0 0 0 5px rgba(0,0,0,0.2) inset; border-color: black;
@@ -93,9 +99,9 @@
       ></svg>
       <div class="buttonBar">
         <a class="overlayButton"
-           role="button" 
+           role="button"
            :aria-label="translate('Open settings panel')" 
-           tabindex="0" 
+           tabindex="0"
            @keydown.enter="toggleOverlay(true)"
            @click="toggleOverlay(true)"
         >
@@ -106,9 +112,9 @@
             {{ statusMessage }}
           </span>
           <a class="closeFileButton"
-             role="button" 
+             role="button"
              :aria-label="translate('Close file')"
-             tabindex="0" 
+             tabindex="0"
              v-if="graph.buffer || filename"
              @keydown.enter="closeFile"
              @click="closeFile"
@@ -150,16 +156,43 @@
         v-if="statusType === 'error'"
         style="background-color: #F09090"
       >
-        &#9888; {{ translate("There was a problem parsing the file.", "error-msg") }} &#9888;
+        <a class="closeErrorButton"
+           role="button"
+           :aria-label="translate('Close error')"
+           tabindex="0"
+           @keydown.enter="closeFile"
+           @click="closeFile"
+        >
+          &#xd7;
+        </a>
+        &#9888; {{ translate("There was a problem parsing the file.", "error-msg") }}
         <div style="text-align: left; font-family: monospace; font-size: 1em; white-space: pre;">
           {{ statusMessage }}
         </div>
       </div>
+      <div class="status"
+        @drop.prevent="fileDropped"
+        @dragover.prevent
+        v-if="statusType === 'network-error'"
+        style="background-color: #F09090"
+      >
+        <a class="closeErrorButton"
+           role="button"
+           :aria-label="translate('Close error')"
+           tabindex="0"
+           @keydown.enter="closeFile"
+           @click="closeFile"
+        >
+          &#xd7;
+        </a>
+        <br />
+        &#9888; {{ statusMessage }}
+      </div>
       <div id="overlay" v-if="showOverlay">
         <a class="overlayButton"
-           role="button" 
+           role="button"
            :aria-label="translate('Close settings panel')" 
-           tabindex="0" 
+           tabindex="0"
            @keydown.enter="toggleOverlay(false)"
            @click="toggleOverlay(false)"
         >

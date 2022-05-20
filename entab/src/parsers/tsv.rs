@@ -18,8 +18,8 @@ use crate::EtError;
 /// Parameters for parsing TSVs
 ///
 /// For some documents about possible variations in the TSV "format" see:
-/// RFC: https://datatracker.ietf.org/doc/html/rfc4180
-/// Frictionless data spec: https://specs.frictionlessdata.io//csv-dialect/
+/// RFC: <https://datatracker.ietf.org/doc/html/rfc4180>
+/// Frictionless data spec: <https://specs.frictionlessdata.io//csv-dialect/>
 #[derive(Clone, Debug)]
 pub struct TsvParams {
     /// The character used to separate fields.
@@ -51,12 +51,14 @@ impl Default for TsvParams {
 
 impl TsvParams {
     /// Set the delimiter character
+    #[must_use]
     pub fn delim(mut self, c: u8) -> Self {
         self.delim_char = Some(c);
         self
     }
 
     /// Set the character used for quoting delimiters
+    #[must_use]
     pub fn quote(mut self, c: u8) -> Self {
         self.quote_char = Some(c);
         self

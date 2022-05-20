@@ -150,13 +150,16 @@ impl<'b: 's, 's> FromSlice<'b, 's> for MasshunterDadRecord {
 /// Read Masshunter DAD files
 #[derive(Debug)]
 pub struct MasshunterDadReader<'r> {
-    data_rb: ReadBuffer<'r>,
     header_rb: ReadBuffer<'r>,
+    data_rb: ReadBuffer<'r>,
     state: MasshunterDadState,
 }
 
 impl<'r> MasshunterDadReader<'r> {
     /// Create a new `MasshunterDadReader`
+    ///
+    /// # Errors
+    /// If the file doesn't exist or can't be opened, an error will be returned.
     pub fn new<B>(data: B, params: Option<String>) -> Result<Self, EtError>
     where
         B: ::core::convert::TryInto<ReadBuffer<'r>>,
@@ -179,6 +182,9 @@ impl<'r> MasshunterDadReader<'r> {
     }
 
     /// Return the next record
+    ///
+    /// # Errors
+    /// If the next record can't be read, returns an error.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<MasshunterDadRecord>, EtError> {
         if self
@@ -195,12 +201,16 @@ impl<'r> MasshunterDadReader<'r> {
 impl<'r> RecordReader for MasshunterDadReader<'r> {
     /// The next record, expressed as a `Vec` of `Value`s.
     fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<Value>>, EtError> {
-        Ok(self.next()?.map(|r| r.into()))
+        Ok(self.next()?.map(core::convert::Into::into))
     }
 
     /// The headers for this Reader.
     fn headers(&self) -> ::alloc::vec::Vec<::alloc::string::String> {
-        self.state.header().iter().map(|s| s.to_string()).collect()
+        self.state
+            .header()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect()
     }
 
     /// The metadata for this Reader.

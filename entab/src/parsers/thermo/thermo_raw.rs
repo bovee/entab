@@ -157,8 +157,7 @@ impl ThermoRawScanCoeffs {
         match self.n_coeffs {
             0 => n,
             4 => self.a + self.b / n + self.c / n.powi(2),
-            5 => self.a + self.b / n.powi(2) + self.c / n.powi(4),
-            7 => self.a + self.b / n.powi(2) + self.c / n.powi(4),
+            5 | 7 => self.a + self.b / n.powi(2) + self.c / n.powi(4),
             _ => unreachable!("Unparseable number of coefficients"),
         }
     }
@@ -265,6 +264,9 @@ pub struct ThermoRawState {
 
 impl ThermoRawState {
     /// Update the positions of the pointer in the metadata and coefficients sections
+    ///
+    /// # Errors
+    /// If the amount consumed is larger than expected, an error will be returned.
     pub fn data_consumed(&mut self, con: usize) -> Result<(), EtError> {
         if self.metadata_pos < con {
             return Err("Data section extended into metadata section".into());

@@ -48,7 +48,7 @@ impl<'r> From<&ChemstationNewMetadata> for BTreeMap<String, Value<'r>> {
 }
 
 fn get_utf16_pascal(data: &[u8]) -> String {
-    let iter = (1..2 * usize::from(data[0]) + 1)
+    let iter = (1..=2 * usize::from(data[0]))
         .step_by(2)
         .map(|i| u16::from_le_bytes([data[i], data[i + 1]]));
     decode_utf16(iter)
@@ -102,7 +102,7 @@ fn get_new_metadata(header: &[u8]) -> Result<ChemstationNewMetadata, EtError> {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationUv parser
+/// Internal state for the `ChemstationUvRecord` parser
 pub struct ChemstationUvState {
     metadata: ChemstationNewMetadata,
     n_scans_left: usize,
@@ -151,7 +151,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-/// A record from a ChemstationUv file
+/// A record from a Chemstation UV file
 pub struct ChemstationUvRecord {
     /// The time recorded at
     pub time: f64,

@@ -17,6 +17,10 @@ use entab::EtError;
 
 use crate::tsv_params::TsvParams;
 
+/// Parse the provided `stdin` using `args` and write results to `stdout`.
+///
+/// # Errors
+/// If there are any issues, an `EtError` will be returned.
 pub fn run<I, T, R, W>(args: I, stdin: R, stdout: W) -> Result<(), EtError>
 where
     I: IntoIterator<Item = T>,
@@ -60,9 +64,8 @@ where
             if e.kind() == ErrorKind::DisplayHelp || e.kind() == ErrorKind::DisplayVersion {
                 e.print()?;
                 return Ok(());
-            } else {
-                return Err(e.to_string().into());
             }
+            return Err(e.to_string().into());
         }
     };
 

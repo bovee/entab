@@ -1,4 +1,4 @@
-#![allow(clippy::needless_option_as_deref)]
+#![allow(clippy::needless_option_as_deref, clippy::used_underscore_binding)]
 mod raw_io_wrapper;
 
 use std::collections::BTreeMap;
@@ -18,8 +18,12 @@ use crate::raw_io_wrapper::RawIoWrapper;
 create_exception!(entab, EntabError, exceptions::PyException);
 
 fn to_py(err: EtError) -> PyErr {
-    EntabError::new_err(err.to_string())
     // TODO: somehow bind err.byte and err.record in here too?
+    let res = EntabError::new_err(err.to_string());
+    // we could technically just take an `&EtError` here, but the function signature is nicer with
+    // a `EtError` so we have to drop it here to make clippy happy
+    drop(err);
+    res
 }
 
 /// Map a Value into a `PyObject`

@@ -72,6 +72,9 @@ pub enum Value<'a> {
 
 impl<'a> Value<'a> {
     /// Converts an ISO-8601 formated date into a `Value::Datetime`
+    ///
+    /// # Errors
+    /// If the string can't be interpreted as a date, an error is returned.
     pub fn from_iso_date(string: &str) -> Result<Self, EtError> {
         let datetime = NaiveDateTime::parse_from_str(string, "%+")
             .map_err(|e| EtError::from(e.to_string()))?;
@@ -79,6 +82,9 @@ impl<'a> Value<'a> {
     }
 
     /// If the Value is a String, return the string.
+    ///
+    /// # Errors
+    /// If the value isn't a string, an error is returned.
     pub fn into_string(self) -> Result<String, EtError> {
         if let Value::String(s) = self {
             return Ok(s.into_owned());

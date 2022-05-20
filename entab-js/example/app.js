@@ -34,6 +34,7 @@ function translate(text, key = "") {
       "Pick a file": "Escoge un archivo",
       "See a sample file": "Ver un archivo de ejemplo",
       "Close file": "Cerrar el archivo",
+      "Close error": "Cerrar diálogo de error",
       "Open settings panel": "Abra el panel de configuración",
       "Close settings panel": "Cerrar el panel de configuración",
       "error-msg": "Hubo un problema al analizar el archivo.",
@@ -55,6 +56,7 @@ function translate(text, key = "") {
       "Pick a file": "Choisir un fichier",
       "See a sample file": "Voir un exemple de fichier",
       "Close file": "Fermez le fichier",
+      "Close error": "Fermer l'erreur",
       "Open settings panel": "Ouvrir le panneau paramètres",
       "Close settings panel": "Fermer le panneau paramètres",
       "error-msg": "Un problème est survenu lors de l'analyse du fichier.",
@@ -76,6 +78,7 @@ function translate(text, key = "") {
       "Pick a file": "选择文件",
       "See a sample file": "看例子",
       "Close file": "关文件",
+      "Close error": "关错误框",
       "Open settings panel": "开设置面板",
       "Close settings panel": "关设置面板",
       "error-msg": "解析文件出现问题。",
@@ -97,6 +100,7 @@ function translate(text, key = "") {
       "Pick a file": "選擇文件",
       "See a sample file": "看例子",
       "Close file": "關文件",
+      "Close error": "關錯誤框",
       "Open settings panel": "開設置面板",
       "Close settings panel": "關設置面板",
       "error-msg": "解析文件出現問題。",
@@ -122,11 +126,11 @@ const app = PetiteVue.createApp({
       const url = new URL(window.location);
       url.search = "";
       url.searchParams.set("u", this.url);
-      url.searchParams.set("p", this.graph.parser);
-      url.searchParams.set("x", this.graph.xaxis);
+      if (this.graph.parser) url.searchParams.set("p", this.graph.parser);
+      if (this.graph.xaxis) url.searchParams.set("x", this.graph.xaxis);
       if (this.graph.yaxis) url.searchParams.set("y", this.graph.yaxis);
       if (this.graph.caxis) url.searchParams.set("c", this.graph.caxis);
-      url.searchParams.set("m", this.graph.cmap);
+      if (this.graph.cmap) url.searchParams.set("m", this.graph.cmap);
       window.history.replaceState(null, "entab: plot scientific data", url);
     }
   },
@@ -171,13 +175,26 @@ const app = PetiteVue.createApp({
     this.statusType = "";
     this.statusMessage = translate("Loading file…");
     return fetch(url).then(response => {
+      if (!response.ok) {
+        throw { statusCode: response.status, statusText: response.statusText, };
+      }
       response.name = url.split("/").slice(-1)[0];
       return this.processFile(response);
     }).catch(e => {
       console.error(e);
-      this.statusType = "error";
+      this.statusType = "network-error";
       // TODO: translate
-      this.statusMessage = "A network error occured.";
+      if (!e.statusCode) {
+        this.statusMessage = "A network error occured. That server probably blocks remote requests.";
+      } else if (e.statusCode === 404) {
+        this.statusMessage = "No file exists at that URL.";
+      } else if (e.statusCode === 401 || e.statusCode === 403) {
+        this.statusMessage = "Permissions are required to access that URL.";
+      } else if (e.statusCode >= 500 && e.statusCode < 600) {
+        this.statusMessage = "A server error occured.";
+      } else {
+        this.statusMessage = "A network error occured.";
+      }
     });
   },
   closeFile() {
@@ -530,6 +547,10 @@ const FUNCTIONS = {
 
 async function calculateBounds(reader) {
   const datum = reader.next().value;
+  if (!datum) {
+    // TODO: translate
+    return new Promise((resolve, reject) => { reject("File had no records") });
+  }
   const bounds = {};
   const columns = [];
   let nPoints = 0;

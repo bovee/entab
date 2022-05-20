@@ -15,6 +15,9 @@ use crate::record::Value;
 /// Turn `rb` into a Reader of type `parser`.
 ///
 /// If `parser` is `None`, infer the correct parser from the file type.
+///
+/// # Errors
+/// If an error happens during decompression or parser detection, an `EtError` is returned.
 pub fn get_reader<'n, 'p, 'r, B>(
     data: B,
     parser: Option<&'n str>,
@@ -31,7 +34,7 @@ where
 
 /// Internal function to handle `get_reader` not inferring that the Reader constructors need to be
 /// created using `ReadBuffer` and not `B`.
-pub fn _get_reader<'n, 'p, 'r>(
+fn _get_reader<'n, 'p, 'r>(
     rb: ReadBuffer<'r>,
     parser_name: &'n str,
     mut params: BTreeMap<String, Value<'p>>,
@@ -99,6 +102,9 @@ pub trait RecordReader: ::core::fmt::Debug {
     ///
     /// Roughly equivalent to Rust's `Iterator.next`, but obeys slightly
     /// looser lifetime requirements to allow zero-copy parsing.
+    ///
+    /// # Errors
+    /// If the record can't be read, an error is returned.
     fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError>;
 
     /// The header titles that correspond to every item in the record
@@ -191,5 +197,19 @@ where
             ::core::any::type_name::<S>()
         )
         .into())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bad_fuzzes() -> Result<(), EtError> {
+        let data: &[u8] =  &[40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 181, 47, 253, 0, 106, 99, 1, 14, 64, 40, 253, 47, 253, 0, 106, 1, 14, 19];
+
+        let (mut reader, _) = get_reader(data, None, None)?;
+        assert!(reader.next_record().is_err());
+        Ok(())
     }
 }
