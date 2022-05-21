@@ -142,10 +142,10 @@ const app = PetiteVue.createApp({
         if (url.searchParams.get("p")) {
           this.graph.parser = url.searchParams.get("p");
         }
-        this.graph.xaxis = url.searchParams.get("x") || "";
-        this.graph.yaxis = url.searchParams.get("y") || "";
-        this.graph.caxis = url.searchParams.get("c") || "";
-        this.graph.cmap = url.searchParams.get("m") || "Turbo";
+        this.graph.xaxis = url.searchParams.get("x") || this.graph.xaxis;
+        this.graph.yaxis = url.searchParams.get("y") || this.graph.yaxis;
+        this.graph.caxis = url.searchParams.get("c") || this.graph.caxis;
+        this.graph.cmap = url.searchParams.get("m") || this.graph.cmap;
       });
       url.searchParams.get("u");
     }
@@ -250,8 +250,8 @@ const app = PetiteVue.createApp({
         caxis,
         cmap: "Turbo",
         // used for setting the zoom on the graph
-        xbounds: bounds[xaxis].slice(1, 3),
-        ybounds: bounds[yaxis].slice(1, 3),
+        xbounds: [xaxis].concat(bounds[xaxis].slice(1, 3)),
+        ybounds: [yaxis].concat(bounds[yaxis].slice(1, 3)),
       };
       this.statusMessage = "";
     } catch (e) {
@@ -336,6 +336,13 @@ const app = PetiteVue.createApp({
     if (!this.graph.buffer) {
       return;
     }
+    // update the bounds if the x or y axises have changed
+    if (this.graph.xaxis !== this.graph.xbounds[0]) {
+      this.graph.xbounds = [this.graph.xaxis].concat(this.graph.bounds[this.graph.xaxis].slice(1, 3));
+    }
+    if (this.graph.yaxis !== this.graph.ybounds[0]) {
+      this.graph.ybounds = [this.graph.yaxis].concat(this.graph.bounds[this.graph.yaxis].slice(1, 3));
+    }
     this.statusType = "";
     this.statusMessage = "Plotting…";
     let reader;
@@ -348,7 +355,7 @@ const app = PetiteVue.createApp({
       return;
     }
 
-    const xScale = d3.scaleLinear(this.graph.xbounds, [0, width]);
+    const xScale = d3.scaleLinear(this.graph.xbounds.slice(1, 3), [0, width]);
     chart.append("g")
          .attr("transform", `translate(0,${height})`)
          .call(d3.axisBottom(xScale))
@@ -373,7 +380,7 @@ const app = PetiteVue.createApp({
     let xRange;
     let xDensity;
     if (this.graph.yaxis) {
-      const yScale = d3.scaleLinear(this.graph.ybounds, [height, 0]);
+      const yScale = d3.scaleLinear(this.graph.ybounds.slice(1, 3), [height, 0]);
       chart.append("g")
            .call(d3.axisLeft(yScale))
            .classed("axis", true);
@@ -384,11 +391,11 @@ const app = PetiteVue.createApp({
           zoomTimeout = setTimeout(() => zoomTimeout = null, 500);
           return;
         } else if (!evt.selection) {
-          this.graph.xbounds = this.graph.bounds[this.graph.xaxis].slice(1, 3);
-          this.graph.ybounds = this.graph.bounds[this.graph.yaxis].slice(1, 3);
+          this.graph.xbounds = [this.graph.xaxis].concat(this.graph.bounds[this.graph.xaxis].slice(1, 3));
+          this.graph.ybounds = [this.graph.yaxis].concat(this.graph.bounds[this.graph.yaxis].slice(1, 3));
         } else {
-          this.graph.xbounds = [sel[0][0], sel[1][0]].map(xScale.invert).sort((a, b) => a - b);
-          this.graph.ybounds = [sel[0][1], sel[1][1]].map(yScale.invert).sort((a, b) => a - b);
+          this.graph.xbounds = [this.graph.xbounds[0]].concat([sel[0][0], sel[1][0]].map(xScale.invert).sort((a, b) => a - b));
+          this.graph.ybounds = [this.graph.ybounds[0]].concat([sel[0][1], sel[1][1]].map(yScale.invert).sort((a, b) => a - b));
         }
         this.render();
       });
@@ -400,9 +407,9 @@ const app = PetiteVue.createApp({
           zoomTimeout = setTimeout(() => zoomTimeout = null, 500);
           return;
         } else if (!evt.selection) {
-          this.graph.xbounds = this.graph.bounds[this.graph.xaxis].slice(1, 3);
+          this.graph.xbounds = [this.graph.xaxis].concat(this.graph.bounds[this.graph.xaxis].slice(1, 3));
         } else {
-          this.graph.xbounds = evt.selection.map(xScale.invert).sort((a, b) => a - b);
+          this.graph.xbounds = [this.graph.xaxis].concat(evt.selection.map(xScale.invert).sort((a, b) => a - b));
         }
         this.render();
       });
