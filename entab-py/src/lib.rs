@@ -32,8 +32,9 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
         Value::Null => py.None().as_ref(py).into(),
         Value::Boolean(b) => b.to_object(py),
         Value::Datetime(d) => {
-            // return an ISO 8601 formatted string
-            d.format("%+").to_string().to_object(py)
+            // NB: For files without timezone data (and all NaiveDateTime?),
+            // .format("%+") panics. So timezone is omitted
+            d.format("%Y-%m-%dT%H:%M:%S%.f").to_string().to_object(py)
             // TODO: it would be nice to use Python's built-in datetime, but that doesn't appear to
             // be abi3-compatible right now
             //            let timestamp = d.timestamp_millis() as f64 / 1000.;
