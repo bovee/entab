@@ -1,6 +1,6 @@
 [package]
 name = "entab-py"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Roderick <rbovee@gmail.com>"]
 license = "MIT"
 description = "Record-format file reader"
