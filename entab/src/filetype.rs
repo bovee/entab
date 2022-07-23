@@ -33,6 +33,8 @@ pub enum FileType {
     // chemoinformatics
     /// Agilent format used for MS-MS trace data
     AgilentMsMsScan, // bin   0x01, 0x01
+    /// Agilent format used for UV-visible array data
+    AgilentChemstationDad,
     /// Agilent format used for flame ionization trace data
     AgilentChemstationFid,
     /// Agilent format used for mass spectrometry trace data
@@ -99,6 +101,7 @@ impl FileType {
                 b"BAM\x01" => return FileType::Bam,
                 b"@HD\t" | b"@SQ\t" => return FileType::Sam,
                 b"\x2Escf" => return FileType::Scf,
+                [0x02, 0x33, 0x31, 0x00] => return FileType::AgilentChemstationDad,
                 [0x02, 0x38, 0x31, 0x00] => return FileType::AgilentChemstationFid,
                 [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstationMs,
                 [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
@@ -165,7 +168,10 @@ impl FileType {
             "scf" => &[FileType::Scf],
             "sd" => &[FileType::AgilentMasshunterDadHeader],
             "sp" => &[FileType::AgilentMasshunterDad],
-            "uv" => &[FileType::AgilentChemstationUv],
+            "uv" => &[
+                FileType::AgilentChemstationDad,
+                FileType::AgilentChemstationUv,
+            ],
             "xz" => &[FileType::Lzma],
             "zstd" => &[FileType::Zstd],
             "ztr" => &[FileType::Ztr],
@@ -179,6 +185,7 @@ impl FileType {
     /// If a file is unsupported, an error will be returned.
     pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> Result<&'a str, EtError> {
         Ok(match (self, hint) {
+            (FileType::AgilentChemstationDad, None) => "chemstation_dad",
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",
             (FileType::AgilentChemstationMs, None) => "chemstation_ms",
             (FileType::AgilentChemstationMwd, None) => "chemstation_mwd",

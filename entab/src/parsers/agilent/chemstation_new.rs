@@ -224,20 +224,6 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
     }
 }
 
-// scratch with offsets for info in different files
-
-// LC - 03 31 33 31 ("131")
-//  * 264 - 512 byte header chunks // 2 + 1
-//  ? 278 - Number of Records
-//  - 858 - Sample Name
-//  - 1880 - Operator Name
-//  - 2391 - Run Date
-//  - 2492 - Instrument Name
-//  - 2533 - "LC"
-//  - 2574 - Method Name
-//  - 3093 - Units
-//   4096 - data start?
-
 impl_reader!(
     ChemstationUvReader,
     ChemstationUvRecord,

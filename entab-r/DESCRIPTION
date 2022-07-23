@@ -1,7 +1,7 @@
 Package: entab
 Type: Package
 Title: Entab
-Version: 0.3.0
+Version: 0.3.1
 Author: Roderick
 Maintainer: Roderick <rbovee@gmail.com>
 Description: Entab is a record-format file reader.
