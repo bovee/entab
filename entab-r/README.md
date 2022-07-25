@@ -23,6 +23,15 @@ library(devtools)
 devtools::install_github("bovee/entab", subdir="entab-r")
 ```
 
+## Additional instructions for Mac OS X installation
+
+If you're using RStudio on a Mac, you will likely need to tell R Studio where to find cargo (the Rust package manager) by adding it to your path. You can do this by modifying your `.Rprofile` file as suggested below:
+
+1. Find your `.Rprofile` file in your home directory (you may need to press Command + Shift + period to reveal hidden files) and open it in your text editor of choice.
+2. Add `Sys.setenv(PATH = paste0("/Users/<user>/.cargo/bin:", Sys.getenv("PATH")))`, replacing <user> with your username. This will append Cargo to your path when you open RStudio.
+3. Save your `.Rprofile` and restart R Studio.
+4. Install Entab from GitHub.
+
 # Usage
 
 And then use:
