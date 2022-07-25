@@ -1,13 +1,13 @@
 [package]
 name = "entab-r"
-version = "0.3.0-alpha.2"
+version = "0.3.1"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-entab_base = { package = "entab", version = "0.3.0-alpha.2" }
-extendr-api = "0.2.0"
-libR-sys = "0.2.0"
+entab_base = { package = "entab", git = "https://github.com/bovee/entab" }
+extendr-api = { package = "extendr-api", git = "https://github.com/extendr/extendr/", rev = "1d2e87ed49a3e0e5c1a1a2df58140b3f7824fb87"}
+libR-sys = "0.2.2"
 
 [lib]
 name = "entab"

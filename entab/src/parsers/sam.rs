@@ -21,6 +21,7 @@ impl StateMetadata for BamState {
     fn header(&self) -> Vec<&str> {
         vec![
             "query_name",
+            "flag",
             "ref_name",
             "pos",
             "mapq",
@@ -28,8 +29,8 @@ impl StateMetadata for BamState {
             "rnext",
             "pnext",
             "tlen",
-            "seq",
-            "qual",
+            "sequence",
+            "quality",
             "extra",
         ]
     }
@@ -50,13 +51,13 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
             return Err("Not a valid BAM file".into());
         }
         let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
-        let _ = Skip::parse(buffer, eof, con, &mut header_len)?;
+        let _ = Skip::parse(&buffer[*con..], eof, con, &mut header_len)?;
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         while n_references > 0 {
             let name_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
-            let _ = Skip::parse(buffer, eof, con, &mut (4 + name_len))?;
+            let _ = Skip::parse(&buffer[*con..], eof, con, &mut (4 + name_len))?;
             n_references -= 1;
         }
         *consumed += *con;
@@ -68,7 +69,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamState {
         let mut header_len = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
         // TODO: we should read the headers and pass them along
         // to the Reader as metadata once we support that
-        drop(extract::<Skip>(buffer, con, &mut header_len));
+        let _ = extract::<Skip>(buffer, con, &mut header_len)?;
 
         // read the reference sequence data
         let mut n_references = extract::<u32>(buffer, con, &mut Endian::Little)? as usize;
@@ -120,14 +121,14 @@ pub struct BamRecord<'r> {
     /// Template length
     pub tlen: i32,
     /// The sequence of the query, if present.
-    pub seq: Vec<u8>,
+    pub sequence: Vec<u8>,
     /// The quality scores of the query, if present.
-    pub qual: Vec<u8>,
+    pub quality: Vec<u8>,
     /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
 
-impl_record!(BamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
+impl_record!(BamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, sequence, quality, extra);
 
 impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
     type State = BamState;
@@ -152,7 +153,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
         if record_len < 32 {
             return Err("Record is unexpectedly short".into());
         }
-        let _ = Skip::parse(rb, eof, con, &mut record_len)?;
+        let _ = Skip::parse(&rb[*con..], eof, con, &mut record_len)?;
         *consumed += *con;
 
         Ok(true)
@@ -225,14 +226,14 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
             self.cigar.push(b"MIDNSHP=X"[cigar_op & 7]);
             start += 4;
         }
-        self.seq = vec![0; seq_len];
+        self.sequence = vec![0; seq_len];
         for idx in 0..seq_len {
             let byte = data[start + (idx / 2)];
             let byte = usize::from(if idx % 2 == 0 { byte >> 4 } else { byte & 15 });
-            self.seq[idx] = b"=ACMGRSVTWYHKDBN"[byte];
+            self.sequence[idx] = b"=ACMGRSVTWYHKDBN"[byte];
         }
         start += (seq_len + 1) / 2;
-        self.qual = if data[start] == 255 {
+        self.quality = if data[start] == 255 {
             Vec::new()
         } else {
             let raw_qual = &data[start..start + seq_len];
@@ -262,8 +263,8 @@ impl StateMetadata for SamState {
             "rnext",
             "pnext",
             "tlen",
-            "seq",
-            "qual",
+            "sequence",
+            "quality",
             "extra",
         ]
     }
@@ -330,14 +331,14 @@ pub struct SamRecord<'r> {
     /// Template length
     pub tlen: i32,
     /// The sequence of the query, if present.
-    pub seq: &'r [u8],
+    pub sequence: &'r [u8],
     /// The quality scores of the query, if present.
-    pub qual: &'r [u8],
+    pub quality: &'r [u8],
     /// Extra metadata about the mapping.
     pub extra: Cow<'r, [u8]>,
 }
 
-impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, extra);
+impl_record!(SamRecord<'r>: query_name, flag, ref_name, pos, mapq, cigar, rnext, pnext, tlen, sequence, quality, extra);
 
 impl<'b: 's, 's> FromSlice<'b, 's> for SamRecord<'s> {
     type State = SamState;
@@ -397,8 +398,8 @@ impl<'b: 's, 's> FromSlice<'b, 's> for SamRecord<'s> {
             Some(pnext - 1)
         };
         self.tlen = alloc::str::from_utf8(chunks[8])?.parse()?;
-        self.seq = if chunks[9] == b"*" { b"" } else { chunks[9] };
-        self.qual = if chunks[10] == b"*" { b"" } else { chunks[10] };
+        self.sequence = if chunks[9] == b"*" { b"" } else { chunks[9] };
+        self.quality = if chunks[10] == b"*" { b"" } else { chunks[10] };
         self.extra = if chunks.len() == 11 {
             Cow::Borrowed(b"")
         } else if chunks.len() == 12 {
@@ -434,11 +435,13 @@ mod tests {
         #[cfg(all(feature = "compression", feature = "std"))]
         let _ = reader.metadata();
         if let Some(SamRecord {
-            query_name, seq, ..
+            query_name,
+            sequence,
+            ..
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
-            assert_eq!(seq, KNOWN_SEQ);
+            assert_eq!(sequence, KNOWN_SEQ);
         } else {
             panic!("Sam reader returned non-Mz record");
         };
@@ -503,12 +506,14 @@ mod tests {
         let _ = reader.metadata();
 
         if let Some(BamRecord {
-            query_name, seq, ..
+            query_name,
+            sequence,
+            ..
         }) = reader.next()?
         {
             assert_eq!(query_name, "SRR062634.1");
             let known_seq = KNOWN_SEQ.to_vec();
-            assert_eq!(seq, known_seq);
+            assert_eq!(sequence, known_seq);
         } else {
             panic!("Sam reader returned non-Mz record");
         };
@@ -545,7 +550,8 @@ mod tests {
             205, 110, 239, 10, 42, 10, 10, 116, 116, 116, 116, 116, 116, 116, 169, 77, 86, 139,
             139, 116, 116, 116, 116, 116, 246, 245, 245, 240,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 223, 223, 223, 223,
@@ -617,7 +623,8 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 255,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -627,12 +634,14 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 125, 10, 10, 10, 10, 255, 255, 255, 255,
             10, 10, 18,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 105, 0, 110, 0, 0, 0, 0,
         ];
-        assert!(BamReader::new(&data[..], None).is_err());
+        let mut reader = BamReader::new(&data[..], None)?;
+        assert!(reader.next().is_err());
 
         let data = [
             66, 65, 77, 1, 62, 1, 0, 0, 0, 0, 0, 0, 12, 10, 255, 255, 255, 255, 255, 116, 116, 116,

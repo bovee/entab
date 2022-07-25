@@ -81,25 +81,32 @@ impl<'r> From<&ChemstationMetadata> for BTreeMap<String, Value<'r>> {
     }
 }
 
-fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
-    if header.len() < 652 {
+fn get_metadata(header: &[u8], has_signal: bool) -> Result<ChemstationMetadata, EtError> {
+    if has_signal && header.len() < 652 {
         return Err(
             EtError::from("Chemstation header needs to be at least 648 bytes long").incomplete(),
+        );
+    } else if !has_signal && header.len() < 512 {
+        return Err(
+            EtError::from("Chemstation header needs to be at least 512 bytes long").incomplete(),
         );
     }
     let start_time = f64::from(i32::extract(&header[282..], &Endian::Big)?) / 60000.;
     let end_time = f64::from(i32::extract(&header[286..], &Endian::Big)?) / 60000.;
 
-    let offset_correction = f64::extract(&header[636..], &Endian::Big)?;
-    let mult_correction = f64::extract(&header[644..], &Endian::Big)?;
+    let mut offset_correction = 0.;
+    let mut mult_correction = 1.;
+    let mut signal_name = "";
+    if has_signal {
+        offset_correction = f64::extract(&header[636..], &Endian::Big)?;
+        mult_correction = f64::extract(&header[644..], &Endian::Big)?;
 
-    let signal_name_len = usize::from(header[596]);
-    if signal_name_len > 40 {
-        return Err("Invalid signal name length".into());
+        let signal_name_len = usize::from(header[596]);
+        if signal_name_len > 40 {
+            return Err("Invalid signal name length".into());
+        }
+        signal_name = str::from_utf8(&header[597..597 + signal_name_len])?.trim();
     }
-    let signal_name = str::from_utf8(&header[597..597 + signal_name_len])?
-        .trim()
-        .to_string();
 
     let sample_len = usize::from(header[24]);
     if sample_len > 60 {
@@ -164,7 +171,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
     Ok(ChemstationMetadata {
         start_time,
         end_time,
-        signal_name,
+        signal_name: signal_name.to_string(),
         offset_correction,
         mult_correction,
         sequence,
@@ -180,7 +187,7 @@ fn get_metadata(header: &[u8]) -> Result<ChemstationMetadata, EtError> {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationFid parser
+/// Internal state for the `ChemstationFidRecord` parser
 pub struct ChemstationFidState {
     cur_time: f64,
     cur_delta: f64,
@@ -213,7 +220,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidState {
     }
 
     fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(rb)?;
+        let metadata = get_metadata(rb, true)?;
         // offset the current time back one step so it'll be right after the first time that parse
         self.cur_time = metadata.start_time - CHEMSTATION_TIME_STEP;
         self.cur_intensity = 0.;
@@ -278,7 +285,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidRecord {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationMs parser
+/// Internal state for the `ChemstationMsRecord` parser
 pub struct ChemstationMsState {
     n_scans_left: usize,
     n_mzs_left: usize,
@@ -312,7 +319,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
     }
 
     fn get(&mut self, buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(buffer)?;
+        let metadata = get_metadata(buffer, true)?;
         let n_scans = u32::extract(&buffer[278..], &Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
@@ -322,7 +329,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-/// A single time/mz record from a ChemstationMs file
+/// A single time/mz record from a Chemstation MS file
 pub struct ChemstationMsRecord {
     /// The time recorded at
     pub time: f64,
@@ -397,7 +404,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsRecord {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the ChemstationMwd parser
+/// Internal state for the `ChemstationMwdRecord` parser
 pub struct ChemstationMwdState {
     n_wvs_left: usize,
     cur_time: f64,
@@ -430,7 +437,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMwdState {
     }
 
     fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(buf)?;
+        let metadata = get_metadata(buf, true)?;
 
         self.n_wvs_left = 0;
         // offset the current time back one step so it'll be right after the first time that parse
@@ -514,24 +521,29 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMwdRecord<'s> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-/// Internal state for the ChemstationUv parser
-pub struct ChemstationUvState {
+#[derive(Clone, Debug, Default)]
+/// Internal state for the `ChemstationDadRecord` parser
+pub struct ChemstationDadState {
     n_scans_left: usize,
-    n_wvs_left: usize,
+    n_bytes_left: usize,
     cur_time: f64,
     cur_intensity: f64,
     cur_wv: f64,
     wv_step: f64,
+    metadata: ChemstationMetadata,
 }
 
-impl StateMetadata for ChemstationUvState {
+impl StateMetadata for ChemstationDadState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
+
     fn header(&self) -> Vec<&str> {
         vec!["time", "wavelength", "intensity"]
     }
 }
 
-impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationDadState {
     type State = ();
 
     fn parse(
@@ -544,23 +556,19 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
         Ok(true)
     }
 
-    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let n_scans = u32::extract(&rb[278..], &Endian::Big)? as usize;
+    fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let metadata = get_metadata(buf, false)?;
+        let n_scans = u32::extract(&buf[278..], &Endian::Big)? as usize;
 
-        // TODO: get other metadata
         self.n_scans_left = n_scans;
-        self.n_wvs_left = 0;
-        self.cur_time = 0.;
-        self.cur_wv = 0.;
-        self.cur_intensity = 0.;
-        self.wv_step = 0.;
+        self.metadata = metadata;
         Ok(())
     }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-/// A record from a ChemstationUv file
-pub struct ChemstationUvRecord {
+/// A single point from an e.g. moving wavelength detector trace
+pub struct ChemstationDadRecord {
     /// The time recorded at
     pub time: f64,
     /// The wavelength recorded at
@@ -569,10 +577,10 @@ pub struct ChemstationUvRecord {
     pub intensity: f64,
 }
 
-impl_record!(ChemstationUvRecord: time, wavelength, intensity);
+impl_record!(ChemstationDadRecord: time, wavelength, intensity);
 
-impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
-    type State = ChemstationUvState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationDadRecord {
+    type State = ChemstationDadState;
 
     fn parse(
         rb: &[u8],
@@ -583,103 +591,64 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
         if state.n_scans_left == 0 {
             return Ok(false);
         }
-
         let con = &mut 0;
-        // refill case
-        let mut n_wvs_left = state.n_wvs_left;
-        if n_wvs_left == 0 {
-            let _ = extract::<&[u8]>(rb, con, &mut 4)?;
-            // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
-            state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?) / 60000.;
-            let wv_start: u16 = extract(rb, con, &mut Endian::Little)?;
-            let wv_end: u16 = extract(rb, con, &mut Endian::Little)?;
-            if wv_start > wv_end {
-                return Err("Wavelength range has invalid bounds".into());
+        let mut n_scans_left = state.n_scans_left;
+        let mut n_bytes_left = state.n_bytes_left;
+        if n_bytes_left == 0 {
+            let scan_type = extract::<u16>(rb, con, &mut Endian::Little)?;
+            if scan_type != 67 {
+                // i'm not sure we ever hit this (tracking the n_scans_left should prevent it), but
+                // sometimes there's a different type of scan (68) at the end which starts a stream
+                // of u16, u32, u32 data; the u32's appear to both increment separately and the u16
+                // is either 80 or 81 ~95% of the time and a number in the 50s-60s otherwise.
+                return Ok(false);
             }
-            let wv_step: u16 = extract(rb, con, &mut Endian::Little)?;
-            if wv_step == 0 {
-                return Err("Invalid wavelength step".into());
-            }
-
-            n_wvs_left = usize::from((wv_end - wv_start) / wv_step) + 1;
-            state.wv_step = f64::from(wv_step) / 20.;
-            state.cur_wv = f64::from(wv_start) / 20. - state.wv_step;
+            n_bytes_left =
+                usize::from(extract::<u16>(rb, con, &mut Endian::Little)?.saturating_sub(22));
+            state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
+            state.cur_wv = f64::from(extract::<u16>(rb, con, &mut Endian::Little)?);
+            let _ = extract::<u16>(rb, con, &mut Endian::Little)?; // the end wavelength
+            state.wv_step = f64::from(extract::<u16>(rb, con, &mut Endian::Little)?);
             let _ = extract::<&[u8]>(rb, con, &mut 8)?;
-        };
-
-        let delta = extract::<i16>(rb, con, &mut Endian::Little)?;
-        if delta == -32768 {
-            state.cur_intensity = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?);
+            state.cur_intensity = 0.;
+            if n_bytes_left == 0 {
+                // TODO: consume the rest of the file so this can't accidentally repeat?
+                return Ok(false);
+            }
+            n_scans_left -= 1;
         } else {
-            state.cur_intensity += f64::from(delta);
+            state.cur_wv += state.wv_step;
         }
 
-        if state.n_wvs_left == 1 {
-            state.n_scans_left -= 1;
+        let intensity: i16 = extract(rb, con, &mut Endian::Little)?;
+        if intensity == -32768 {
+            state.cur_intensity = f64::from(extract::<i32>(rb, con, &mut Endian::Little)?);
+            state.n_bytes_left = n_bytes_left.saturating_sub(6);
+        } else {
+            state.cur_intensity += f64::from(intensity);
+            state.n_bytes_left = n_bytes_left.saturating_sub(2);
         }
-        state.cur_wv += state.wv_step;
-        state.n_wvs_left = n_wvs_left - 1;
+
+        state.n_scans_left = n_scans_left;
         *consumed += *con;
         Ok(true)
     }
 
     fn get(&mut self, _rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
-        self.time = state.cur_time;
-        self.wavelength = state.cur_wv;
+        self.wavelength = state.cur_wv / 20.;
+        self.time = state.cur_time / 60_000.;
         self.intensity = state.cur_intensity / 2000.;
         Ok(())
     }
 }
 
-// scratch with offsets for info in different files
-
-// FID - 02 38 31 00 ("81") (missing 01 38 00 00)
-// MWD - 02 33 30 00 ("30")
-// MS - 01 32 00 00 ("2") (missing 02 32 30?)
-// (possibly also 03 31 37 39 and 03 31 38 31 ?)
-//  - 5 - "GC / MS Data File" or other?
-//  - 24 - Sample Name
-//  - 86 - Sample Description?
-//  - 148 - Operator Name
-//  - 178 - Run Date
-//  - 208 - Instrument Name
-//  - 218 - LC or GC
-//  - 228 - Method Name
-//  - 252 - Sequence? (u16)
-//  - 254 - Vial? (u16)
-//  - 256 - Replicate? (u16)
-//  - 260 - TIC Offset? (i32)
-//  * 264 - FID/MWD - 512 byte header chunks // 2 + 1
-//  - 264 - MS - total header bytes // 2 + 1
-//  - 272 - Normalization offset? (i32)
-//  * 282 - Start Time (i32)
-//  * 286 - End Time (i32)
-//  M 322 - Collection software?
-//  M 355 - Software Version?
-//  - 368 - "GC / MS Data File" as utf16
-//  M 405 - Another Version?
-//  - 448 - MS - Instrument name as utf16
-//  - 530 - lower end of mz/wv range?
-//  - 532 - upper end of mz/wv range?
-//  - 576 - MS - "GC"
-//  - 580 - Units
-//  M 596 - Channel Info (str)
-//  - 616 - MS - Method directory
-//  - 644 - (f32/64?)
-//  - 5768 - MS - data start (GC)
-
-// LC - 03 31 33 31 ("131")
-//  * 264 - 512 byte header chunks // 2 + 1
-//  ? 278 - Number of Records
-//  - 858 - Sample Name
-//  - 1880 - Operator Name
-//  - 2391 - Run Date
-//  - 2492 - Instrument Name
-//  - 2533 - "LC"
-//  - 2574 - Method Name
-//  - 3093 - Units
-//   4096 - data start?
-
+impl_reader!(
+    ChemstationDadReader,
+    ChemstationDadRecord,
+    ChemstationDadRecord,
+    ChemstationDadState,
+    ()
+);
 impl_reader!(
     ChemstationFidReader,
     ChemstationFidRecord,
@@ -699,13 +668,6 @@ impl_reader!(
     ChemstationMwdRecord,
     ChemstationMwdRecord<'r>,
     ChemstationMwdState,
-    ()
-);
-impl_reader!(
-    ChemstationUvReader,
-    ChemstationUvRecord,
-    ChemstationUvRecord,
-    ChemstationUvState,
     ()
 );
 
@@ -786,39 +748,6 @@ mod tests {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 1801);
-        Ok(())
-    }
-
-    #[test]
-    fn test_chemstation_reader_uv() -> Result<(), EtError> {
-        let data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationUvReader::new(data, None)?;
-        let _ = reader.metadata();
-        assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
-
-        let ChemstationUvRecord {
-            time,
-            wavelength,
-            intensity,
-        } = reader.next()?.unwrap();
-        assert!((time - 0.001333).abs() < 0.000001);
-        assert!((wavelength - 200.).abs() < 0.000001);
-        assert_eq!(intensity, -15.6675);
-
-        let ChemstationUvRecord {
-            time,
-            wavelength,
-            intensity,
-        } = reader.next()?.unwrap();
-        assert!((time - 0.001333).abs() < 0.000001);
-        assert!((wavelength - 202.).abs() < 0.000001);
-        assert_eq!(intensity, -31.805);
-
-        let mut n_mzs = 2;
-        while reader.next()?.is_some() {
-            n_mzs += 1;
-        }
-        assert_eq!(n_mzs, 6744 * 301);
         Ok(())
     }
 

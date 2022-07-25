@@ -254,6 +254,21 @@ impl<'r> ::core::fmt::Debug for ReadBuffer<'r> {
     }
 }
 
+impl<'r> ::core::default::Default for ReadBuffer<'r> {
+    fn default() -> Self {
+        ReadBuffer {
+            #[cfg(feature = "std")]
+            reader: Box::new(Cursor::new(b"")),
+            buffer: Cow::Borrowed(b""),
+            reader_pos: 0,
+            record_pos: 0,
+            consumed: 0,
+            eof: true,
+            end: false,
+        }
+    }
+}
+
 #[cfg(feature = "std")]
 impl<'r> TryFrom<Box<dyn Read + 'r>> for ReadBuffer<'r> {
     type Error = EtError;

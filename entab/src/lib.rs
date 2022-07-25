@@ -37,9 +37,9 @@
 //! Alternatively, you may not know the type of file when writing your code so
 //! you may want to abstract over as many types as possible. This is where the
 //! slower, generic parser framework is used (for example, in the bindings
-//! libraries also). This framework takes a parser name which can be
-//! autodetected via `entab::filetype::sniff_reader_filetype` and
-//! `entab::filetype::FileType::to_parser_name`:
+//! for different languages). This framework can optionally take a `parser_name`
+//! to force it to use that specific parser and optional params to control
+//! parser options.
 //! ```
 //! # #[cfg(feature = "std")] {
 //! use std::fs::File;
@@ -47,7 +47,7 @@
 //! use entab::readers::get_reader;
 //!
 //! let file = File::open("./tests/data/sequence.fasta")?;
-//! let mut reader = get_reader(FileType::Fasta, file)?;
+//! let (mut reader, _) = get_reader(file, None, None)?;
 //! while let Some(record) = reader.next_record()? {
 //!     println!("{:?}", record[0]);
 //! }
@@ -61,7 +61,6 @@ extern crate alloc;
 /// The buffer interface that underlies the file readers
 pub mod buffer;
 /// Generic file decompression
-#[cfg(feature = "std")]
 pub mod compression;
 /// Miscellanous utility functions and error handling
 pub mod error;

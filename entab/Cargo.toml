@@ -1,6 +1,6 @@
 [package]
 name = "entab"
-version = "0.3.0-alpha.2"
+version = "0.3.1"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 description = "Record-format file reader"
@@ -11,6 +11,7 @@ categories = ["parsing", "science"]
 
 [dependencies]
 # parsing
+bytecount = "0.6.2"
 chrono = { version = "0.4", default-features=false, features = ["alloc", "serde"] }
 encoding = "0.2.33"
 memchr = "2.3"
@@ -28,7 +29,7 @@ rayon = "1.5.1"
 [features]
 default = ["compression", "std"]
 compression = ["bzip2", "xz2", "zstd"]
-std = ["chrono/std", "serde/std"]
+std = ["bytecount/runtime-dispatch-simd", "chrono/std", "serde/std"]
 
 [[bench]]
 name = "benchmarks"

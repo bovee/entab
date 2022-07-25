@@ -16,13 +16,17 @@ Entab supports reading a variety of bioinformatics, chemoinformatics, and
 other formats.
 
  - Agilent Chemstation CH, FID, MS, MWD, and UV formats
+ - Agilent Masshunter DAD format[^1]
  - FASTA and FASTQ sequence formats
  - FCS flow cytometry format
  - Inficon Hapsite mass specotrometry format
  - PNG image format
  - SAM and BAM alignment formats
  - Thermo continuous flow isotope mass spectrometry formats
- - TSV
+ - Thermo RAW files
+ - CSV & TSV files
+
+[^1]: This format uses multiple files so it's not supported in streaming mode or in e.g. the JS bindings.
 
 ## CLI
 

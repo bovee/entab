@@ -1,12 +1,14 @@
+#[cfg(feature = "std")]
 use alloc::boxed::Box;
 use core::convert::TryInto;
 
-#[cfg(feature = "compression")]
+#[cfg(all(feature = "compression", feature = "std"))]
 use bzip2::read::BzDecoder;
+#[cfg(feature = "std")]
 use flate2::read::MultiGzDecoder;
-#[cfg(feature = "compression")]
+#[cfg(all(feature = "compression", feature = "std"))]
 use xz2::read::XzDecoder;
-#[cfg(feature = "compression")]
+#[cfg(all(feature = "compression", feature = "std"))]
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::buffer::ReadBuffer;
@@ -17,7 +19,7 @@ use crate::EtError;
 ///
 /// # Errors
 /// If reading fails or if the stream can't be decompressed, return `EtError`.
-#[cfg(feature = "compression")]
+#[cfg(all(feature = "compression", feature = "std"))]
 pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,
@@ -62,7 +64,7 @@ where
 ///
 /// # Errors
 /// If reading fails or if the stream can't be decompressed, return `EtError`.
-#[cfg(not(feature = "compression"))]
+#[cfg(all(not(feature = "compression"), feature = "std"))]
 pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,
@@ -80,6 +82,26 @@ where
         }
         FileType::Bzip | FileType::Lzma | FileType::Zstd => {
             return Err("entab was not compiled with support for compressed files".into());
+        }
+        _ => (reader, None),
+    })
+}
+
+/// Decompress a `Read` stream and returns the inferred file type.
+///
+/// # Errors
+/// If reading fails or if the stream can't be decompressed, return `EtError`.
+#[cfg(all(not(feature = "std")))]
+pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
+where
+    B: TryInto<ReadBuffer<'r>>,
+    EtError: From<<B as TryInto<ReadBuffer<'r>>>::Error>,
+{
+    let mut reader = data.try_into()?;
+    let file_type = reader.sniff_filetype()?;
+    Ok(match file_type {
+        FileType::Gzip | FileType::Bzip | FileType::Lzma | FileType::Zstd => {
+            return Err("entab was not compiled with support for any compressed files".into());
         }
         _ => (reader, None),
     })

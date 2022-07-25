@@ -54,12 +54,3 @@ jobs:
     - name: Run no_std tests
       working-directory: ./entab
       run: cargo test --no-default-features
-
-    - name: Install wasm-pack
-      run: |
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        wasm-pack --version
-
-    - name: Run JS tests
-      working-directory: ./entab-js
-      run: wasm-pack test --headless --chrome

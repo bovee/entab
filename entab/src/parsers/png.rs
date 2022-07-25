@@ -97,7 +97,11 @@ impl PngState {
                 Some(2) => self.image_data[pos].wrapping_add(above),
                 // average filtering
                 Some(3) => {
-                    let average = ((u16::from(left) + u16::from(above)) / 2) as u8;
+                    // average left and above together
+                    let mut average = (left >> 1) + (above >> 1);
+                    if left & above & 1 == 1 {
+                        average += 1;
+                    }
                     self.image_data[pos].wrapping_add(average)
                 }
                 // paeth filtering

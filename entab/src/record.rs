@@ -72,10 +72,24 @@ pub enum Value<'a> {
 
 impl<'a> Value<'a> {
     /// Converts an ISO-8601 formated date into a `Value::Datetime`
+    ///
+    /// # Errors
+    /// If the string can't be interpreted as a date, an error is returned.
     pub fn from_iso_date(string: &str) -> Result<Self, EtError> {
         let datetime = NaiveDateTime::parse_from_str(string, "%+")
             .map_err(|e| EtError::from(e.to_string()))?;
         Ok(Self::Datetime(datetime))
+    }
+
+    /// If the Value is a String, return the string.
+    ///
+    /// # Errors
+    /// If the value isn't a string, an error is returned.
+    pub fn into_string(self) -> Result<String, EtError> {
+        if let Value::String(s) = self {
+            return Ok(s.into_owned());
+        }
+        Err(EtError::from("Value was not a string"))
     }
 }
 
@@ -138,8 +152,12 @@ impl<'a> From<i64> for Value<'a> {
 
 impl<'a> From<u64> for Value<'a> {
     fn from(x: u64) -> Self {
-        // TODO: there's probably a better solution here?
-        Value::Integer(i64::try_from(x).expect("u64 exceeded i64 memory limit"))
+        if x.leading_zeros() == 0 {
+            // handle u64 -> i64 overflow by saturating; maybe someday this should be a try_from?
+            Value::Integer(i64::MAX)
+        } else {
+            Value::Integer(i64::try_from(x).unwrap())
+        }
     }
 }
 
@@ -161,6 +179,12 @@ impl<'a> From<&'a [u8]> for Value<'a> {
 impl<'a> From<Vec<u8>> for Value<'a> {
     fn from(x: Vec<u8>) -> Self {
         Value::String(Cow::Owned(String::from_utf8_lossy(&x).into_owned()))
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for Value<'a> {
+    fn from(x: Cow<'a, str>) -> Self {
+        Value::String(x)
     }
 }
 

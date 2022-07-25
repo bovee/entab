@@ -1,12 +1,11 @@
-#![allow(clippy::needless_option_as_deref)]
+#![allow(clippy::needless_option_as_deref, clippy::used_underscore_binding)]
 mod raw_io_wrapper;
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use entab_base::compression::decompress;
 use entab_base::error::EtError;
-use entab_base::filetype::FileType;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use pyo3::class::{PyIterProtocol, PyObjectProtocol};
@@ -19,8 +18,12 @@ use crate::raw_io_wrapper::RawIoWrapper;
 create_exception!(entab, EntabError, exceptions::PyException);
 
 fn to_py(err: EtError) -> PyErr {
-    EntabError::new_err(err.to_string())
     // TODO: somehow bind err.byte and err.record in here too?
+    let res = EntabError::new_err(err.to_string());
+    // we could technically just take an `&EtError` here, but the function signature is nicer with
+    // a `EtError` so we have to drop it here to make clippy happy
+    drop(err);
+    res
 }
 
 /// Map a Value into a `PyObject`
@@ -29,8 +32,9 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
         Value::Null => py.None().as_ref(py).into(),
         Value::Boolean(b) => b.to_object(py),
         Value::Datetime(d) => {
-            // return an ISO 8601 formatted string
-            d.format("%+").to_string().to_object(py)
+            // NB: For files without timezone data (and all NaiveDateTime?),
+            // .format("%+") panics. So timezone is omitted
+            d.format("%Y-%m-%dT%H:%M:%S%.f").to_string().to_object(py)
             // TODO: it would be nice to use Python's built-in datetime, but that doesn't appear to
             // be abi3-compatible right now
             //            let timestamp = d.timestamp_millis() as f64 / 1000.;
@@ -93,6 +97,7 @@ impl Reader {
     #[new]
     #[args(data = "None", filename = "None", parser = "None")]
     fn new(data: Option<&PyAny>, filename: Option<&str>, parser: Option<&str>) -> PyResult<Self> {
+        let mut params = BTreeMap::new();
         let stream: Box<dyn Read> = match (data, filename) {
             (Some(d), None) => {
                 if let Ok(bytes) = d.extract::<Vec<u8>>() {
@@ -107,17 +112,17 @@ impl Reader {
                     ));
                 }
             }
-            (None, Some(f)) => Box::new(File::open(f)?),
+            (None, Some(f)) => {
+                params.insert("filename".to_string(), Value::String(f.into()));
+                Box::new(File::open(f)?)
+            }
             _ => {
                 return Err(EntabError::new_err(
                     "One and only one of `data` or `filename` must be provided",
                 ))
             }
         };
-        let (mut reader, _) = decompress(stream).map_err(to_py)?;
-        let filetype = reader.sniff_filetype().map_err(to_py)?;
-        let filetype = parser.map_or_else(|| filetype, FileType::from_parser_name);
-        let reader = get_reader(filetype, reader).map_err(to_py)?;
+        let (reader, parser_used) = get_reader(stream, parser, Some(params)).map_err(to_py)?;
         let gil = Python::acquire_gil();
         let py = gil.python();
 
@@ -133,7 +138,7 @@ impl Reader {
             .into();
 
         Ok(Reader {
-            parser: filetype.to_parser_name(),
+            parser: parser_used.to_string(),
             record_class,
             reader,
         })

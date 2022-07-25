@@ -6,6 +6,7 @@ use entab::record::Value;
 
 use memchr::{memchr, memchr_iter};
 
+#[allow(dead_code)] // TODO: add support for this into the CLI client
 pub enum TsvEscapeStyle {
     Quote(u8),
     Escape(u8),
