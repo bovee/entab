@@ -13,6 +13,7 @@ all: C_clean
 $(SHLIB): $(STATLIB)
 
 $(STATLIB):
+	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
 	cargo build --release --manifest-path=../Cargo.toml --target-dir $(TARGET_DIR)
 	mv ./$(LIBDIR)/$(PLATFORM_STATLIB) ./$(STATLIB)
 
