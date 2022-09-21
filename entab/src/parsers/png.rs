@@ -12,7 +12,7 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// The way the color is encoded in the PNG
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PngColorType {
     /// Each color is indexed from a palette
     Indexed,

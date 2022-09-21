@@ -4,7 +4,7 @@ use core::marker::Copy;
 use crate::error::EtError;
 
 /// A file format.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FileType {
     // compression
     /// Gz/Gzip compression container

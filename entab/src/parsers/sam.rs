@@ -286,7 +286,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for SamState {
         // the final extracted line we don't want to consumed
         let mut to_read = 0;
         while let Some(header) = extract_opt::<NewLine>(rb, eof, con, &mut 0)? {
-            if header.0.get(0) != Some(&b'@') {
+            if header.0.first() != Some(&b'@') {
                 break;
             }
             to_read = *con;

@@ -29,7 +29,7 @@ where
 {
     let (mut rb, _): (ReadBuffer<'r>, _) = decompress(data)?;
     let parser_name = rb.sniff_filetype()?.to_parser_name(parser)?;
-    _get_reader(rb, parser_name, params.unwrap_or_else(BTreeMap::new))
+    _get_reader(rb, parser_name, params.unwrap_or_default())
 }
 
 /// Internal function to handle `get_reader` not inferring that the Reader constructors need to be

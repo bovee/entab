@@ -74,7 +74,7 @@ pub struct TsvState {
     quote_char: u8,
 }
 
-impl<'b: 's, 'r, 's> FromSlice<'b, 's> for TsvState {
+impl<'b: 's, 's> FromSlice<'b, 's> for TsvState {
     type State = TsvParams;
 
     fn parse(
@@ -136,7 +136,7 @@ impl<'b: 's, 'r, 's> FromSlice<'b, 's> for TsvState {
     }
 }
 
-impl<'r> StateMetadata for TsvState {
+impl StateMetadata for TsvState {
     fn header(&self) -> Vec<&str> {
         let mut headers = Vec::new();
         for header in &self.headers {

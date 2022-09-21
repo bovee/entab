@@ -21,7 +21,7 @@ pub struct MasshunterDadState {
     wavelength_step: f64,
 }
 
-impl<'s> StateMetadata for MasshunterDadState {
+impl StateMetadata for MasshunterDadState {
     fn header(&self) -> Vec<&str> {
         vec!["time", "wavelength", "intensity"]
     }
