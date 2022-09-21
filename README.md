@@ -9,6 +9,8 @@ formats into usable tabular data across a variety of programming languages.
 [![Package on Crates.io](https://img.shields.io/crates/v/entab.svg)](https://crates.io/crates/entab)
 [![Package on NPM](https://img.shields.io/npm/v/entab.svg)](https://www.npmjs.com/package/entab)
 [![Package on PyPI](https://img.shields.io/pypi/v/entab.svg)](https://pypi.org/project/entab/)
+[![DOI](https://zenodo.org/badge/245891414.svg)](https://zenodo.org/badge/latestdoi/245891414)
+
 
 ## Formats
 
