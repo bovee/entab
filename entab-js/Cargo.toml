@@ -20,7 +20,6 @@ entab_base = { package = "entab", path = "../entab", default-features = false, f
 js-sys = "0.3.56"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.79", features = ["serde-serialize"] }
-wee_alloc = { version = "0.4.5", optional = true }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"

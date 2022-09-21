@@ -12,10 +12,6 @@ use js_sys::{Array, Object};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 #[derive(Serialize)]
 pub struct NextRecord<'v> {
     value: Option<BTreeMap<&'v str, Value<'v>>>,
