@@ -8,6 +8,7 @@ members = [
 
 exclude = [
   "entab-r",
+  "entab-benchmarks",
 ]
 
 [profile.release]
