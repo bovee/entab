@@ -68,11 +68,24 @@ pub enum FileType {
     // geology
     /// "Log ASCII Standard" format for well log information
     Las,
-    // catch all
+    // image formats
+    /// DICOM Medical File Format
+    Dicom,
+    /// Graphics Interchange Format
+    Gif,
+    /// JPEG image format
+    Jpeg,
     /// Portable Network Graphics image format
     Png,
+    // generic data formats
     /// Generic scientific data format
     Hdf5,
+    /// Apache Avro
+    ApacheAvro,
+    /// Apache Parquet
+    ApacheParquet,
+    /// SQLite database
+    Sqlite,
     /// Tab- or comma-seperated value format
     DelimitedText,
     /// Unknown file type
@@ -93,22 +106,28 @@ impl FileType {
                 b"\x04\x03\x02\x01SPAH" => return FileType::InficonHapsite,
                 b"\xAEZTR\x0D\x0A\x1A\x0A" => return FileType::Ztr,
                 b"\x01\xA1F\x00i\x00n\x00" => return FileType::ThermoRaw,
+                b"SQLite f" => return FileType::Sqlite,
                 _ => {}
             }
         }
         if magic.len() > 4 {
             match &magic[..4] {
                 b"BAM\x01" => return FileType::Bam,
+                b"DICM" => return FileType::Dicom,
+                b"GIF8" => return FileType::Gif,
                 b"@HD\t" | b"@SQ\t" => return FileType::Sam,
+                b"PAR1" => return FileType::ApacheParquet,
                 b"\x2Escf" => return FileType::Scf,
-                [0x02, 0x33, 0x31, 0x00] => return FileType::AgilentChemstationDad,
-                [0x02, 0x38, 0x31, 0x00] => return FileType::AgilentChemstationFid,
-                [0x01, 0x32, 0x00, 0x00] => return FileType::AgilentChemstationMs,
-                [0x02, 0x33, 0x30, 0x00] => return FileType::AgilentChemstationMwd,
-                [0x03, 0x31, 0x33, 0x31] => return FileType::AgilentChemstationUv,
-                [0x02, 0x02, 0x00, 0x00] => return FileType::AgilentMasshunterDadHeader,
-                [0x03, 0x02, 0x00, 0x00] => return FileType::AgilentMasshunterDad,
-                [0x28, 0xB5, 0x2F, 0xFD] => return FileType::Zstd,
+                b"\x01\x32\x00\x00" => return FileType::AgilentChemstationMs,
+                b"\x02\x02\x00\x00" => return FileType::AgilentMasshunterDadHeader,
+                b"\x02\x33\x30\x00" => return FileType::AgilentChemstationMwd,
+                b"\x02\x33\x31\x00" => return FileType::AgilentChemstationDad,
+                b"\x02\x38\x31\x00" => return FileType::AgilentChemstationFid,
+                b"\x03\x02\x00\x00" => return FileType::AgilentMasshunterDad,
+                b"\x03\x31\x33\x31" => return FileType::AgilentChemstationUv,
+                b"\x28\xB5\x2F\xFD" => return FileType::Zstd,
+                b"\x4F\x62\x6A\x01" => return FileType::ApacheAvro,
+                b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1" | b"\xFF\xD8\xFF\xEE" => return FileType::Jpeg,
                 [0xFF, 0xFF, 0x06 | 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
                         return FileType::ThermoCf;
@@ -142,6 +161,7 @@ impl FileType {
     pub fn from_extension(ext: &str) -> &[Self] {
         match ext {
             "ami" => &[FileType::BrukerMsms],
+            "avro" => &[FileType::ApacheAvro],
             "baf" => &[FileType::BrukerBaf],
             "bam" => &[FileType::Bam],
             "bz" | "bz2" | "bzip" => &[FileType::Bzip],
@@ -152,14 +172,17 @@ impl FileType {
                 FileType::AgilentChemstationMwd,
             ],
             "csv" | "tsv" => &[FileType::DelimitedText],
+            "dicm" => &[FileType::Dicom],
             "dxf" => &[FileType::ThermoDxf],
             "fa" | "faa" | "fasta" | "fna" => &[FileType::Fasta],
             "faq" | "fastq" | "fq" => &[FileType::Fastq],
             "fcs" | "lmd" => &[FileType::Facs],
+            "gif" => &[FileType::Gif],
             "gz" | "gzip" => &[FileType::Gzip],
             "hdf" => &[FileType::Hdf5],
             "hps" => &[FileType::InficonHapsite],
             "idx" => &[FileType::WatersAutospec],
+            "jpg" | "jpeg" => &[FileType::Jpeg],
             "ms" => &[FileType::AgilentChemstationMs],
             "mzxml" => &[FileType::MzXml],
             "png" => &[FileType::Png],
@@ -168,6 +191,7 @@ impl FileType {
             "scf" => &[FileType::Scf],
             "sd" => &[FileType::AgilentMasshunterDadHeader],
             "sp" => &[FileType::AgilentMasshunterDad],
+            "sqlite" => &[FileType::Sqlite],
             "uv" => &[
                 FileType::AgilentChemstationDad,
                 FileType::AgilentChemstationUv,
