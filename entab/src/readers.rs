@@ -53,9 +53,12 @@ fn _get_reader<'n, 'p, 'r>(
         "chemstation_mwd" => Box::new(parsers::agilent::chemstation::ChemstationMwdReader::new(
             rb, None,
         )?),
-        "chemstation_uv" => Box::new(parsers::agilent::chemstation_new::ChemstationUvReader::new(
-            rb, None,
-        )?),
+        "chemstation_new_fid" => {
+            Box::new(parsers::agilent::chemstation_new::ChemstationNewFidReader::new(rb, None)?)
+        }
+        "chemstation_new_uv" => {
+            Box::new(parsers::agilent::chemstation_new::ChemstationNewUvReader::new(rb, None)?)
+        }
         "csv" => Box::new(parsers::tsv::TsvReader::new(
             rb,
             Some(parsers::tsv::TsvParams::default().delim(b',')),

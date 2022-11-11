@@ -1,3 +1,4 @@
+/// Parsers for Chemstation formats that begin with \x03; these are created with Chemstation Rev C.
 use alloc::collections::BTreeMap;
 use alloc::str;
 use alloc::string::{String, ToString};
@@ -102,8 +103,8 @@ fn get_new_metadata(header: &[u8]) -> Result<ChemstationNewMetadata, EtError> {
 }
 
 #[derive(Clone, Debug, Default)]
-/// Internal state for the `ChemstationUvRecord` parser
-pub struct ChemstationUvState {
+/// Internal state for the `ChemstationNewUvRecord` parser
+pub struct ChemstationNewUvState {
     metadata: ChemstationNewMetadata,
     n_scans_left: usize,
     n_wvs_left: usize,
@@ -113,7 +114,7 @@ pub struct ChemstationUvState {
     wv_step: f64,
 }
 
-impl StateMetadata for ChemstationUvState {
+impl StateMetadata for ChemstationNewUvState {
     fn metadata(&self) -> BTreeMap<String, Value> {
         (&self.metadata).into()
     }
@@ -123,7 +124,7 @@ impl StateMetadata for ChemstationUvState {
     }
 }
 
-impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewUvState {
     type State = ();
 
     fn parse(
@@ -152,7 +153,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
 
 #[derive(Clone, Copy, Debug, Default)]
 /// A record from a Chemstation UV file
-pub struct ChemstationUvRecord {
+pub struct ChemstationNewUvRecord {
     /// The time recorded at
     pub time: f64,
     /// The wavelength recorded at
@@ -161,10 +162,10 @@ pub struct ChemstationUvRecord {
     pub intensity: f64,
 }
 
-impl_record!(ChemstationUvRecord: time, wavelength, intensity);
+impl_record!(ChemstationNewUvRecord: time, wavelength, intensity);
 
-impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
-    type State = ChemstationUvState;
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewUvRecord {
+    type State = ChemstationNewUvState;
 
     fn parse(
         rb: &[u8],
@@ -225,10 +226,104 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
 }
 
 impl_reader!(
-    ChemstationUvReader,
-    ChemstationUvRecord,
-    ChemstationUvRecord,
-    ChemstationUvState,
+    ChemstationNewUvReader,
+    ChemstationNewUvRecord,
+    ChemstationNewUvRecord,
+    ChemstationNewUvState,
+    ()
+);
+
+#[derive(Clone, Debug, Default)]
+/// Internal state for the `ChemstationNewFidRecord` parser
+pub struct ChemstationNewFidState {
+    metadata: ChemstationNewMetadata,
+    n_scans_left: usize,
+    cur_time: f64,
+    time_step: f64,
+}
+
+impl StateMetadata for ChemstationNewFidState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "intensity"]
+    }
+}
+
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewFidState {
+    type State = ();
+
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        *consumed += read_agilent_header(rb, false)?;
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        let n_scans = u32::extract(&rb[278..], &Endian::Big)? as usize;
+        let start_time = f32::extract(&rb[282..], &Endian::Big)? as f64 / 60_000.;
+        let end_time = f32::extract(&rb[286..], &Endian::Big)? as f64 / 60_000.;
+        let time_step = (end_time - start_time) / n_scans as f64;
+
+        self.metadata = get_new_metadata(rb)?;
+        self.n_scans_left = n_scans;
+        self.cur_time = start_time;
+        self.time_step = time_step;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// A record from a Chemstation FID file
+pub struct ChemstationNewFidRecord {
+    /// The time recorded at
+    pub time: f64,
+    /// The intensity record
+    pub intensity: f64,
+}
+
+impl_record!(ChemstationNewFidRecord: time, intensity);
+
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationNewFidRecord {
+    type State = ChemstationNewFidState;
+
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if state.n_scans_left == 0 {
+            return Ok(false);
+        }
+        if rb.len() < 8 {
+            return Err(EtError::from("File ended abruptly").incomplete());
+        }
+        state.n_scans_left -= 1;
+        state.cur_time += state.time_step;
+        *consumed += 8;
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
+        self.time = state.cur_time - state.time_step;
+        // self.intensity = f64::extract(rb, &Endian::Little)? * state.metadata.mult_correction;
+        self.intensity = f64::extract(rb, &Endian::Little)?;
+        Ok(())
+    }
+}
+
+impl_reader!(
+    ChemstationNewFidReader,
+    ChemstationNewFidRecord,
+    ChemstationNewFidRecord,
+    ChemstationNewFidState,
     ()
 );
 
@@ -240,11 +335,11 @@ mod tests {
     #[test]
     fn test_chemstation_reader_uv() -> Result<(), EtError> {
         let data: &[u8] = include_bytes!("../../../tests/data/carotenoid_extract.d/dad1.uv");
-        let mut reader = ChemstationUvReader::new(data, None)?;
+        let mut reader = ChemstationNewUvReader::new(data, None)?;
         let _ = reader.metadata();
         assert_eq!(reader.headers(), ["time", "wavelength", "intensity"]);
 
-        let ChemstationUvRecord {
+        let ChemstationNewUvRecord {
             time,
             wavelength,
             intensity,
@@ -253,7 +348,7 @@ mod tests {
         assert!((wavelength - 200.).abs() < 0.000001);
         assert_eq!(intensity, -14.941692352294922);
 
-        let ChemstationUvRecord {
+        let ChemstationNewUvRecord {
             time,
             wavelength,
             intensity,

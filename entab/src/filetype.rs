@@ -41,8 +41,10 @@ pub enum FileType {
     AgilentChemstationMs,
     /// Agilent format used for moving wavelength detector trace data
     AgilentChemstationMwd,
+    /// Agilent format used for FID trace data from Rev C
+    AgilentChemstationNewFid,
     /// Agilent format used for UV-visible detector trace data
-    AgilentChemstationUv,
+    AgilentChemstationNewUv,
     /// Agilent format used for diode array detector trace data
     AgilentMasshunterDad,
     /// Header file bundled with `AgilentMasshunterDad` files
@@ -124,10 +126,12 @@ impl FileType {
                 b"\x02\x33\x31\x00" => return FileType::AgilentChemstationDad,
                 b"\x02\x38\x31\x00" => return FileType::AgilentChemstationFid,
                 b"\x03\x02\x00\x00" => return FileType::AgilentMasshunterDad,
-                b"\x03\x31\x33\x31" => return FileType::AgilentChemstationUv,
+                b"\x03\x31\x33\x31" => return FileType::AgilentChemstationNewUv,
+                b"\x03179" => return FileType::AgilentChemstationNewFid,
                 b"\x28\xB5\x2F\xFD" => return FileType::Zstd,
                 b"\x4F\x62\x6A\x01" => return FileType::ApacheAvro,
-                b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1" | b"\xFF\xD8\xFF\xEE" => return FileType::Jpeg,
+                b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1"
+                | b"\xFF\xD8\xFF\xEE" => return FileType::Jpeg,
                 [0xFF, 0xFF, 0x06 | 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
                         return FileType::ThermoCf;
@@ -170,6 +174,7 @@ impl FileType {
             "ch" => &[
                 FileType::AgilentChemstationFid,
                 FileType::AgilentChemstationMwd,
+                FileType::AgilentChemstationNewFid,
             ],
             "csv" | "tsv" => &[FileType::DelimitedText],
             "dicm" => &[FileType::Dicom],
@@ -194,7 +199,7 @@ impl FileType {
             "sqlite" => &[FileType::Sqlite],
             "uv" => &[
                 FileType::AgilentChemstationDad,
-                FileType::AgilentChemstationUv,
+                FileType::AgilentChemstationNewUv,
             ],
             "xz" => &[FileType::Lzma],
             "zstd" => &[FileType::Zstd],
@@ -213,7 +218,8 @@ impl FileType {
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",
             (FileType::AgilentChemstationMs, None) => "chemstation_ms",
             (FileType::AgilentChemstationMwd, None) => "chemstation_mwd",
-            (FileType::AgilentChemstationUv, None) => "chemstation_uv",
+            (FileType::AgilentChemstationNewFid, None) => "chemstation_new_fid",
+            (FileType::AgilentChemstationNewUv, None) => "chemstation_new_uv",
             (FileType::AgilentMasshunterDad, None) => "masshunter_dad",
             (FileType::AgilentMasshunterDadHeader, None) => return Err("Reading the \".sd\" file is unsupported. Please open the \".sp\" data file instead".into()),
             (FileType::Bam, None) => "bam",
@@ -243,7 +249,8 @@ mod tests {
             (FileType::AgilentChemstationFid, "chemstation_fid"),
             (FileType::AgilentChemstationMs, "chemstation_ms"),
             (FileType::AgilentChemstationMwd, "chemstation_mwd"),
-            (FileType::AgilentChemstationUv, "chemstation_uv"),
+            (FileType::AgilentChemstationNewFid, "chemstation_new_fid"),
+            (FileType::AgilentChemstationNewUv, "chemstation_new_uv"),
             (FileType::AgilentMasshunterDad, "masshunter_dad"),
             (FileType::Bam, "bam"),
             (FileType::Fasta, "fasta"),
