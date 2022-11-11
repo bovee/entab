@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<!--
+  [WIP]
+  Build the JS assets with `wasm-pack build --target web --out-dir example/pkg`, move them into
+  this folder and serve with e.g. `python3 -m http.server 8000`.
+-->
+<html lang="en-us">
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="entab is a parser for bioinformatic, chemoinformatic and other scientific file formats. This page is a demonstration of how it can be used to graph data and file formats it can read.">
+    <meta name="theme-color" content="#B0B0D0">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="./icons/favicon.ico">
+    <link rel="manifest" href="./app.webmanifest">
+    <style>
+      #file-drop { border: 5px dashed blue }
+      html, body, #app { height: 100%; font-family: 'Montserrat', sans-serif; }
+      @media (prefers-color-scheme: light) {
+        body { background-color: white; color: black; }
+        #overlay, .status, noscript { background-color: #D0D0D0; border-right: 1px solid #B0B0D0 }
+        .button { background-color: #B0B0D0; color: black; };
+        .axis :is(line, text) { color: #303030; }
+        svg path { stroke: #303030; }
+        .status, noscript { border: 1px solid #B0B0D0 }
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background-color: black; color: white; }
+        #overlay, .status, noscript { background-color: #303030; border-right: 1px solid #505070}
+        .button { background-color: #505070; color: #B0B0D0; };
+        .axis :is(line, text) { color: #D0D0D0; }
+        svg path { stroke: #D0D0D0; }
+        .status, noscript { border: 1px solid #505070 }
+      }
+      [v-cloak] { display: none; }
+      #overlay { height: 98%; left: 0px; top: 0px; position: absolute; padding: 5px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; }
+      .overlayButton { position: absolute; left: 0px; top: 0px; padding: 15px; font-size: 18pt; line-height: 24pt; }
+      #overlay .overlayButton { font-size: 30pt; }
+      .progress { position: absolute; right: 0px; top: 0px; padding: 15px; line-height: 24pt; display: flex; align-items: center; }
+      .closeFileButton { padding-left: 20px; font-size: 30pt; }
+      .closeErrorButton { position: absolute; right: 0px; top: 0px; padding: 10px; font-size: 30pt; line-height: 24pt; } */
+      .row { display: flex; align-items: center; }
+      .row label, .row .label-spacer { display: inline-block; width: 80px; text-align: right; }
+      #chart { height: 95%; width: 95%; top: 2.5%; left: 2.5%; position: absolute; }
+      .status, noscript { position: absolute; width: 35%; left: 25%; top: 10%; padding: 2em; text-align: center; }
+      @media only screen and (min-width: 768px) {
+        .status, noscript { width: 28%; left: 28%; }
+      }
+      @media only screen and (min-width: 992px) {
+        .status, noscript { width: 20%; left: 30%; }
+      }
+      .button { margin: 0.2em; padding: 0.5em; border-radius: 5px; };
+      .button:active {
+        box-shadow: 0 0 0 5px rgba(0,0,0,0.2) inset; border-color: black;
+      }
+      .button[disabled] { opacity: 0.40; cursor: not-allowed; pointer-events: none; }
+      .link { text-decoration: underline dotted #FCFFA4 2px; }
+      .link:hover, .link:focus { text-decoration: underline solid #FFFF31 2px; }
+      li { padding-top: 1em; }
+      li:first-child { padding-top: 0; }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" integrity="sha512-NhSC1YmyruXifcj/KFRWoC561YpHpc5Jtzgvbuzx5VozKpWvQ+4nXhPdFgmx8xqexRcpAglTj9sIBWINXa8x5w==" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300&display=swap"> 
+    <title>entab: plot scientific data</title>
+  </head>
+  <body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/petite-vue/0.4.1/petite-vue.iife.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.4.4/d3.min.js"></script>
+    <script type="module" src="./app.js"></script>
+    <script type="module">
+      // set up service worker so this page can be installable
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function() {
+          navigator.serviceWorker.register("/service-worker.js");
+        });
+      }
+
+      // load the entab wasm code async in the background
+      import init, { Reader } from "./pkg/entab.js";
+      async function loadEntab() {
+        await init();
+        window.Reader = Reader;
+      }
+      loadEntab();
+    </script>
+    <noscript>
+      This page requires Javascript (and WASM) support to be able to read files and plot them. Sorry!
+    </noscript>
+    <div id="app" v-cloak @dragover.prevent @drop.prevent @vue:mounted="mounted" v-effect="updateUrl(graph.url,graph.parser,graph.xaxis,graph.yaxis,graph.cmap)">
+      <svg
+        id="chart"
+        @drop.prevent="fileDropped"
+        @dragover.prevent
+        v-effect="render(graph.parser,graph.xaxis,graph.yaxis,graph.caxis,graph.cmap)"
+      ></svg>
+      <div class="buttonBar">
+        <a class="overlayButton"
+           role="button"
+           :aria-label="translate('Open settings panel')" 
+           tabindex="0"
+           @keydown.enter="toggleOverlay(true)"
+           @click="toggleOverlay(true)"
+        >
+          &#9776;
+        </a>
+        <div class="progress">
+          <span v-if="statusMessage && !statusType">
+            {{ statusMessage }}
+          </span>
+          <a class="closeFileButton"
+             role="button"
+             :aria-label="translate('Close file')"
+             tabindex="0"
+             v-if="graph.buffer || filename"
+             @keydown.enter="closeFile"
+             @click="closeFile"
+          >
+            &#xd7;
+          </a>
+        </div>
+      </div>
+      <div class="status"
+        style="text-align: left;"
+        @drop.prevent="fileDropped"
+        @dragover.prevent
+        v-if="statusType === 'file'"
+      >
+        {{ translate("Drag and drop a file onto this window or:", "file-drop-msg") }}
+        <ul>
+        <li>
+          <a role="button" tabindex="0" class="link" @keydown.enter="clickFileInput" @click="clickFileInput">
+            <input type="file" id="file-input" @change="filePicked" style="display:none;" />
+            <label for="file-input">{{ translate("Pick a file") }}</label>
+          </a>
+        </li>
+        <li>
+        <a role="button" tabindex="0" class="link" @keydown.enter="clickChooseUrl" @click="clickChooseUrl">
+          {{ translate("Enter a URL") }}
+        </a>
+        </li>
+        <li>
+        <a role="button" tabindex="0" class="link" @keydown.enter="clickChooseSample" @click="clickChooseSample">
+          {{ translate("See a sample file") }}
+        </a>
+        &nbsp;
+        <a class="link" href="https://github.com/plotly/datasets/blob/master/earthquakes-23k.csv">&#128279;</a>
+        </li>
+      </div>
+      <div class="status"
+        @drop.prevent="fileDropped"
+        @dragover.prevent
+        v-if="statusType === 'error'"
+        style="background-color: #F09090"
+      >
+        <a class="closeErrorButton"
+           role="button"
+           :aria-label="translate('Close error')"
+           tabindex="0"
+           @keydown.enter="closeFile"
+           @click="closeFile"
+        >
+          &#xd7;
+        </a>
+        &#9888; {{ translate("There was a problem parsing the file.", "error-msg") }}
+        <div style="text-align: left; font-family: monospace; font-size: 1em; white-space: pre;">
+          {{ statusMessage }}
+        </div>
+      </div>
+      <div class="status"
+        @drop.prevent="fileDropped"
+        @dragover.prevent
+        v-if="statusType === 'network-error'"
+        style="background-color: #F09090"
+      >
+        <a class="closeErrorButton"
+           role="button"
+           :aria-label="translate('Close error')"
+           tabindex="0"
+           @keydown.enter="closeFile"
+           @click="closeFile"
+        >
+          &#xd7;
+        </a>
+        <br />
+        &#9888; {{ statusMessage }}
+      </div>
+      <div id="overlay" v-if="showOverlay">
+        <a class="overlayButton"
+           role="button"
+           :aria-label="translate('Close settings panel')" 
+           tabindex="0"
+           @keydown.enter="toggleOverlay(false)"
+           @click="toggleOverlay(false)"
+        >
+          &#xd7;
+        </a>
+        <div style="height: 3em; flex-shrink: 0;"></div>
+        <div class="row" style="flex: 0 0 0%;">
+          <span class="label-spacer" style="height: 1em;"></span>
+          {{ filename }}
+        </div>
+        <div class="row" style="height: 2em;"></div>
+        <div class="row">
+          <label for="file-type-select">
+          {{ translate("File type") }}
+          </label>
+          <select id="file-type-select" class="button" :disabled="!graph.buffer" v-model="graph.parser">
+            <optgroup label="Biology Formats">
+              <option value="bam">BAM</option>
+              <option value="sam">SAM</option>
+              <option value="fasta">FASTA</option>
+              <option value="fastq">FASTQ</option>
+              <option value="flow">FCS (Flow Cytometry Standard)</option>
+            </optgroup>
+            <optgroup label="Chemistry Formats">
+              <option value="chemstation_fid">Chemstation FID</option>
+              <option value="chemstation_ms">Chemstation MS</option>
+              <option value="chemstation_mwd">Chemstation MWD</option>
+              <option value="chemstation_uv">Chemstation UV</option>
+              <!-- masshunter_dad not supported b/c it require multiple files -->
+              <option value="inficon">Inficon MS</option>
+              <option value="thermo_cf">Thermo CF</option>
+              <option value="thermo_dxf">Thermo DXF</option>
+              <option value="thermo_raw">Thermo Raw</option>
+            </optgroup>
+            <optgroup label="Misc Formats">
+              <option value="csv">CSV</option>
+              <option value="tsv">TSV</option>
+              <option value="png">PNG</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="row" style="height: 2em;"></div>
+        <div class="row">
+          <label for="x-axis-select">
+            {{ translate("X axis") }}
+          </label>
+          <select id="x-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.xaxis">
+            <option v-for="key in graph.columns" :value="key">{{ key }}</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="y-axis-select">
+            {{ translate("Y axis") }}
+          </label>
+          <select id="y-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.yaxis">
+            <option value="">{{ translate("None", "color-none") }}</option>
+            <option v-for="key in graph.columns" :value="key">{{ key }}</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="c-axis-select">
+            {{ translate("Colour") }}
+          </label>
+          <select id="c-axis-select" class="button" :disabled="!graph.buffer" v-model="graph.caxis">
+            <option value="">{{ translate("None", "color-none") }}</option>
+            <option v-for="key in graph.columns" :value="key">{{ key }}</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="color-map-select">
+            {{ translate("Palette") }}
+          </label>
+          <select id="color-map-select" class="button" :disabled="!graph.buffer || !graph.caxis" v-model="graph.cmap">
+            <optgroup label="Diverging">
+              <option value="BrBG">Brown-Blue Green</option>
+              <option value="PRGn">Purple-Green</option>
+              <option value="PiYG">Pink-Green</option>
+              <option value="PuOr">Purple-Orange</option>
+              <option value="RdBu">Red-Blue</option>
+              <option value="RdGy">Red-Gray</option>
+              <option value="RdYlBu">Red-Yellow-Blue</option>
+              <option value="RdYlGn">Red-Yellow-Green</option>
+              <option value="Spectral">Spectral</option>
+            </optgroup>
+            <optgroup label="Sequential (Single Hue)">
+              <option value="Reds">Red</option>
+              <option value="Oranges">Orange</option>
+              <option value="Greens">Green</option>
+              <option value="Blues">Blue</option>
+              <option value="Purples">Purple</option>
+              <option value="Greys">Grey</option>
+            </optgroup>
+            <optgroup label="Sequential (Multi-Hue)">
+              <option value="Turbo">Turbo</option>
+              <option value="Viridis">Viridis</option>
+              <option value="Inferno">Inferno</option>
+              <option value="Magma">Magma</option>
+              <option value="Plasma">Plasma</option>
+              <option value="Cividis">Cividis</option>
+              <option value="Warm">Warm</option>
+              <option value="Cool">Cool</option>
+              <option value="CubehelixDefault">Green's default Cubehelix</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="row" style="height: 2em;"></div>
+        <div class="row">
+          <button class="button" :disabled="!graph.buffer" @click="downloadTsv()">
+            {{ translate("Download") }}
+            TSV
+          </button>
+          <button class="button" :disabled="!graph.buffer" @click="downloadSvg()">
+            {{ translate("Download") }}
+            SVG
+          </button>
+        </div>
+        <div class="row" style="flex-grow: 1;"></div>
+        <div class="row">
+          <a class="link" href="https://github.com/bovee/entab">GitHub page</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
