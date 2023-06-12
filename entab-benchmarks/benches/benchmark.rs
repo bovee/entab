@@ -24,6 +24,8 @@ use rust_htslib::{bam, bam::Read};
 
 use seq_io::{fasta as seqio_fasta, fastq as seqio_fastq};
 
+mod fasta;
+
 const BAM_PATH: &str = "../entab/tests/data/test.bam";
 const FASTA_PATH: &str = "../entab/tests/data/sequence.fasta";
 const FASTQ_PATH: &str = "../entab/tests/data/test.fastq";
@@ -89,6 +91,22 @@ fn benchmark_fasta(c: &mut Criterion) {
     fasta
         .warm_up_time(Duration::from_secs(10))
         .measurement_time(Duration::from_secs(20));
+
+    // Part of why this benchmark appears to be so fast is that we're embedding the
+    // test file directly in here so it's not really an apples-to-apples comparison
+    // with the other readers. This was using memmap to read in the file initially,
+    // but that consumes a fair amount of startup overhead (which needletail also
+    // has) so ideally we should be testing against a _very_ large fasta here like
+    // GRCh38 or something like that.
+    fasta.bench_function("hyper optimized", |b| {
+        let mut rb: &[u8] = include_bytes!("../../entab/tests/data/sequence.fasta");
+        b.iter(|| {
+            fasta::read_fasta(rb, |id, seq| {
+                black_box(id);
+                black_box(seq);
+            }).unwrap();
+        });
+    });
 
     fasta.bench_function("entab", |b| {
         b.iter(|| {
