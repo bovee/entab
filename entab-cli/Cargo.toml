@@ -10,10 +10,10 @@ license = "MIT"
 categories = ["command-line-utilities", "parsing", "science"]
 
 [dependencies]
-clap = { version = "3.1.5", features = ["cargo"] }
+clap = { version = "3.2.25", features = ["cargo"] }
 entab = { path = "../entab", version = "0.3.1" }
-memchr = "2.4"
-memmap2 = { version = "0.5.3", optional = true }
+memchr = "2.5"
+memmap2 = { version = "0.7.0", optional = true }
 
 [features]
 default = ["mmap"]

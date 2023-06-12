@@ -74,10 +74,8 @@ fn benchmark_bam(c: &mut Criterion) {
     bam.bench_function("noodles", |b| {
         b.iter(|| {
             let mut reader = File::open(BAM_PATH).map(noodles_bam::Reader::new).unwrap();
-            reader.read_header().unwrap();
-            reader.read_reference_sequences().unwrap();
-
-            for result in reader.records() {
+            let header = reader.read_header().unwrap();
+            for result in reader.records(&header) {
                 let record = result.unwrap();
                 black_box(record);
             }
@@ -99,7 +97,7 @@ fn benchmark_fasta(c: &mut Criterion) {
     // has) so ideally we should be testing against a _very_ large fasta here like
     // GRCh38 or something like that.
     fasta.bench_function("hyper optimized", |b| {
-        let mut rb: &[u8] = include_bytes!("../../entab/tests/data/sequence.fasta");
+        let rb: &[u8] = include_bytes!("../../entab/tests/data/sequence.fasta");
         b.iter(|| {
             fasta::read_fasta(rb, |id, seq| {
                 black_box(id);
@@ -296,8 +294,7 @@ fn benchmark_sam(c: &mut Criterion) {
                 .map(BufReader::new)
                 .map(noodles_sam::Reader::new)
                 .unwrap();
-            let header = reader.read_header().unwrap().parse().unwrap();
-
+            let header = reader.read_header().unwrap();
             for result in reader.records(&header) {
                 let record = result.unwrap();
                 black_box(record);

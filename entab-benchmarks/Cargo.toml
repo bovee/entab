@@ -7,15 +7,15 @@ edition = "2018"
 
 [dependencies]
 entab = { path = "../entab" }
-needletail = "0.4.1"
-noodles = { version = "0.28.0", features = ["bam", "fasta", "fastq", "sam"] }
-bio = "1.0.0"
-rust-htslib = "0.40.2"
+needletail = "0.5.1"
+noodles = { version = "0.41.0", features = ["bam", "fasta", "fastq", "sam"] }
+bio = "1.2.0"
+rust-htslib = "0.43.1"
 seq_io = "0.3.1"
-memchr = "2.3"  # for optimized FASTA benchmark
+memchr = "2.5"  # for optimized FASTA benchmark
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.5"
 
 [[bench]]
 name = "benchmark"
