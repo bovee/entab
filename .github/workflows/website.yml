@@ -2,7 +2,7 @@ name: Build WASM and publish website
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 #  push:
 #    tags:
 #      - v[0-9]+.*
