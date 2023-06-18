@@ -8,7 +8,6 @@ use std::io::{Cursor, Read};
 use entab_base::error::EtError;
 use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
-use pyo3::class::{PyIterProtocol, PyObjectProtocol};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 use pyo3::{create_exception, exceptions};
@@ -58,7 +57,6 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
 
 // TODO: remove the unsendable; by wrapping reader in an Arc?
 #[pyclass(unsendable)]
-#[pyo3(text_signature = "(/, data=None, filename=None, parser=None)")]
 pub struct Reader {
     #[pyo3(get)]
     parser: String,
@@ -66,37 +64,11 @@ pub struct Reader {
     reader: Box<dyn RecordReader>,
 }
 
-#[pyproto]
-impl PyIterProtocol for Reader {
-    fn __iter__(slf: PyRefMut<Self>) -> PyResult<PyObject> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let val: PyObject = slf.into_py(py);
-        Ok(val.clone_ref(py))
-    }
-
-    fn __next__(mut slf: PyRefMut<Self>) -> PyResult<Option<Py<PyAny>>> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let rec = if let Some(val) = slf.reader.next_record().map_err(to_py)? {
-            let mut data = Vec::with_capacity(val.len());
-            for field in val {
-                data.push(py_from_value(field, py)?);
-            }
-            let tup = PyTuple::new(py, data);
-            slf.record_class.as_ref(py).call1(tup)?
-        } else {
-            return Ok(None);
-        };
-        Ok(Some(rec.into()))
-    }
-}
-
 #[pymethods]
 impl Reader {
     #[new]
-    #[args(data = "None", filename = "None", parser = "None")]
-    fn new(data: Option<&PyAny>, filename: Option<&str>, parser: Option<&str>) -> PyResult<Self> {
+    #[pyo3(signature = (data = None, filename = None, parser = None))]
+    fn new(data: Option<&PyAny>, filename: Option<&str>, parser: Option<&str>, py: Python) -> PyResult<Self> {
         let mut params = BTreeMap::new();
         let stream: Box<dyn Read> = match (data, filename) {
             (Some(d), None) => {
@@ -123,8 +95,6 @@ impl Reader {
             }
         };
         let (reader, parser_used) = get_reader(stream, parser, Some(params)).map_err(to_py)?;
-        let gil = Python::acquire_gil();
-        let py = gil.python();
 
         let headers: Vec<String> = reader
             .headers()
@@ -150,10 +120,7 @@ impl Reader {
     }
 
     #[getter]
-    pub fn get_metadata(&self) -> PyResult<PyObject> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-
+    pub fn get_metadata(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         for (key, value) in self.reader.metadata() {
             dict.set_item(key, py_from_value(value, py)?)?;
@@ -165,10 +132,26 @@ impl Reader {
     pub fn get_parser(&self) -> PyResult<String> {
         Ok(self.parser.clone())
     }
-}
 
-#[pyproto]
-impl PyObjectProtocol for Reader {
+    fn __iter__(slf: PyRefMut<Self>, py: Python) -> PyResult<PyObject> {
+        let val: PyObject = slf.into_py(py);
+        Ok(val.clone_ref(py))
+    }
+
+    fn __next__(mut slf: PyRefMut<Self>, py: Python) -> PyResult<Option<Py<PyAny>>> {
+        let rec = if let Some(val) = slf.reader.next_record().map_err(to_py)? {
+            let mut data = Vec::with_capacity(val.len());
+            for field in val {
+                data.push(py_from_value(field, py)?);
+            }
+            let tup = PyTuple::new(py, data);
+            slf.record_class.as_ref(py).call1(tup)?
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(rec.into()))
+    }
+
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!("<Reader \"{}\">", self.parser))
     }
@@ -190,49 +173,47 @@ mod tests {
     #[test]
     fn test_reader_creation() -> PyResult<()> {
         pyo3::prepare_freethreaded_python();
-        let gil = Python::acquire_gil();
-        let py = gil.python();
+        Python::with_gil(|py| {
+            // a filename or data has to be passed in
+            assert!(Reader::new(None, None, None, py).is_err());
 
-        // a filename or data has to be passed in
-        assert!(Reader::new(None, None, None).is_err());
+            // if data's passed in, it works
+            let test_data = b">test\nACGT".to_object(py);
+            let reader = Reader::new(Some(test_data.as_ref(py)), None, None, py)?;
+            assert_eq!(&reader.parser, "fasta");
 
-        // if data's passed in, it works
-        let test_data = b">test\nACGT".to_object(py);
-        let reader = Reader::new(Some(test_data.as_ref(py)), None, None)?;
-        assert_eq!(&reader.parser, "fasta");
+            // metadata are available
+            let metadata = reader.get_metadata(py)?;
+            assert!(metadata.as_ref(py).downcast::<PyDict>().is_ok());
 
-        // metadata are available
-        let metadata = reader.get_metadata()?;
-        assert!(metadata.as_ref(py).downcast::<PyDict>().is_ok());
+            // headers are available
+            let headers = reader.get_headers()?;
+            assert_eq!(headers.len(), 2);
 
-        // headers are available
-        let headers = reader.get_headers()?;
-        assert_eq!(headers.len(), 2);
-
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]
     fn test_reader_in_python() -> PyResult<()> {
         pyo3::prepare_freethreaded_python();
-        let gil = Python::acquire_gil();
-        let py = gil.python();
+        Python::with_gil(|py| {
+            let module = PyModule::new(py, "entab").unwrap();
+            entab(py, module)?;
+            let locals = [("entab", module)].into_py_dict(py);
 
-        let module = PyModule::new(py, "entab").unwrap();
-        entab(py, module)?;
-        let locals = [("entab", module)].into_py_dict(py);
-
-        py.run(
+            py.run(
             r#"
 reader = entab.Reader(data=">test\nACGT")
 assert reader.metadata == {}
 for record in reader:
     pass
-        "#,
-            None,
-            Some(locals),
-        )?;
+            "#,
+                None,
+                Some(locals),
+            )?;
 
-        Ok(())
+            Ok(())
+        })
     }
 }

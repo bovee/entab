@@ -10,7 +10,7 @@ edition = "2018"
 [dependencies]
 entab_base = { package = "entab", path = "../entab", default-features = false, features = ["std"] }
 memmap = "0.7"
-pyo3 = { version = "0.15.1", features = ["abi3-py36"] }
+pyo3 = { version = "0.19.0" }
 
 [lib]
 name = "entab"

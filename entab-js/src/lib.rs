@@ -10,6 +10,7 @@ use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use js_sys::{Array, Object};
 use serde::Serialize;
+use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
@@ -68,7 +69,7 @@ impl Reader {
 
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> Result<JsValue, JsValue> {
-        JsValue::from_serde(&self.reader.metadata())
+        serde_wasm_bindgen::to_value(&self.reader.metadata())
             .map_err(|_| JsValue::from_str("Error translating metadata"))
     }
 
@@ -82,13 +83,13 @@ impl Reader {
                 .map(AsRef::as_ref)
                 .zip(value.into_iter())
                 .collect();
-            JsValue::from_serde(&NextRecord {
+            serde_wasm_bindgen::to_value(&NextRecord {
                 value: Some(obj),
                 done: false,
             })
             .map_err(|_| JsValue::from_str("Error translating record"))
         } else {
-            JsValue::from_serde(&NextRecord {
+            serde_wasm_bindgen::to_value(&NextRecord {
                 value: None,
                 done: true,
             })
