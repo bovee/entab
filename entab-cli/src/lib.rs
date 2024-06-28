@@ -54,7 +54,8 @@ where
             Arg::new("metadata")
                 .short('m')
                 .long("metadata")
-                .help("Reports metadata about the file instead of the data itself"),
+                .help("Reports metadata about the file instead of the data itself")
+                .action(clap::ArgAction::SetTrue),
         )
         .try_get_matches_from(args);
 
@@ -103,7 +104,7 @@ where
         Box::new(stdout)
     };
 
-    if matches.contains_id("metadata") {
+    if matches.get_flag("metadata") {
         writer.write_all(b"key")?;
         writer.write_all(&[params.main_delimiter])?;
         writer.write_all(b"value")?;
@@ -153,6 +154,7 @@ mod tests {
     fn test_output() -> Result<(), EtError> {
         let mut out = Vec::new();
         assert!(run(["entab"], &b">test\nACGT"[..], io::Cursor::new(&mut out)).is_ok());
+        println!("{}", std::str::from_utf8(&out).unwrap());
         assert_eq!(&out[..], b"id\tsequence\ntest\tACGT\n");
         Ok(())
     }
@@ -160,12 +162,11 @@ mod tests {
     #[test]
     fn test_metadata() -> Result<(), EtError> {
         let mut out = Vec::new();
-        assert!(run(
+        run(
             ["entab", "--metadata"],
             &b">test\nACGT"[..],
             io::Cursor::new(&mut out)
-        )
-        .is_ok());
+        )?;
         assert_eq!(&out[..], b"key\tvalue\n");
         Ok(())
     }
