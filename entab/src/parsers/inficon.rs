@@ -111,7 +111,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for InficonState {
     }
 
     fn get(&mut self, _rb: &[u8], (mz_segments, data_left): &Self::State) -> Result<(), EtError> {
-        self.mz_segments = mz_segments.clone();
+        self.mz_segments.clone_from(mz_segments);
         self.data_left = *data_left;
         Ok(())
     }

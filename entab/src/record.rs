@@ -208,7 +208,7 @@ impl<'a> From<NaiveDateTime> for Value<'a> {
 
 impl<'a> From<NaiveDate> for Value<'a> {
     fn from(d: NaiveDate) -> Self {
-        Value::Datetime(d.and_hms(0, 0, 0))
+        Value::Datetime(d.and_hms_opt(0, 0, 0).unwrap())
     }
 }
 

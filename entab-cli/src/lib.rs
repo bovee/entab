@@ -36,19 +36,19 @@ where
             Arg::new("input")
                 .short('i')
                 .help("Path to read; if not provided stdin will be used")
-                .takes_value(true),
+                .num_args(1),
         )
         .arg(
             Arg::new("output")
                 .short('o')
                 .help("Path to write to; if not provided stdout will be used")
-                .takes_value(true),
+                .num_args(1),
         )
         .arg(
             Arg::new("parser")
                 .short('p')
                 .help("Parser to use [if not specified, it will be auto-detected]")
-                .takes_value(true),
+                .num_args(1),
         )
         .arg(
             Arg::new("metadata")
@@ -79,8 +79,8 @@ where
     let mmap: Mmap;
 
     let mut parse_params = BTreeMap::new();
-    let parser = matches.value_of("parser");
-    let (mut rec_reader, _) = if let Some(i) = matches.value_of("input") {
+    let parser = matches.get_one::<&str>("parser").copied();
+    let (mut rec_reader, _) = if let Some(&i) = matches.get_one::<&str>("input") {
         parse_params.insert("filename".to_string(), Value::String(i.into()));
         let file = File::open(i)?;
         #[cfg(feature = "mmap")]
@@ -97,13 +97,13 @@ where
     // TODO: allow user to set these
     let params = TsvParams::default();
 
-    let mut writer: Box<dyn io::Write> = if let Some(i) = matches.value_of("output") {
+    let mut writer: Box<dyn io::Write> = if let Some(&i) = matches.get_one::<&str>("output") {
         Box::new(File::create(i)?)
     } else {
         Box::new(stdout)
     };
 
-    if matches.is_present("metadata") {
+    if matches.contains_id("metadata") {
         writer.write_all(b"key")?;
         writer.write_all(&[params.main_delimiter])?;
         writer.write_all(b"value")?;

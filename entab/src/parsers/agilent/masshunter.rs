@@ -201,7 +201,7 @@ impl<'r> MasshunterDadReader<'r> {
 impl<'r> RecordReader for MasshunterDadReader<'r> {
     /// The next record, expressed as a `Vec` of `Value`s.
     fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<Value>>, EtError> {
-        Ok(self.next()?.map(core::convert::Into::into))
+        Ok(self.next()?.map(Into::into))
     }
 
     /// The headers for this Reader.

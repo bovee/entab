@@ -1,6 +1,6 @@
 [package]
 name = "entab"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Roderick <rbovee@gmail.com>"]
 edition = "2018"
 description = "Record-format file reader"
@@ -11,16 +11,16 @@ categories = ["parsing", "science"]
 
 [dependencies]
 # parsing
-bytecount = "0.6.2"
+bytecount = "0.6.8"
 chrono = { version = "0.4", default-features=false, features = ["alloc", "serde"] }
 encoding = "0.2.33"
-memchr = "2.5"
+memchr = "2.7"
 serde = { version = "1.0", default-features=false, features = ["derive"] }
 # compression
 flate2 = { version = "1.0" }
 bzip2 = { version = "0.4", optional = true }
 xz2 = { version = "0.1", optional = true }
-zstd = { version = "0.12", optional = true }
+zstd = { version = "0.13", optional = true }
 
 [dev-dependencies]
 criterion = "0.3"

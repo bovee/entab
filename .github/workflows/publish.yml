@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -41,7 +41,7 @@ jobs:
             target: x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -49,9 +49,9 @@ jobs:
           toolchain: stable
           default: true
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         with:
-          python-version: 3.6
+          python-version: '3.11'
           architecture: x64
 
       - name: build the wheels
@@ -59,7 +59,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist --no-sdist -m entab-py/Cargo.toml --cargo-extra-args=--features=maturin
+          args: --release --out dist -m entab-py/Cargo.toml --features=maturin
 
       - name: upload the wheels
         env:
@@ -73,7 +73,7 @@ jobs:
     name: Publish to NPM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - uses: actions-rs/toolchain@v1
         with:

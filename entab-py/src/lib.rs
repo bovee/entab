@@ -28,7 +28,7 @@ fn to_py(err: EtError) -> PyErr {
 /// Map a Value into a `PyObject`
 fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
     Ok(match value {
-        Value::Null => py.None().as_ref(py).into(),
+        Value::Null => py.None(),
         Value::Boolean(b) => b.to_object(py),
         Value::Datetime(d) => {
             // NB: For files without timezone data (and all NaiveDateTime?),
@@ -43,7 +43,7 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
         Value::Integer(v) => v.to_object(py),
         Value::String(s) => s.to_object(py),
         Value::List(l) => {
-            let list = PyList::empty(py);
+            let list = PyList::empty_bound(py);
             for item in l {
                 list.append(py_from_value(item, py)?)?;
             }
@@ -56,6 +56,33 @@ fn py_from_value(value: Value, py: Python) -> PyResult<PyObject> {
 }
 
 // TODO: remove the unsendable; by wrapping reader in an Arc?
+/// A class that parses binary data into an iterator of namedtuples.
+///
+/// Parameters
+/// ----------
+/// data: string, bytes, file-like
+///   Either a string/bytes object containing the data or a file-like object
+///   that implements a `read` method.
+/// filename: string
+///   If data is not provided, the filename of the data file to open.
+/// parser: string
+///   The name of the parser to use to read the file.
+///
+/// Attributes
+/// ----------
+/// headers: list
+///   The keys of each namedtuple returned.
+/// metadata: dict
+///   Appropriate metadata from the data.
+/// parser: string
+///   The parser used to read the data.
+///
+/// Examples
+/// --------
+/// > reader = Reader(data='>test\nACGT')
+/// > for record in reader:
+/// >     print(record.id)
+///
 #[pyclass(unsendable)]
 pub struct Reader {
     #[pyo3(get)]
@@ -68,7 +95,12 @@ pub struct Reader {
 impl Reader {
     #[new]
     #[pyo3(signature = (data = None, filename = None, parser = None))]
-    fn new(data: Option<&PyAny>, filename: Option<&str>, parser: Option<&str>, py: Python) -> PyResult<Self> {
+    fn new(
+        data: Option<&Bound<PyAny>>,
+        filename: Option<&str>,
+        parser: Option<&str>,
+        py: Python,
+    ) -> PyResult<Self> {
         let mut params = BTreeMap::new();
         let stream: Box<dyn Read> = match (data, filename) {
             (Some(d), None) => {
@@ -101,7 +133,7 @@ impl Reader {
             .iter()
             .map(|h| h.replace(" ", "_").replace("-", "_"))
             .collect();
-        let collections = PyModule::import(py, "collections")?;
+        let collections = PyModule::import_bound(py, "collections")?;
         let record_class = collections
             .getattr("namedtuple")?
             .call1(("Record", headers))?
@@ -121,7 +153,7 @@ impl Reader {
 
     #[getter]
     pub fn get_metadata(&self, py: Python) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
         for (key, value) in self.reader.metadata() {
             dict.set_item(key, py_from_value(value, py)?)?;
         }
@@ -144,8 +176,8 @@ impl Reader {
             for field in val {
                 data.push(py_from_value(field, py)?);
             }
-            let tup = PyTuple::new(py, data);
-            slf.record_class.as_ref(py).call1(tup)?
+            let tup = PyTuple::new_bound(py, data);
+            slf.record_class.bind(py).call1(tup)?
         } else {
             return Ok(None);
         };
@@ -159,7 +191,7 @@ impl Reader {
 
 /// entab provides interconversion from streaming record formats.
 #[pymodule]
-fn entab(_py: Python, m: &PyModule) -> PyResult<()> {
+fn entab(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Reader>()?;
     Ok(())
 }
@@ -179,12 +211,12 @@ mod tests {
 
             // if data's passed in, it works
             let test_data = b">test\nACGT".to_object(py);
-            let reader = Reader::new(Some(test_data.as_ref(py)), None, None, py)?;
+            let reader = Reader::new(Some(test_data.bind(py)), None, None, py)?;
             assert_eq!(&reader.parser, "fasta");
 
             // metadata are available
             let metadata = reader.get_metadata(py)?;
-            assert!(metadata.as_ref(py).downcast::<PyDict>().is_ok());
+            assert!(metadata.bind(py).downcast::<PyDict>().is_ok());
 
             // headers are available
             let headers = reader.get_headers()?;
@@ -198,19 +230,19 @@ mod tests {
     fn test_reader_in_python() -> PyResult<()> {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let module = PyModule::new(py, "entab").unwrap();
-            entab(py, module)?;
-            let locals = [("entab", module)].into_py_dict(py);
+            let module = PyModule::new_bound(py, "entab").unwrap();
+            entab(&module)?;
+            let locals = [("entab", module)].into_py_dict_bound(py);
 
-            py.run(
-            r#"
+            py.run_bound(
+                r#"
 reader = entab.Reader(data=">test\nACGT")
 assert reader.metadata == {}
 for record in reader:
     pass
             "#,
                 None,
-                Some(locals),
+                Some(&locals),
             )?;
 
             Ok(())

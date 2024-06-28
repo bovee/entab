@@ -91,7 +91,7 @@ where
 ///
 /// # Errors
 /// If reading fails or if the stream can't be decompressed, return `EtError`.
-#[cfg(all(not(feature = "std")))]
+#[cfg(not(feature = "std"))]
 pub fn decompress<'r, B>(data: B) -> Result<(ReadBuffer<'r>, Option<FileType>), EtError>
 where
     B: TryInto<ReadBuffer<'r>>,

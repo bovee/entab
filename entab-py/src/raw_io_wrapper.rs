@@ -8,7 +8,7 @@ pub struct RawIoWrapper {
 }
 
 impl RawIoWrapper {
-    pub fn new(obj: & PyAny) -> Self {
+    pub fn new(obj: &Bound<PyAny>) -> Self {
         let reader = Python::with_gil(|py| obj.to_object(py));
         RawIoWrapper { reader }
     }
@@ -62,8 +62,8 @@ mod tests {
         Python::with_gil(|py| {
             let mut scratch = Vec::new();
 
-            let num = PyFloat::new(py, 2.);
-            let mut wrapper = RawIoWrapper::new(num);
+            let num = PyFloat::new_bound(py, 2.);
+            let mut wrapper = RawIoWrapper::new(num.as_ref());
             assert!(wrapper.read_to_end(&mut scratch).is_err());
             Ok(())
         })
@@ -73,12 +73,12 @@ mod tests {
     fn test_io_wrapper_stringio() -> Result<(), Error> {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let locals = [("io", py.import("io")?)].into_py_dict(py);
+            let locals = [("io", py.import_bound("io")?)].into_py_dict_bound(py);
             let mut scratch = Vec::new();
 
             let code = "io.StringIO('>test\\nACGT')";
-            let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
-            let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));
+            let buffer: PyObject = py.eval_bound(code, None, Some(&locals))?.extract()?;
+            let mut wrapper = RawIoWrapper::new(buffer.bind(py));
             assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
             assert_eq!(scratch, b">test\nACGT");
             Ok(())
@@ -89,12 +89,12 @@ mod tests {
     fn test_io_wrapper_bytesio() -> Result<(), Error> {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let locals = [("io", py.import("io")?)].into_py_dict(py);
+            let locals = [("io", py.import_bound("io")?)].into_py_dict_bound(py);
             let mut scratch = Vec::new();
 
             let code = "io.StringIO('>seq\\nTGCAT')";
-            let buffer: PyObject = py.eval(code, None, Some(locals))?.extract()?;
-            let mut wrapper = RawIoWrapper::new(buffer.as_ref(py));
+            let buffer: PyObject = py.eval_bound(code, None, Some(&locals))?.extract()?;
+            let mut wrapper = RawIoWrapper::new(buffer.bind(py));
             assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
             assert_eq!(scratch, b">seq\nTGCAT");
 

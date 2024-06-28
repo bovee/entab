@@ -140,8 +140,9 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FcsState {
         let mut n_events_left = 0;
         let mut metadata = BTreeMap::new();
 
-        let mut date = NaiveDate::from_yo(2000, 1);
-        let mut time = NaiveTime::from_num_seconds_from_midnight(0, 0);
+        let mut date = NaiveDate::from_yo_opt(2000, 1).ok_or(EtError::new("Bad date"))?;
+        let mut time =
+            NaiveTime::from_num_seconds_from_midnight_opt(0, 0).ok_or(EtError::new("Bad time"))?;
         for (key, value) in map.iter() {
             match (key.as_ref(), value.as_ref()) {
                 ("$NEXTDATA", v) => {
@@ -456,7 +457,7 @@ mod tests {
         assert_eq!(metadata["specimen_source"], "Specimen_001".into());
         assert_eq!(
             metadata["date"],
-            NaiveDate::from_ymd(2012, 10, 26).and_hms(18, 8, 10).into()
+            NaiveDate::from_ymd_opt(2012, 10, 26).unwrap().and_hms_opt(18, 8, 10).unwrap().into()
         );
         Ok(())
     }

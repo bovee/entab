@@ -91,15 +91,15 @@ impl EtError {
         let buf_len = buffer.len();
         let (context, context_pos) = match (consumed < 16, buf_len < consumed + 16) {
             (true, true) => (buffer.to_vec(), consumed),
-            (true, false) => ((&buffer[..consumed + 16]).to_vec(), consumed),
+            (true, false) => ((buffer[..consumed + 16]).to_vec(), consumed),
             (false, true) => {
                 if consumed < buf_len {
-                    ((&buffer[consumed - 16..]).to_vec(), 16)
+                    ((buffer[consumed - 16..]).to_vec(), 16)
                 } else {
                     (Vec::new(), 0)
                 }
             }
-            (false, false) => ((&buffer[consumed - 16..consumed + 16]).to_vec(), 16),
+            (false, false) => ((buffer[consumed - 16..consumed + 16]).to_vec(), 16),
         };
 
         self.context = Some(EtErrorContext {

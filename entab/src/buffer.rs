@@ -227,7 +227,7 @@ impl<'r> ReadBuffer<'r> {
                 }
             }
         }
-        let buffer = { ::core::mem::transmute::<_, &'b Cow<'b, [u8]>>(&self.buffer) };
+        let buffer = { ::core::mem::transmute::<&Cow<_>, &'b Cow<'b, [u8]>>(&self.buffer) };
         let cur_state = {
             ::core::mem::transmute::<
                 &mut <T as FromSlice<'b, 's>>::State,

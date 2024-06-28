@@ -128,16 +128,11 @@ where
 }
 
 /// The endianness of a number used to extract such a number.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum Endian {
     /// A number stored in big-endian format
     Big,
     /// A number stored in little-endian format
+    #[default]
     Little,
-}
-
-impl Default for Endian {
-    fn default() -> Self {
-        Endian::Little
-    }
 }

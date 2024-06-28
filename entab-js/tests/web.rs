@@ -3,7 +3,7 @@
 #![cfg(target_arch = "wasm32")]
 
 use entab::Reader;
-use js_sys::{Object, Reflect};
+use js_sys::{Map, Object, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;
 
@@ -26,8 +26,8 @@ fn create_reader() {
     assert!(done.is_falsy());
 
     let raw_value = Reflect::get(&rec, &JsValue::from_str("value")).expect("record has value");
-    let value = raw_value.dyn_into::<Object>().expect("value is an object");
-    let raw_id = Reflect::get(&value, &JsValue::from_str("id")).expect("value has id");
-    assert_eq!(raw_id, JsValue::from_str("test"));
-    assert!(Reflect::has(&value, &JsValue::from_str("sequence")).expect("value has sequence"));
+    let value = raw_value.dyn_into::<Map>().expect("value is a map");
+    assert_eq!(value.size(), 2);
+    assert_eq!(value.get(&("id".to_string()).into()), "test");
+    assert!(value.has(&("sequence".to_string()).into()));
 }

@@ -12,9 +12,10 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 /// The way the color is encoded in the PNG
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum PngColorType {
     /// Each color is indexed from a palette
+    #[default]
     Indexed,
     /// Only shades of gray
     Grayscale,
@@ -24,12 +25,6 @@ pub enum PngColorType {
     Color,
     /// Full RGB color with transparency
     AlphaColor,
-}
-
-impl Default for PngColorType {
-    fn default() -> Self {
-        PngColorType::Indexed
-    }
 }
 
 impl PngColorType {

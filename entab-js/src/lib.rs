@@ -10,7 +10,6 @@ use entab_base::readers::{get_reader, RecordReader};
 use entab_base::record::Value;
 use js_sys::{Array, Object};
 use serde::Serialize;
-use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
@@ -81,7 +80,7 @@ impl Reader {
                 .headers
                 .iter()
                 .map(AsRef::as_ref)
-                .zip(value.into_iter())
+                .zip(value)
                 .collect();
             serde_wasm_bindgen::to_value(&NextRecord {
                 value: Some(obj),

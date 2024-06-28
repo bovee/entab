@@ -2,5 +2,9 @@
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
+[project]
+name = "entab"
+
 [tool.maturin]
-cargo-extra-args = "--features=maturin-build"
+bindings = "pyo3"
+features = ["maturin"]

@@ -127,7 +127,8 @@ impl FileType {
                 b"\x03\x31\x33\x31" => return FileType::AgilentChemstationUv,
                 b"\x28\xB5\x2F\xFD" => return FileType::Zstd,
                 b"\x4F\x62\x6A\x01" => return FileType::ApacheAvro,
-                b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1" | b"\xFF\xD8\xFF\xEE" => return FileType::Jpeg,
+                b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1"
+                | b"\xFF\xD8\xFF\xEE" => return FileType::Jpeg,
                 [0xFF, 0xFF, 0x06 | 0x05, 0x00] => {
                     if magic.len() >= 78 && &magic[52..64] == b"C\x00I\x00s\x00o\x00G\x00C\x00" {
                         return FileType::ThermoCf;
