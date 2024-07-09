@@ -1,10 +1,9 @@
 use alloc::format;
-use core::marker::Copy;
 
 use crate::error::EtError;
 
 /// A file format.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
     // compression
     /// Gz/Gzip compression container
@@ -89,7 +88,7 @@ pub enum FileType {
     /// Tab- or comma-seperated value format
     DelimitedText,
     /// Unknown file type
-    Unknown,
+    Unknown(Option<String>),
 }
 
 impl FileType {
@@ -124,7 +123,9 @@ impl FileType {
                 b"\x02\x33\x31\x00" => return FileType::AgilentChemstationDad,
                 b"\x02\x38\x31\x00" => return FileType::AgilentChemstationFid,
                 b"\x03\x02\x00\x00" => return FileType::AgilentMasshunterDad,
+                b"\x03\x31\x33\x30" => return FileType::AgilentChemstationUv,
                 b"\x03\x31\x33\x31" => return FileType::AgilentChemstationUv,
+                b"\x03\x31\x37\x39" => return FileType::AgilentChemstationUv,
                 b"\x28\xB5\x2F\xFD" => return FileType::Zstd,
                 b"\x4F\x62\x6A\x01" => return FileType::ApacheAvro,
                 b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1"
@@ -139,7 +140,7 @@ impl FileType {
             }
         }
         if magic.len() < 2 {
-            return FileType::Unknown;
+            return FileType::Unknown(Some(magic.iter().take(8).map(|x| format!("{:x}", x)).collect::<Vec<String>>().join("")));
         }
         match &magic[..2] {
             [0x0F | 0x1F, 0x8B] => return FileType::Gzip,
@@ -152,7 +153,9 @@ impl FileType {
         match &magic[..1] {
             b">" => FileType::Fasta,
             b"@" => FileType::Fastq,
-            _ => FileType::Unknown,
+            _ => FileType::Unknown(Some(
+                magic.iter().take(8).map(|x| format!("{:x}", x)).collect::<Vec<String>>().join("")
+            )),
         }
     }
 
@@ -200,7 +203,7 @@ impl FileType {
             "xz" => &[FileType::Lzma],
             "zstd" => &[FileType::Zstd],
             "ztr" => &[FileType::Ztr],
-            _ => &[FileType::Unknown],
+            _ => &[FileType::Unknown(None)],
         }
     }
 
@@ -228,6 +231,8 @@ impl FileType {
             (FileType::ThermoDxf, None) => "thermo_dxf",
             (FileType::ThermoRaw, None) => "thermo_raw",
             (FileType::DelimitedText, None) => "tsv",
+            (FileType::Unknown(Some(u)), None) => return Err(format!("File starting with #{}# has no parser", u).into()),
+            (FileType::Unknown(None), None) => return Err("Unknown file has no parser".into()),
             (_, Some(x)) => x,
             (x, _) => return Err(format!("{:?} doesn't have a parser", x).into())
         })
@@ -261,5 +266,15 @@ mod tests {
         for (ft, parser) in filetypes {
             assert_eq!(ft.to_parser_name(None).unwrap(), parser);
         }
+    }
+
+    #[test]
+    fn test_unknown_files() {
+        let unknown_type = FileType::from_magic(b"\x00\x00\x00\x00");
+        assert_eq!(unknown_type, FileType::Unknown(Some("0000".to_string())));
+
+        assert_eq!(unknown_type.to_parser_name(None).unwrap_err().msg, "File starting with #0000# has no parser");
+
+
     }
 }
