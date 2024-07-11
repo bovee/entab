@@ -76,12 +76,8 @@ impl Reader {
     #[wasm_bindgen]
     pub fn next(&mut self) -> Result<JsValue, JsValue> {
         if let Some(value) = self.reader.next_record().map_err(to_js)? {
-            let obj: BTreeMap<&str, Value> = self
-                .headers
-                .iter()
-                .map(AsRef::as_ref)
-                .zip(value)
-                .collect();
+            let obj: BTreeMap<&str, Value> =
+                self.headers.iter().map(AsRef::as_ref).zip(value).collect();
             serde_wasm_bindgen::to_value(&NextRecord {
                 value: Some(obj),
                 done: false,

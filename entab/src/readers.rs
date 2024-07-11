@@ -41,6 +41,9 @@ fn _get_reader<'n, 'p, 'r>(
 ) -> Result<(Box<dyn RecordReader + 'r>, &'n str), EtError> {
     let reader: Box<dyn RecordReader + 'r> = match parser_name {
         "bam" => Box::new(parsers::sam::BamReader::new(rb, None)?),
+        "chemstation_array" => Box::new(parsers::agilent::chemstation_new::ChemstationArrayReader::new(
+            rb, None,
+        )?),
         "chemstation_dad" => Box::new(parsers::agilent::chemstation::ChemstationDadReader::new(
             rb, None,
         )?),

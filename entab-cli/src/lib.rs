@@ -165,7 +165,7 @@ mod tests {
         run(
             ["entab", "--metadata"],
             &b">test\nACGT"[..],
-            io::Cursor::new(&mut out)
+            io::Cursor::new(&mut out),
         )?;
         assert_eq!(&out[..], b"key\tvalue\n");
         Ok(())

@@ -1,13 +1,11 @@
 use alloc::collections::BTreeMap;
 use alloc::str;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use core::marker::Copy;
 
-use chrono::NaiveDateTime;
-
+use crate::parsers::agilent::metadata::ChemstationMetadata;
 use crate::parsers::agilent::read_agilent_header;
 use crate::parsers::{extract, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
@@ -15,96 +13,9 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 #[derive(Clone, Debug, Default)]
-/// Metadata consistly found in new Chemstation file formats
-pub struct ChemstationNewMetadata {
-    /// Scaling correction to be applied to all data points
-    pub mult_correction: f64,
-    /// The name of the sample
-    pub sample: String,
-    /// The name of the operator
-    pub operator: String,
-    /// The date the sample was run
-    pub run_date: Option<NaiveDateTime>,
-    /// The instrument the sample was run on
-    pub instrument: String,
-    /// The method the instrument ran
-    pub method: String,
-}
-
-impl<'r> From<&ChemstationNewMetadata> for BTreeMap<String, Value<'r>> {
-    fn from(metadata: &ChemstationNewMetadata) -> Self {
-        let mut map = BTreeMap::new();
-        drop(map.insert(
-            "mult_correction".to_string(),
-            metadata.mult_correction.into(),
-        ));
-        drop(map.insert("sample".to_string(), metadata.sample.clone().into()));
-        drop(map.insert("operator".to_string(), metadata.operator.clone().into()));
-        drop(map.insert("run_date".to_string(), metadata.run_date.into()));
-        drop(map.insert("instrument".to_string(), metadata.instrument.clone().into()));
-        drop(map.insert("method".to_string(), metadata.method.clone().into()));
-        map
-    }
-}
-
-fn get_utf16_pascal(data: &[u8]) -> String {
-    let iter = (1..=2 * usize::from(data[0]))
-        .step_by(2)
-        .map(|i| u16::from_le_bytes([data[i], data[i + 1]]));
-    decode_utf16(iter)
-        .map(|r| r.unwrap_or(REPLACEMENT_CHARACTER))
-        .collect::<String>()
-}
-
-fn get_new_metadata(header: &[u8]) -> Result<ChemstationNewMetadata, EtError> {
-    if header.len() < 4000 {
-        return Err(
-            EtError::from("New chemstation header needs to be at least 4000 bytes long")
-                .incomplete(),
-        );
-    }
-    //  Also, @ 3093 - Units?
-    let sample = get_utf16_pascal(&header[858..]);
-    let operator = get_utf16_pascal(&header[1880..]);
-    let instrument = get_utf16_pascal(&header[2492..]);
-    let method = get_utf16_pascal(&header[2574..]);
-    let mult_correction = f64::extract(&header[3085..3093], &Endian::Big)?;
-
-    // We need to detect the date format before we can convert into a
-    // NaiveDateTime; not sure the format even maps to the file type
-    // (it may be computer-dependent?)
-    let raw_run_date = get_utf16_pascal(&header[2391..]);
-    let run_date = if let Ok(d) = NaiveDateTime::parse_from_str(&raw_run_date, "%d-%b-%y, %H:%M:%S")
-    {
-        // format in MWD
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(&raw_run_date, "%d %b %y %l:%M %P") {
-        // format in MS
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(&raw_run_date, "%d %b %y %l:%M %P %z") {
-        // format in MS with timezone
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(&raw_run_date, "%m/%d/%y %I:%M:%S %p") {
-        // format in FID
-        Some(d)
-    } else {
-        None
-    };
-
-    Ok(ChemstationNewMetadata {
-        mult_correction,
-        sample,
-        operator,
-        run_date,
-        instrument,
-        method,
-    })
-}
-
-#[derive(Clone, Debug, Default)]
 /// Internal state for the `ChemstationUvRecord` parser
 pub struct ChemstationUvState {
-    metadata: ChemstationNewMetadata,
+    metadata: ChemstationMetadata,
     n_scans_left: usize,
     n_wvs_left: usize,
     cur_time: f64,
@@ -139,7 +50,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvState {
     fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         let n_scans = u32::extract(&rb[278..], &Endian::Big)? as usize;
 
-        self.metadata = get_new_metadata(rb)?;
+        self.metadata = ChemstationMetadata::from_header(rb)?;
         self.n_scans_left = n_scans;
         self.n_wvs_left = 0;
         self.cur_time = 0.;
@@ -179,9 +90,9 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationUvRecord {
         let con = &mut 0;
         // refill case
         let mut n_wvs_left = state.n_wvs_left;
+        //
         if n_wvs_left == 0 {
             let _ = extract::<&[u8]>(rb, con, &mut 4)?; // 67, 624/224
-                                                        // let next_pos = usize::from(rb.extract::<u16>(Endian::Little)?);
             state.cur_time = f64::from(extract::<u32>(rb, con, &mut Endian::Little)?) / 60000.;
             let wv_start: u16 = extract(rb, con, &mut Endian::Little)?;
             let wv_end: u16 = extract(rb, con, &mut Endian::Little)?;
@@ -232,6 +143,135 @@ impl_reader!(
     ()
 );
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// The type of the records in the array.
+pub enum ChemstationArrayRecordType {
+    #[default]
+    /// All of the values are stored as f32
+    Float32Array,
+    /// All of the values are stored as f64
+    Float64Array,
+}
+
+#[derive(Clone, Debug, Default)]
+/// Internal state for the `ChemstationArrayRecord` parser
+pub struct ChemstationArrayState {
+    metadata: ChemstationMetadata,
+    record_type: ChemstationArrayRecordType,
+    n_scans_left: usize,
+    cur_time: f64,
+    time_step: f64,
+}
+
+impl StateMetadata for ChemstationArrayState {
+    fn metadata(&self) -> BTreeMap<String, Value> {
+        (&self.metadata).into()
+    }
+
+    fn header(&self) -> Vec<&str> {
+        vec!["time", "intensity"]
+    }
+}
+
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationArrayState {
+    type State = ();
+
+    fn parse(
+        rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        _state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        *consumed += read_agilent_header(rb, false)?;
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
+        self.metadata = ChemstationMetadata::from_header(rb)?;
+
+        let record_type = if &rb[348..352] == b"G\x00C\x00"
+            || &rb[3090..3104] == b"M\x00u\x00s\x00t\x00a\x00n\x00g\x00"
+        {
+            ChemstationArrayRecordType::Float64Array
+        } else {
+            ChemstationArrayRecordType::Float32Array
+        };
+
+        let tstep_num = u16::extract(&rb[4122..], &Endian::Big)? as f64;
+        let tstep_denom = u16::extract(&rb[4124..], &Endian::Big)? as f64;
+        let tstep = (tstep_num / tstep_denom) / 60.;
+
+        // The file from issue #42 has 12000 scans, but the field at 278 only says 197?
+        // The other file I have is correct so maybe that's corrupt, but we're using
+        // the time step to figure this out for now.
+        // let n_scans = u32::extract(&rb[278..], &Endian::Big)? as usize;
+        let n_scans = 1 + ((self.metadata.end_time - self.metadata.start_time) / tstep) as usize;
+
+        self.n_scans_left = n_scans;
+        self.record_type = record_type;
+        self.cur_time = self.metadata.start_time;
+        self.time_step = tstep;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// A record from a Chemstation UV file
+pub struct ChemstationArrayRecord {
+    /// The time recorded at
+    pub time: f64,
+    /// The intensity recorded
+    pub intensity: f64,
+}
+
+impl_record!(ChemstationArrayRecord: time, intensity);
+
+impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationArrayRecord {
+    type State = ChemstationArrayState;
+
+    fn parse(
+        _rb: &[u8],
+        _eof: bool,
+        consumed: &mut usize,
+        state: &mut Self::State,
+    ) -> Result<bool, EtError> {
+        if state.n_scans_left == 0 {
+            return Ok(false);
+        }
+        *consumed += match state.record_type {
+            ChemstationArrayRecordType::Float32Array => 4,
+            ChemstationArrayRecordType::Float64Array => 8,
+        };
+        state.n_scans_left -= 1;
+        state.cur_time += state.time_step;
+        Ok(true)
+    }
+
+    fn get(&mut self, rb: &'b [u8], state: &'s Self::State) -> Result<(), EtError> {
+        let con = &mut 0;
+        let intensity = match state.record_type {
+            ChemstationArrayRecordType::Float32Array => {
+                extract::<f32>(rb, con, &mut Endian::Little)? as f64
+            }
+            ChemstationArrayRecordType::Float64Array => {
+                extract::<f64>(rb, con, &mut Endian::Little)?
+            }
+        };
+
+        self.time = state.cur_time;
+        self.intensity = intensity * state.metadata.mult_correction;
+        Ok(())
+    }
+}
+
+impl_reader!(
+    ChemstationArrayReader,
+    ChemstationArrayRecord,
+    ChemstationArrayRecord,
+    ChemstationArrayState,
+    ()
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +307,25 @@ mod tests {
             n_mzs += 1;
         }
         assert_eq!(n_mzs, 6744 * 301);
+        Ok(())
+    }
+
+    #[test]
+    fn test_array_chemstation_reader() -> Result<(), EtError> {
+        let data: &[u8] = include_bytes!("../../../tests/data/test_179_fid.ch");
+        let mut reader = ChemstationArrayReader::new(data, None)?;
+        let _ = reader.metadata();
+        assert_eq!(reader.headers(), ["time", "intensity"]);
+
+        let ChemstationArrayRecord { time, intensity } = reader.next()?.unwrap();
+        assert!((time - 0.00166095).abs() < 0.000001);
+        assert_eq!(intensity, 7.7457031249999995);
+
+        let mut n_mzs = 1;
+        while reader.next()?.is_some() {
+            n_mzs += 1;
+        }
+        assert_eq!(n_mzs, 12000);
         Ok(())
     }
 }

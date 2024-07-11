@@ -1,12 +1,11 @@
 use alloc::collections::BTreeMap;
 use alloc::str;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::marker::Copy;
 
-use chrono::NaiveDateTime;
-
+use crate::parsers::agilent::metadata::ChemstationMetadata;
 use crate::parsers::agilent::read_agilent_header;
 use crate::parsers::{extract, Endian, FromSlice};
 use crate::record::{StateMetadata, Value};
@@ -14,177 +13,6 @@ use crate::EtError;
 use crate::{impl_reader, impl_record};
 
 const CHEMSTATION_TIME_STEP: f64 = 0.2;
-
-#[derive(Clone, Debug, Default)]
-/// Metadata consistly found in Chemstation file formats
-pub struct ChemstationMetadata {
-    /// Time the run started (minutes)
-    pub start_time: f64,
-    /// Time the ended started (minutes)
-    pub end_time: f64,
-    /// Name of the signal record (specifically used for e.g. MWD traces)
-    pub signal_name: String,
-    /// Absolute correction to be applied to all data points
-    pub offset_correction: f64,
-    /// Scaling correction to be applied to all data points
-    pub mult_correction: f64,
-    /// In what order this run was performed
-    pub sequence: u16,
-    /// The vial number this run was performed from
-    pub vial: u16,
-    /// The replicate number of this run
-    pub replicate: u16,
-    /// The name of the sample
-    pub sample: String,
-    /// The description of the sample
-    pub description: String,
-    /// The name of the operator
-    pub operator: String,
-    /// The date the sample was run
-    pub run_date: Option<NaiveDateTime>,
-    /// The instrument the sample was run on
-    pub instrument: String,
-    /// The method the instrument ran
-    pub method: String,
-}
-
-impl<'r> From<&ChemstationMetadata> for BTreeMap<String, Value<'r>> {
-    fn from(metadata: &ChemstationMetadata) -> Self {
-        let mut map = BTreeMap::new();
-        drop(map.insert("start_time".to_string(), metadata.start_time.into()));
-        drop(map.insert("end_time".to_string(), metadata.end_time.into()));
-        drop(map.insert(
-            "signal_name".to_string(),
-            metadata.signal_name.clone().into(),
-        ));
-        drop(map.insert(
-            "offset_correction".to_string(),
-            metadata.offset_correction.into(),
-        ));
-        drop(map.insert(
-            "mult_correction".to_string(),
-            metadata.mult_correction.into(),
-        ));
-        drop(map.insert("sequence".to_string(), metadata.sequence.into()));
-        drop(map.insert("vial".to_string(), metadata.vial.into()));
-        drop(map.insert("replicate".to_string(), metadata.replicate.into()));
-        drop(map.insert("sample".to_string(), metadata.sample.clone().into()));
-        drop(map.insert(
-            "description".to_string(),
-            metadata.description.clone().into(),
-        ));
-        drop(map.insert("operator".to_string(), metadata.operator.clone().into()));
-        drop(map.insert("run_date".to_string(), metadata.run_date.into()));
-        drop(map.insert("instrument".to_string(), metadata.instrument.clone().into()));
-        drop(map.insert("method".to_string(), metadata.method.clone().into()));
-        map
-    }
-}
-
-fn get_metadata(header: &[u8], has_signal: bool) -> Result<ChemstationMetadata, EtError> {
-    if has_signal && header.len() < 652 {
-        return Err(
-            EtError::from("Chemstation header needs to be at least 648 bytes long").incomplete(),
-        );
-    } else if !has_signal && header.len() < 512 {
-        return Err(
-            EtError::from("Chemstation header needs to be at least 512 bytes long").incomplete(),
-        );
-    }
-    let start_time = f64::from(i32::extract(&header[282..], &Endian::Big)?) / 60000.;
-    let end_time = f64::from(i32::extract(&header[286..], &Endian::Big)?) / 60000.;
-
-    let mut offset_correction = 0.;
-    let mut mult_correction = 1.;
-    let mut signal_name = "";
-    if has_signal {
-        offset_correction = f64::extract(&header[636..], &Endian::Big)?;
-        mult_correction = f64::extract(&header[644..], &Endian::Big)?;
-
-        let signal_name_len = usize::from(header[596]);
-        if signal_name_len > 40 {
-            return Err("Invalid signal name length".into());
-        }
-        signal_name = str::from_utf8(&header[597..597 + signal_name_len])?.trim();
-    }
-
-    let sample_len = usize::from(header[24]);
-    if sample_len > 60 {
-        return Err("Invalid sample length".into());
-    }
-    let sample = str::from_utf8(&header[25..25 + sample_len])?
-        .trim()
-        .to_string();
-    let description_len = usize::from(header[86]);
-    if description_len > 60 {
-        return Err("Invalid sample length".into());
-    }
-    let description = str::from_utf8(&header[87..87 + description_len])?
-        .trim()
-        .to_string();
-    let operator_len = usize::from(header[148]);
-    if operator_len > 28 {
-        return Err("Invalid sample length".into());
-    }
-    let operator = str::from_utf8(&header[149..149 + operator_len])?
-        .trim()
-        .to_string();
-    let run_date_len = usize::from(header[178]);
-    if run_date_len > 60 {
-        return Err("Invalid sample length".into());
-    }
-    // We need to detect the date format before we can convert into a
-    // NaiveDateTime; not sure the format even maps to the file type
-    // (it may be computer-dependent?)
-    let raw_run_date = str::from_utf8(&header[179..179 + run_date_len])?.trim();
-    let run_date = if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d-%b-%y, %H:%M:%S")
-    {
-        // format in MWD
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d %b %y %l:%M %P") {
-        // format in MS
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%d %b %y %l:%M %P %z") {
-        // format in MS with timezone
-        Some(d)
-    } else if let Ok(d) = NaiveDateTime::parse_from_str(raw_run_date, "%m/%d/%y %I:%M:%S %p") {
-        // format in FID
-        Some(d)
-    } else {
-        None
-    };
-
-    let instrument_len = usize::from(header[208]);
-    let instrument = str::from_utf8(&header[209..209 + instrument_len])?
-        .trim()
-        .to_string();
-    let method_len = usize::from(header[228]);
-    let method = str::from_utf8(&header[229..229 + method_len])?
-        .trim()
-        .to_string();
-
-    // not sure how robust the following are
-    let sequence = u16::extract(&header[252..], &Endian::Big)?;
-    let vial = u16::extract(&header[254..], &Endian::Big)?;
-    let replicate = u16::extract(&header[256..], &Endian::Big)?;
-
-    Ok(ChemstationMetadata {
-        start_time,
-        end_time,
-        signal_name: signal_name.to_string(),
-        offset_correction,
-        mult_correction,
-        sequence,
-        vial,
-        replicate,
-        sample,
-        description,
-        operator,
-        run_date,
-        instrument,
-        method,
-    })
-}
 
 #[derive(Clone, Debug, Default)]
 /// Internal state for the `ChemstationFidRecord` parser
@@ -220,7 +48,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationFidState {
     }
 
     fn get(&mut self, rb: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(rb, true)?;
+        let metadata = ChemstationMetadata::from_header(rb)?;
         // offset the current time back one step so it'll be right after the first time that parse
         self.cur_time = metadata.start_time - CHEMSTATION_TIME_STEP;
         self.cur_intensity = 0.;
@@ -319,7 +147,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMsState {
     }
 
     fn get(&mut self, buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(buffer, true)?;
+        let metadata = ChemstationMetadata::from_header(buffer)?;
         let n_scans = u32::extract(&buffer[278..], &Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;
@@ -437,7 +265,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationMwdState {
     }
 
     fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(buf, true)?;
+        let metadata = ChemstationMetadata::from_header(buf)?;
 
         self.n_wvs_left = 0;
         // offset the current time back one step so it'll be right after the first time that parse
@@ -557,7 +385,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ChemstationDadState {
     }
 
     fn get(&mut self, buf: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
-        let metadata = get_metadata(buf, false)?;
+        let metadata = ChemstationMetadata::from_header(buf)?;
         let n_scans = u32::extract(&buf[278..], &Endian::Big)? as usize;
 
         self.n_scans_left = n_scans;

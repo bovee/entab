@@ -457,7 +457,11 @@ mod tests {
         assert_eq!(metadata["specimen_source"], "Specimen_001".into());
         assert_eq!(
             metadata["date"],
-            NaiveDate::from_ymd_opt(2012, 10, 26).unwrap().and_hms_opt(18, 8, 10).unwrap().into()
+            NaiveDate::from_ymd_opt(2012, 10, 26)
+                .unwrap()
+                .and_hms_opt(18, 8, 10)
+                .unwrap()
+                .into()
         );
         Ok(())
     }

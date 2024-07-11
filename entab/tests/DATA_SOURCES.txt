@@ -13,5 +13,6 @@ test-0000.cf, collected by Roderick,
 test.bam, generated from test.sam,
 test.fastq, downloaded from NCBI,
 test_fid.ch, collected by Roderick,
+test_179_fid.ch, from issue #32
 test.sam, generated from aligning sequence.fasta against test.fastq,
 small.RAW, https://github.com/galaxyproteomics/tools-galaxyp/blob/master/tools/msconvert/test-data/small.RAW, CC0

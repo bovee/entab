@@ -1,4 +1,6 @@
 use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use crate::error::EtError;
 
@@ -32,6 +34,8 @@ pub enum FileType {
     // chemoinformatics
     /// Agilent format used for MS-MS trace data
     AgilentMsMsScan, // bin   0x01, 0x01
+    /// Agilent format used for flame ionization data (array-based)
+    AgilentChemstationArray,
     /// Agilent format used for UV-visible array data
     AgilentChemstationDad,
     /// Agilent format used for flame ionization trace data
@@ -123,9 +127,9 @@ impl FileType {
                 b"\x02\x33\x31\x00" => return FileType::AgilentChemstationDad,
                 b"\x02\x38\x31\x00" => return FileType::AgilentChemstationFid,
                 b"\x03\x02\x00\x00" => return FileType::AgilentMasshunterDad,
-                b"\x03\x31\x33\x30" => return FileType::AgilentChemstationUv,
+                b"\x03\x31\x33\x30" => return FileType::AgilentChemstationMwd,
                 b"\x03\x31\x33\x31" => return FileType::AgilentChemstationUv,
-                b"\x03\x31\x37\x39" => return FileType::AgilentChemstationUv,
+                b"\x03\x31\x37\x39" => return FileType::AgilentChemstationArray,
                 b"\x28\xB5\x2F\xFD" => return FileType::Zstd,
                 b"\x4F\x62\x6A\x01" => return FileType::ApacheAvro,
                 b"\xFF\xD8\xFF\xDB" | b"\xFF\xD8\xFF\xE0" | b"\xFF\xD8\xFF\xE1"
@@ -140,7 +144,14 @@ impl FileType {
             }
         }
         if magic.len() < 2 {
-            return FileType::Unknown(Some(magic.iter().take(8).map(|x| format!("{:x}", x)).collect::<Vec<String>>().join("")));
+            return FileType::Unknown(Some(
+                magic
+                    .iter()
+                    .take(8)
+                    .map(|x| format!("{:x}", x))
+                    .collect::<Vec<String>>()
+                    .join(""),
+            ));
         }
         match &magic[..2] {
             [0x0F | 0x1F, 0x8B] => return FileType::Gzip,
@@ -154,7 +165,12 @@ impl FileType {
             b">" => FileType::Fasta,
             b"@" => FileType::Fastq,
             _ => FileType::Unknown(Some(
-                magic.iter().take(8).map(|x| format!("{:x}", x)).collect::<Vec<String>>().join("")
+                magic
+                    .iter()
+                    .take(8)
+                    .map(|x| format!("{:x}", x))
+                    .collect::<Vec<String>>()
+                    .join(""),
             )),
         }
     }
@@ -172,6 +188,7 @@ impl FileType {
             "cdf" => &[FileType::NetCdf],
             "cf" => &[FileType::ThermoCf],
             "ch" => &[
+                FileType::AgilentChemstationArray,
                 FileType::AgilentChemstationFid,
                 FileType::AgilentChemstationMwd,
             ],
@@ -213,6 +230,7 @@ impl FileType {
     /// If a file is unsupported, an error will be returned.
     pub fn to_parser_name<'a>(&self, hint: Option<&'a str>) -> Result<&'a str, EtError> {
         Ok(match (self, hint) {
+            (FileType::AgilentChemstationArray, None) => "chemstation_array",
             (FileType::AgilentChemstationDad, None) => "chemstation_dad",
             (FileType::AgilentChemstationFid, None) => "chemstation_fid",
             (FileType::AgilentChemstationMs, None) => "chemstation_ms",
@@ -242,10 +260,12 @@ impl FileType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_parser_names() {
         let filetypes = [
+            (FileType::AgilentChemstationArray, "chemstation_array"),
             (FileType::AgilentChemstationFid, "chemstation_fid"),
             (FileType::AgilentChemstationMs, "chemstation_ms"),
             (FileType::AgilentChemstationMwd, "chemstation_mwd"),
@@ -273,8 +293,9 @@ mod tests {
         let unknown_type = FileType::from_magic(b"\x00\x00\x00\x00");
         assert_eq!(unknown_type, FileType::Unknown(Some("0000".to_string())));
 
-        assert_eq!(unknown_type.to_parser_name(None).unwrap_err().msg, "File starting with #0000# has no parser");
-
-
+        assert_eq!(
+            unknown_type.to_parser_name(None).unwrap_err().msg,
+            "File starting with #0000# has no parser"
+        );
     }
 }
