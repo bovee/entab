@@ -6,3 +6,5 @@ dist/
 pkg/
 wasm-pack.log
 venv/
+__pycache__/
+_entab.*.so

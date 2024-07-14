@@ -191,6 +191,7 @@ impl Reader {
 
 /// entab provides interconversion from streaming record formats.
 #[pymodule]
+#[pyo3(name="_entab")]
 fn entab(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Reader>()?;
     Ok(())

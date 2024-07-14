@@ -77,6 +77,9 @@ impl<'b: 's, 's> FromSlice<'b, 's> for MasshunterDadHeaderRecord {
         consumed: &mut usize,
         state: &mut Self::State,
     ) -> Result<bool, EtError> {
+        if state.n_pts == 0 {
+            return Ok(false);
+        }
         state.n_pts -= 1;
         state.cur_wavelength += state.wavelength_step;
         if state.n_scans == 0 && state.n_pts == 0 {

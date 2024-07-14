@@ -8,3 +8,4 @@ name = "entab"
 [tool.maturin]
 bindings = "pyo3"
 features = ["maturin"]
+module-name = "entab._entab"
