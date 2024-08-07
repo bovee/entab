@@ -56,8 +56,8 @@ impl ChemstationMetadata {
         let version = u32::extract(&header[248..], &Endian::Big)?;
 
         let required_length = match version {
-            2 | 102 => 512,
-            30 | 31 | 81 => 652,
+            2 | 31 | 102 => 512,
+            30 | 81 => 652,
             131 => 4000,
             130 | 179 => 4800,
             _ => usize::MAX,
@@ -108,30 +108,30 @@ impl ChemstationMetadata {
         };
 
         let signal_name = match version {
-            30 | 31 | 81 => get_pascal(&header[596..596 + 40], "signal_name")?,
+            30 | 81 => get_pascal(&header[596..596 + 40], "signal_name")?,
             130 | 179 => get_utf16_pascal(&header[4213..]),
             _ => "".to_string(),
         };
 
         let offset_correction = match version {
-            30 | 31 | 81 => f64::extract(&header[636..], &Endian::Big)?,
+            30 | 81 => f64::extract(&header[636..], &Endian::Big)?,
             _ => 0.,
         };
         let mult_correction = match version {
-            30 | 31 | 81 => f64::extract(&header[644..], &Endian::Big)?,
+            30 | 81 => f64::extract(&header[644..], &Endian::Big)?,
             131 => f64::extract(&header[3085..3093], &Endian::Big)?,
             130 | 179 => f64::extract(&header[4732..4770], &Endian::Big)?,
             _ => 1.,
         };
         let start_time = match version {
-            2 | 30 | 31 | 81 | 102 | 130 | 131 => {
+            2 | 30 | 81 | 102 | 130 | 131 => {
                 i32::extract(&header[282..], &Endian::Big)? as f64 / 60000.
             }
             179 => f32::extract(&header[282..], &Endian::Big)? as f64 / 60000.,
             _ => 0.,
         };
         let end_time = match version {
-            2 | 30 | 31 | 81 | 102 | 130 | 131 => {
+            2 | 30 | 81 | 102 | 130 | 131 => {
                 i32::extract(&header[286..], &Endian::Big)? as f64 / 60000.
             }
             179 => f32::extract(&header[286..], &Endian::Big)? as f64 / 60000.,
