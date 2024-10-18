@@ -562,21 +562,21 @@ async function calculateBounds(reader) {
   const columns = [];
   let nPoints = 0;
   for (const column of reader.headers) {
-    const value = datum[column];
+    const value = datum.get(column);
     // TODO: handle dates, booleans?
     if (typeof value === "string") {
-      bounds[`length(${column})`] = [v => v[column].length, value.length, value.length];
+      bounds[`length(${column})`] = [v => v.get(column).length, value.length, value.length];
       columns.push(`length(${column})`);
       if (column === "sequence") {
-        bounds[`gc(${column})`] = [v => FUNCTIONS.gc(v[column]), FUNCTIONS.gc(value), FUNCTIONS.gc(value)];
+        bounds[`gc(${column})`] = [v => FUNCTIONS.gc(v.get(column)), FUNCTIONS.gc(value), FUNCTIONS.gc(value)];
         columns.push(`gc(${column})`);
       } else if (column === "quality") {
-        bounds[`average(quality)`] = [v => FUNCTIONS.avgQual(v[column]), FUNCTIONS.avgQual(value), FUNCTIONS.avgQual(value)];
+        bounds[`average(quality)`] = [v => FUNCTIONS.avgQual(v.get(column)), FUNCTIONS.avgQual(value), FUNCTIONS.avgQual(value)];
         columns.push(`average(quality)`);
       }
     } else {
       // it's a number
-      bounds[column] = [v => v[column], value, value];
+      bounds[column] = [v => v.get(column), value, value];
       columns.push(column);
     }
   }
