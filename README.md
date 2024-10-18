@@ -85,3 +85,10 @@ devtools::install_github("bovee/entab", subdir="entab-r")
      issues. Parsers are split into two forms: a fast one that produces a
      specialized struct and a slow one that produces a generic record and is
      capable of being switched to at run time.
+
+
+## Website
+
+There is a small demo of 
+[entab running in the browser](https://bovee.github.io/entab/) that can open
+small files and plot the data in them.
