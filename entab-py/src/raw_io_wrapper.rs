@@ -1,15 +1,15 @@
-use std::io::{Error, ErrorKind, Read};
+use std::io::{Error, Read};
 use std::ptr::copy_nonoverlapping;
 
 use pyo3::prelude::*;
 
 pub struct RawIoWrapper {
-    reader: PyObject,
+    reader: Py<PyAny>,
 }
 
 impl RawIoWrapper {
     pub fn new(obj: &Bound<PyAny>) -> Self {
-        let reader = Python::with_gil(|py| obj.to_object(py));
+        let reader = obj.clone().unbind();
         RawIoWrapper { reader }
     }
 }
@@ -19,31 +19,25 @@ impl Read for RawIoWrapper {
         // TODO: it would be pass the buf itself into `readinto` so we're not
         // creating so many copies in here, but I can't figure out how to wrap
         // that into a python object that implements PyBufferProtocol properly
-        Python::with_gil(|py| {
-            let py_data = self
-                .reader
-                .call_method1(py, "read", (buf.len(),))
-                .map_err(|_| {
-                    // TODO: get the error message from the python error?
-                    Error::new(ErrorKind::Other, "`read` failed")
-                })?;
+        Python::attach(|py| {
+            let reader = self.reader.bind(py);
+            let py_data = reader
+                .call_method1("read", (buf.len(),))
+                .map_err(|_| Error::other("`read` failed"))?;
 
-            let amt_read = if let Ok(bytes) = py_data.extract::<Vec<u8>>(py) {
+            let amt_read = if let Ok(bytes) = py_data.extract::<Vec<u8>>() {
                 unsafe {
                     copy_nonoverlapping::<u8>(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
                 }
                 bytes.len()
-            } else if let Ok(string) = py_data.extract::<String>(py) {
+            } else if let Ok(string) = py_data.extract::<String>() {
                 let bytes = string.as_bytes();
                 unsafe {
                     copy_nonoverlapping::<u8>(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
                 }
                 bytes.len()
             } else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "`read` returned an unknown object",
-                ));
+                return Err(Error::other("`read` returned an unknown object"));
             };
             Ok(amt_read)
         })
@@ -54,16 +48,16 @@ impl Read for RawIoWrapper {
 mod tests {
     use super::*;
 
-    use pyo3::types::{IntoPyDict, PyFloat};
+    use pyo3::types::IntoPyDict;
 
     #[test]
     fn test_io_wrapper_bad_type() -> Result<(), Error> {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             let mut scratch = Vec::new();
 
-            let num = PyFloat::new_bound(py, 2.);
-            let mut wrapper = RawIoWrapper::new(num.as_ref());
+            let num = pyo3::types::PyFloat::new(py, 2.);
+            let mut wrapper = RawIoWrapper::new(&num);
             assert!(wrapper.read_to_end(&mut scratch).is_err());
             Ok(())
         })
@@ -71,14 +65,15 @@ mod tests {
 
     #[test]
     fn test_io_wrapper_stringio() -> Result<(), Error> {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let locals = [("io", py.import_bound("io")?)].into_py_dict_bound(py);
+        Python::initialize();
+        Python::attach(|py| {
+            let io_module = py.import("io")?;
+            let locals = IntoPyDict::into_py_dict([("io", &io_module)], py)?;
             let mut scratch = Vec::new();
 
-            let code = "io.StringIO('>test\\nACGT')";
-            let buffer: PyObject = py.eval_bound(code, None, Some(&locals))?.extract()?;
-            let mut wrapper = RawIoWrapper::new(buffer.bind(py));
+            let code = c"io.StringIO('>test\\nACGT')";
+            let buffer: Bound<PyAny> = py.eval(code, None, Some(&locals))?;
+            let mut wrapper = RawIoWrapper::new(&buffer);
             assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
             assert_eq!(scratch, b">test\nACGT");
             Ok(())
@@ -87,14 +82,15 @@ mod tests {
 
     #[test]
     fn test_io_wrapper_bytesio() -> Result<(), Error> {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let locals = [("io", py.import_bound("io")?)].into_py_dict_bound(py);
+        Python::initialize();
+        Python::attach(|py| {
+            let io_module = py.import("io")?;
+            let locals = IntoPyDict::into_py_dict([("io", &io_module)], py)?;
             let mut scratch = Vec::new();
 
-            let code = "io.StringIO('>seq\\nTGCAT')";
-            let buffer: PyObject = py.eval_bound(code, None, Some(&locals))?.extract()?;
-            let mut wrapper = RawIoWrapper::new(buffer.bind(py));
+            let code = c"io.StringIO('>seq\\nTGCAT')";
+            let buffer: Bound<PyAny> = py.eval(code, None, Some(&locals))?;
+            let mut wrapper = RawIoWrapper::new(&buffer);
             assert_eq!(wrapper.read_to_end(&mut scratch)?, 10);
             assert_eq!(scratch, b">seq\nTGCAT");
 
