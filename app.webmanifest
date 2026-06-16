@@ -1,0 +1,15 @@
+{
+  "short_name": "entab",
+  "name": "entab",
+  "description": "entab is a parser for bioinformatic, chemoinformatic and other scientific file formats. This page is a demonstration of how it can be used to graph data and file formats it can read.",
+  "icons": [
+    {"src": "/icons/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icons/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/icons/maskable_icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}
+  ],
+  "start_url": "/index.html",
+  "background_color": "#FFFFFF",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#B0B0D0"
+}
