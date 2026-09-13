@@ -24,7 +24,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for PascalString16 {
         consumed: &mut usize,
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
-        let length = usize::try_from(extract::<u32>(buffer, &mut 0, &mut Endian::Little)?)?; // NOTE This reads the first four bytes of the buffer and casts to uint32
+        let length = usize::try_from(extract::<u32>(buffer, &mut 0, &mut Endian::Little)?)?;
         if buffer.len() < 4 * 2 * length * 2 {
             return Err(EtError::from("PascalString ended abruptly").incomplete());
         }
@@ -326,7 +326,6 @@ impl<'b: 's, 's> FromSlice<'b, 's> for ThermoRawState {
             let con = &mut 1420;
             for _ in 1..=13 {
                 let _ = PascalString16::parse(&buffer[*con..], eof, con, &mut ())?;
-                // NOTE: advance "con" by the length of the next string by finding end of next line
             }
             if state.version >= 50 {
                 for _ in 14..=16 {
