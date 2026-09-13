@@ -7,7 +7,7 @@ use std::io;
 use std::str;
 
 use clap::error::ErrorKind;
-use clap::{crate_authors, crate_version, Arg, Command};
+use clap::{Arg, Command};
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
@@ -30,8 +30,8 @@ where
 {
     let clap_result = Command::new("entab")
         .about("Turn anything into a TSV")
-        .author(crate_authors!())
-        .version(crate_version!())
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("input")
                 .short('i')
