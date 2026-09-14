@@ -18,7 +18,7 @@ jobs:
     - name: Install nightly
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
+        toolchain: stable
         override: true
 
     - name: Set up Python
@@ -38,7 +38,7 @@ jobs:
 
     - name: Run tests with coverage
       working-directory: ./entab
-      run: cargo +nightly tarpaulin --all --timeout 600 --out Xml -- --test-threads 1
+      run: cargo tarpaulin --all --timeout 600 --out Xml -- --test-threads 1
 
     - name: Upload to codecov
       uses: codecov/codecov-action@v2
