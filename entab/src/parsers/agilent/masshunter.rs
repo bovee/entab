@@ -203,7 +203,7 @@ impl<'r> MasshunterDadReader<'r> {
 
 impl<'r> RecordReader for MasshunterDadReader<'r> {
     /// The next record, expressed as a `Vec` of `Value`s.
-    fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<Value>>, EtError> {
+    fn next_record(&mut self) -> Result<Option<::alloc::vec::Vec<Value<'_>>>, EtError> {
         Ok(self.next()?.map(Into::into))
     }
 
@@ -217,7 +217,7 @@ impl<'r> RecordReader for MasshunterDadReader<'r> {
     }
 
     /// The metadata for this Reader.
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         self.state.metadata()
     }
 }

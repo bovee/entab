@@ -280,7 +280,7 @@ impl ThermoRawState {
 }
 
 impl StateMetadata for ThermoRawState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         let mut map = BTreeMap::new();
         drop(map.insert("version".to_string(), self.version.into()));
         map

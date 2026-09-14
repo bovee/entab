@@ -195,7 +195,7 @@ impl<'r> From<TsvRecord<'r>> for Vec<Value<'r>> {
     }
 }
 
-impl_reader!(TsvReader, TsvRecord, TsvRecord<'r>, TsvState, TsvParams);
+impl_reader!(TsvReader, TsvRecord<'_>, TsvRecord<'r>, TsvState, TsvParams);
 
 #[cfg(test)]
 mod test {

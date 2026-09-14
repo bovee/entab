@@ -37,7 +37,7 @@ pub struct FcsState {
 }
 
 impl StateMetadata for FcsState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         self.metadata.clone()
     }
 
@@ -408,7 +408,7 @@ impl<'r> From<FcsRecord<'r>> for Vec<Value<'r>> {
     }
 }
 
-impl_reader!(FcsReader, FcsRecord, FcsRecord<'r>, FcsState, BTreeMap<String, String>);
+impl_reader!(FcsReader, FcsRecord<'_>, FcsRecord<'r>, FcsState, BTreeMap<String, String>);
 
 #[cfg(test)]
 mod tests {

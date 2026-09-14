@@ -25,7 +25,7 @@ pub struct ChemstationFidState {
 }
 
 impl StateMetadata for ChemstationFidState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 
@@ -124,7 +124,7 @@ pub struct ChemstationMsState {
 }
 
 impl StateMetadata for ChemstationMsState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 
@@ -242,7 +242,7 @@ pub struct ChemstationMwdState {
 }
 
 impl StateMetadata for ChemstationMwdState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 
@@ -362,7 +362,7 @@ pub struct ChemstationDadState {
 }
 
 impl StateMetadata for ChemstationDadState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 
@@ -493,7 +493,7 @@ impl_reader!(
 );
 impl_reader!(
     ChemstationMwdReader,
-    ChemstationMwdRecord,
+    ChemstationMwdRecord<'_>,
     ChemstationMwdRecord<'r>,
     ChemstationMwdState,
     ()

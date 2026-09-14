@@ -15,7 +15,7 @@ use crate::error::EtError;
 /// `RecordReader` trait.
 pub trait StateMetadata {
     /// Metadata about the current state of the parser
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         BTreeMap::new()
     }
 

@@ -25,7 +25,7 @@ pub struct ChemstationUvState {
 }
 
 impl StateMetadata for ChemstationUvState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 
@@ -164,7 +164,7 @@ pub struct ChemstationArrayState {
 }
 
 impl StateMetadata for ChemstationArrayState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         (&self.metadata).into()
     }
 

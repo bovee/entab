@@ -117,7 +117,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FastqRecord<'s> {
     }
 }
 
-impl_reader!(FastqReader, FastqRecord, FastqRecord<'r>, FastqState, ());
+impl_reader!(FastqReader, FastqRecord<'_>, FastqRecord<'r>, FastqState, ());
 
 #[cfg(test)]
 mod tests {

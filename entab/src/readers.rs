@@ -111,13 +111,13 @@ pub trait RecordReader: ::core::fmt::Debug {
     ///
     /// # Errors
     /// If the record can't be read, an error is returned.
-    fn next_record(&mut self) -> Result<Option<Vec<Value>>, EtError>;
+    fn next_record(&mut self) -> Result<Option<Vec<Value<'_>>>, EtError>;
 
     /// The header titles that correspond to every item in the record
     fn headers(&self) -> Vec<String>;
 
     /// Extra metadata about the file or data in the file
-    fn metadata(&self) -> BTreeMap<String, Value>;
+    fn metadata(&self) -> BTreeMap<String, Value<'_>>;
 }
 
 /// Generates a `...Reader` struct for the associated state-based file parsers
@@ -164,7 +164,7 @@ macro_rules! impl_reader {
             /// The next record, expressed as a `Vec` of `Value`s.
             fn next_record(
                 &mut self,
-            ) -> Result<Option<::alloc::vec::Vec<$crate::record::Value>>, EtError> {
+            ) -> Result<Option<::alloc::vec::Vec<$crate::record::Value<'_>>>, EtError> {
                 Ok(self.next()?.map(|r| r.into()))
             }
 
@@ -176,7 +176,7 @@ macro_rules! impl_reader {
             }
 
             /// The metadata for this Reader.
-            fn metadata(&self) -> ::alloc::collections::BTreeMap<::alloc::string::String, $crate::record::Value> {
+            fn metadata(&self) -> ::alloc::collections::BTreeMap<::alloc::string::String, $crate::record::Value<'_>> {
                 use $crate::record::StateMetadata;
                 self.state.metadata()
             }

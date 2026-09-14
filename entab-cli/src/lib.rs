@@ -81,7 +81,7 @@ where
 
     let mut parse_params = BTreeMap::new();
     let parser = matches.get_one::<&str>("parser").copied();
-    let (mut rec_reader, _) = if let Some(&i) = matches.get_one::<&str>("input") {
+    let (mut rec_reader, _) = if let Some(i) = matches.get_one::<String>("input") {
         parse_params.insert("filename".to_string(), Value::String(i.into()));
         let file = File::open(i)?;
         #[cfg(feature = "mmap")]

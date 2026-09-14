@@ -134,7 +134,7 @@ impl PngState {
 }
 
 impl StateMetadata for PngState {
-    fn metadata(&self) -> BTreeMap<String, Value> {
+    fn metadata(&self) -> BTreeMap<String, Value<'_>> {
         let mut metadata = BTreeMap::new();
         drop(metadata.insert("height".to_string(), (self.height as u64).into()));
         drop(metadata.insert("width".to_string(), (self.width as u64).into()));

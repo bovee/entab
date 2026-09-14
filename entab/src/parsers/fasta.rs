@@ -113,7 +113,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for FastaRecord<'b> {
     }
 }
 
-impl_reader!(FastaReader, FastaRecord, FastaRecord<'r>, FastaState, ());
+impl_reader!(FastaReader, FastaRecord<'_>, FastaRecord<'r>, FastaState, ());
 
 #[cfg(test)]
 mod tests {

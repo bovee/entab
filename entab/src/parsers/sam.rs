@@ -245,7 +245,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for BamRecord<'s> {
     }
 }
 
-impl_reader!(BamReader, BamRecord, BamRecord<'r>, BamState, ());
+impl_reader!(BamReader, BamRecord<'_>, BamRecord<'r>, BamState, ());
 
 /// The internal state of the `SamReader`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -416,7 +416,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for SamRecord<'s> {
     }
 }
 
-impl_reader!(SamReader, SamRecord, SamRecord<'r>, SamState, ());
+impl_reader!(SamReader, SamRecord<'_>, SamRecord<'r>, SamState, ());
 
 #[cfg(test)]
 mod tests {
