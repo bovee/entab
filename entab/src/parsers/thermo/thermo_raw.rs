@@ -25,7 +25,7 @@ impl<'b: 's, 's> FromSlice<'b, 's> for PascalString16 {
         _state: &mut Self::State,
     ) -> Result<bool, EtError> {
         let length = usize::try_from(extract::<u32>(buffer, &mut 0, &mut Endian::Little)?)?;
-        if buffer.len() < 4 * 2 * length * 2 {
+        if buffer.len() < 4 + 2 * length {
             return Err(EtError::from("PascalString ended abruptly").incomplete());
         }
         *consumed += 4 + 2 * length;
@@ -34,7 +34,6 @@ impl<'b: 's, 's> FromSlice<'b, 's> for PascalString16 {
 
     fn get(&mut self, buffer: &'b [u8], _state: &'s Self::State) -> Result<(), EtError> {
         let iter = (4..buffer.len())
-            .step_by(2)
             .map(|i| u16::from_le_bytes([buffer[i], buffer[i + 1]]));
         self.0 = decode_utf16(iter)
             .map(|r| r.unwrap_or(REPLACEMENT_CHARACTER))
