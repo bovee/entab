@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -59,3 +60,50 @@ jobs:
     - name: Run no_std tests
       working-directory: ./entab
       run: cargo test --no-default-features
+
+  r-package:
+    name: R package (${{ matrix.os }}, R ${{ matrix.r }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.r == 'devel' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  r: 'release' }
+          - { os: macos-latest,   r: 'release' }
+          - { os: windows-latest, r: 'release' }
+          # Windows is the only platform where the R version matters much: it
+          # links against an import library regenerated from R.dll's exports
+          # each release, so a symbol R stops exporting breaks linking there
+          # first. Unix links a shared libR that still resolves them. oldrel
+          # guards the extendr bump, devel is early warning for the next one.
+          - { os: windows-latest, r: 'oldrel' }
+          - { os: windows-latest, r: 'devel' }
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: r-lib/actions/setup-r@v2
+      with:
+        r-version: ${{ matrix.r }}
+
+    - uses: dtolnay/rust-toolchain@stable
+
+    - name: Add the GNU target Makevars.win builds for
+      if: runner.os == 'Windows'
+      run: rustup target add x86_64-pc-windows-gnu
+
+    # The failure this guards against is a link error, so INSTALL is the test.
+    # shell: bash matters on Windows -- the runner defaults to pwsh, where R is
+    # a built-in alias for Invoke-History and never reaches the real R.
+    - name: Install entab-r
+      shell: bash
+      run: R CMD INSTALL entab-r
+
+    - name: Load and parse
+      shell: Rscript {0}
+      run: |
+        library(entab)
+        r <- Reader("entab/tests/data/b3_alkanes.dxf")
+        d <- as.data.frame(r)
+        stopifnot(r$parser() == "thermo_dxf", nrow(d) > 0, ncol(d) == 3)
+        cat("ok:", nrow(d), "rows\n")
