@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 entab_base = { package = "entab", git = "https://github.com/bovee/entab" }
-extendr-api = "0.6.0"
-libR-sys = "0.6.0"
+extendr-api = "0.7.1"
 
 [lib]
 name = "entab"

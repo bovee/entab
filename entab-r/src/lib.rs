@@ -151,7 +151,7 @@ fn as_data_frame(reader: &mut Reader) -> Result<Robj> {
             ValueList::Misc(v) => v.into(),
         });
     }
-    let obj: Robj = List::from_names_and_values(&reader.header_names, &vectors).into();
+    let mut obj: Robj = List::from_names_and_values(&reader.header_names, &vectors).into();
     obj.set_attrib(
         row_names_symbol(),
         (1i32..=vectors[0].len() as i32).collect_robj(),
